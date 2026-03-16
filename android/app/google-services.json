@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "504913872497",
+    "firebase_url": "https://quanlynoibo-490220-default-rtdb.firebaseio.com",
+    "project_id": "quanlynoibo-490220",
+    "storage_bucket": "quanlynoibo-490220.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:504913872497:android:c0f2e191e2fdfbeeec7dd0",
+        "android_client_info": {
+          "package_name": "quanlynoibo.teso.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCMMh6GCZqOW6FlgJlEZjtthrTlitc_An0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

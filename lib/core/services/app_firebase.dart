@@ -1,0 +1,268 @@
+import 'dart:io';
+import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import '../../config/app_env.dart';
+
+class AppFirebase {
+  static bool _initialized = false;
+  static Future<void>? _initializingFuture;
+  static bool _foregroundConfigured = false;
+  static FirebaseDatabase? _database;
+  static FirebaseAuth? _auth;
+  static String? _lastPushToken;
+  static DateTime? _lastPushTokenAt;
+  static final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+  static final StreamController<RemoteMessage> _foregroundController =
+      StreamController<RemoteMessage>.broadcast();
+  static String? _lastForegroundMessageKey;
+  static DateTime? _lastForegroundMessageAt;
+
+  static Stream<RemoteMessage> get foregroundMessages =>
+      _foregroundController.stream;
+
+  static bool get isConfigured =>
+      AppEnv.firebaseApiKey.isNotEmpty &&
+      AppEnv.firebaseProjectId.isNotEmpty &&
+      AppEnv.firebaseMessagingSenderId.isNotEmpty &&
+      AppEnv.firebaseDatabaseUrl.isNotEmpty &&
+      (AppEnv.firebaseAppIdAndroid.isNotEmpty ||
+          AppEnv.firebaseAppIdIos.isNotEmpty);
+
+  static Future<void> ensureInitialized() async {
+    if (_initialized || !isConfigured) return;
+    if (_initializingFuture != null) {
+      await _initializingFuture;
+      return;
+    }
+
+    _initializingFuture = _initializeFirebase();
+    try {
+      await _initializingFuture;
+    } finally {
+      _initializingFuture = null;
+    }
+  }
+
+  static Future<void> _initializeFirebase() async {
+    final String appId = Platform.isIOS
+        ? AppEnv.firebaseAppIdIos
+        : AppEnv.firebaseAppIdAndroid;
+    if (appId.isEmpty) return;
+
+    final bool hasDefaultApp = Firebase.apps.any(
+      (FirebaseApp app) => app.name == '[DEFAULT]',
+    );
+
+    if (!hasDefaultApp) {
+      try {
+        await Firebase.initializeApp(
+          options: FirebaseOptions(
+            apiKey: AppEnv.firebaseApiKey,
+            appId: appId,
+            messagingSenderId: AppEnv.firebaseMessagingSenderId,
+            projectId: AppEnv.firebaseProjectId,
+            databaseURL: AppEnv.firebaseDatabaseUrl,
+          ),
+        );
+      } on FirebaseException catch (error) {
+        if (error.code != 'duplicate-app') {
+          rethrow;
+        }
+      }
+    }
+
+    _auth = FirebaseAuth.instance;
+    _database = FirebaseDatabase.instance;
+    _initialized = true;
+  }
+
+  static Future<void> ensureForegroundMessaging() async {
+    if (!isConfigured) return;
+    await ensureInitialized();
+    if (_foregroundConfigured) return;
+
+    const AndroidInitializationSettings androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const DarwinInitializationSettings iosSettings =
+        DarwinInitializationSettings();
+    const InitializationSettings initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+    await _localNotifications.initialize(initSettings);
+
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'crm_default',
+      'Thông báo hệ thống',
+      description: 'Thông báo realtime từ hệ thống CRM',
+      importance: Importance.max,
+    );
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+
+    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+      alert: false,
+      badge: true,
+      sound: true,
+    );
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      if (_isDuplicateForegroundMessage(message)) {
+        return;
+      }
+      _foregroundController.add(message);
+      await _showLocalNotification(message, channel);
+    });
+
+    _foregroundConfigured = true;
+  }
+
+  static Future<void> _showLocalNotification(
+    RemoteMessage message,
+    AndroidNotificationChannel channel,
+  ) async {
+    final RemoteNotification? notification = message.notification;
+    final String title =
+        notification?.title ?? (message.data['title'] ?? 'Thông báo').toString();
+    final String body =
+        notification?.body ?? (message.data['body'] ?? '').toString();
+    if (title.trim().isEmpty && body.trim().isEmpty) return;
+
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      channel.id,
+      channel.name,
+      channelDescription: channel.description,
+      importance: Importance.max,
+      priority: Priority.high,
+    );
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
+
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      NotificationDetails(android: androidDetails, iOS: iosDetails),
+    );
+  }
+
+  static bool _isDuplicateForegroundMessage(RemoteMessage message) {
+    final String key = _messageFingerprint(message);
+    final DateTime now = DateTime.now();
+    if (_lastForegroundMessageKey == key &&
+        _lastForegroundMessageAt != null &&
+        now.difference(_lastForegroundMessageAt!).inSeconds <= 8) {
+      return true;
+    }
+    _lastForegroundMessageKey = key;
+    _lastForegroundMessageAt = now;
+    return false;
+  }
+
+  static String _messageFingerprint(RemoteMessage message) {
+    final RemoteNotification? notification = message.notification;
+    final String type = (message.data['type'] ?? '').toString();
+    final String taskId = (message.data['task_id'] ?? '').toString();
+    final String itemId = (message.data['task_item_id'] ?? '').toString();
+    final String commentId = (message.data['comment_id'] ?? '').toString();
+    final String title = (notification?.title ?? message.data['title'] ?? '').toString();
+    final String body = (notification?.body ?? message.data['body'] ?? '').toString();
+    return [
+      message.messageId ?? '',
+      type,
+      taskId,
+      itemId,
+      commentId,
+      title,
+      body,
+    ].join('|');
+  }
+
+  static FirebaseDatabase? get database => _database;
+  static String? get lastPushToken => _lastPushToken;
+  static DateTime? get lastPushTokenAt => _lastPushTokenAt;
+
+  static Future<bool> signInWithCustomToken(String token) async {
+    if (!isConfigured || token.isEmpty) return false;
+    await ensureInitialized();
+    if (_auth == null) return false;
+    try {
+      await _auth!.signInWithCustomToken(token);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Stream<DatabaseEvent>? taskChatStream(int taskId) {
+    if (!_initialized || _database == null) return null;
+    return _database!.ref('task_chats/$taskId/messages').onValue;
+  }
+
+  static Query? taskChatQuery(int taskId, {int? limit}) {
+    if (!_initialized || _database == null) return null;
+    Query query = _database!.ref('task_chats/$taskId/messages').orderByChild('created_at');
+    if (limit != null && limit > 0) {
+      query = query.limitToLast(limit);
+    }
+    return query;
+  }
+
+  static Future<String?> registerPushToken({
+    required void Function(String token) onToken,
+  }) async {
+    if (!isConfigured) return null;
+    await ensureInitialized();
+    final FirebaseMessaging messaging = FirebaseMessaging.instance;
+    try {
+      await messaging.requestPermission();
+    } catch (_) {
+      // Ignore permission errors and continue to avoid blocking app startup.
+    }
+
+    messaging.onTokenRefresh.listen((newToken) {
+      if (newToken.isNotEmpty) {
+        _lastPushToken = newToken;
+        _lastPushTokenAt = DateTime.now();
+        onToken(newToken);
+      }
+    });
+
+    if (Platform.isIOS) {
+      try {
+        final String? apnsToken = await messaging.getAPNSToken();
+        if (apnsToken == null || apnsToken.isEmpty) {
+          return null;
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+
+    String? token;
+    try {
+      token = await messaging.getToken();
+    } on FirebaseException catch (e) {
+      if (e.code == 'apns-token-not-set') {
+        return null;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+    if (token != null && token.isNotEmpty) {
+      _lastPushToken = token;
+      _lastPushTokenAt = DateTime.now();
+      onToken(token);
+    }
+    return token;
+  }
+}
