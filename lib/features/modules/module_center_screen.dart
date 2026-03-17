@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
-import '../../core/widgets/stitch_widgets.dart';
 
 class ModuleCenterScreen extends StatelessWidget {
   const ModuleCenterScreen({
@@ -141,7 +140,7 @@ class ModuleCenterScreen extends StatelessWidget {
       ),
       _ModuleItem(
         title: 'Sản phẩm & danh mục',
-        subtitle: 'Sản phẩm, danh mục và đơn giá theo nghiệp vụ',
+        subtitle: 'Danh mục sản phẩm, nhóm hàng và đơn giá',
         icon: Icons.shopping_bag_outlined,
         onTap: onOpenProducts,
       ),
@@ -199,28 +198,35 @@ class ModuleCenterScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: <Widget>[
-              StitchPageHeader(
-                title: 'Phân hệ nghiệp vụ',
-                subtitle:
-                    'Tập hợp các phân hệ vận hành, CRM, báo cáo và cài đặt theo đúng luồng sử dụng nội bộ trên mobile.',
-                icon: Icons.grid_view_outlined,
-                stats: <StitchHeaderStat>[
-                  StitchHeaderStat(label: 'Khả dụng', value: '${modules.length}'),
-                  const StitchHeaderStat(label: 'Thiết kế', value: 'Mobile-first'),
-                ],
+              const Text(
+                'Toàn bộ phân hệ theo tài liệu nội bộ, thiết kế tách phân hệ dễ mở rộng.',
+                style: TextStyle(color: StitchTheme.textMuted, height: 1.4),
               ),
               const SizedBox(height: 16),
-              StitchSurfaceCard(
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: StitchTheme.border),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0x0A0F172A),
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
                 child: Row(
                   children: <Widget>[
                     Container(
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: StitchTheme.primarySoft,
-                        borderRadius: BorderRadius.circular(16),
+                        color: StitchTheme.primary,
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Icon(Icons.add_circle, color: StitchTheme.primary),
+                      child: const Icon(Icons.add_circle, color: Colors.white),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -249,8 +255,21 @@ class ModuleCenterScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               ...modules.map(
-                (_ModuleItem item) => StitchSurfaceCard(
+                (_ModuleItem item) => Container(
                   margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: StitchTheme.border),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x0A0F172A),
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
                   child: InkWell(
                     onTap: item.onTap,
                     child: Row(
@@ -259,10 +278,10 @@ class ModuleCenterScreen extends StatelessWidget {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: StitchTheme.primarySoft,
-                            borderRadius: BorderRadius.circular(14),
+                            color: StitchTheme.primary,
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(item.icon, color: StitchTheme.primary),
+                          child: Icon(item.icon, color: Colors.white),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -271,10 +290,7 @@ class ModuleCenterScreen extends StatelessWidget {
                             children: <Widget>[
                               Text(
                                 item.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                ),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 4),
                               Text(

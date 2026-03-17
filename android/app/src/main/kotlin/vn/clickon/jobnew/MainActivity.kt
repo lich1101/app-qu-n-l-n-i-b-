@@ -1,4 +1,4 @@
-package quanlynoibo.teso.app
+package vn.clickon.jobnew
 
 import io.flutter.embedding.android.FlutterActivity
 

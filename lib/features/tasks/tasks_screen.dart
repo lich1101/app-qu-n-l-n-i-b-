@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/app_env.dart';
 import '../../core/theme/stitch_theme.dart';
-import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class TasksScreen extends StatefulWidget {
@@ -44,7 +46,6 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   String _viewMode = 'board';
-  String _searchQuery = '';
 
   String _prettyStatus(String status) {
     if (status.trim().isEmpty) return 'Tất cả';
@@ -95,36 +96,6 @@ class _TasksScreenState extends State<TasksScreen> {
 
   bool get _canCreateTask {
     return <String>['admin', 'quan_ly'].contains(widget.currentUserRole);
-  }
-
-  bool _matchesSearch(Map<String, dynamic> task) {
-    final String keyword = _searchQuery.trim().toLowerCase();
-    if (keyword.isEmpty) return true;
-
-    final String title = (task['title'] ?? '').toString().toLowerCase();
-    final String projectName =
-        ((task['project'] ?? const <String, dynamic>{})['name'] ?? '')
-            .toString()
-            .toLowerCase();
-    final String departmentName =
-        ((task['department'] ?? const <String, dynamic>{})['name'] ?? '')
-            .toString()
-            .toLowerCase();
-    final String assigneeName =
-        ((task['assignee'] ?? const <String, dynamic>{})['name'] ?? '')
-            .toString()
-            .toLowerCase();
-
-    return title.contains(keyword) ||
-        projectName.contains(keyword) ||
-        departmentName.contains(keyword) ||
-        assigneeName.contains(keyword);
-  }
-
-  int _countStatus(List<Map<String, dynamic>> rows, String status) {
-    return rows
-        .where((Map<String, dynamic> task) => '${task['status'] ?? ''}' == status)
-        .length;
   }
 
   String _fmtDateTime(DateTime date, TimeOfDay time) {
@@ -1998,6 +1969,8 @@ class _TasksScreenState extends State<TasksScreen> {
                                     content: (c['content'] ?? '').toString(),
                                     attachment:
                                         (c['attachment_path'] ?? '').toString(),
+                                    attachmentName:
+                                        (c['attachment_name'] ?? '').toString(),
                                     onDelete: () async {
                                       final bool ok = await widget.apiService
                                           .deleteTaskComment(
@@ -2461,23 +2434,8 @@ class _TasksScreenState extends State<TasksScreen> {
   Widget build(BuildContext context) {
     final double bottomInset = MediaQuery.of(context).padding.bottom + 80;
     final List<String> statuses = <String>['', ...widget.statuses];
-    final List<Map<String, dynamic>> filteredTasks = widget.tasks
-        .where(_matchesSearch)
-        .map((Map<String, dynamic> item) => item)
-        .toList();
-    final int doingCount = _countStatus(filteredTasks, 'doing');
-    final int doneCount = _countStatus(filteredTasks, 'done');
-    final int blockedCount = _countStatus(filteredTasks, 'blocked');
-    final int overdueCount = filteredTasks.where((Map<String, dynamic> task) {
-      final DateTime? deadline =
-          DateTime.tryParse((task['deadline'] ?? '').toString())?.toLocal();
-      if (deadline == null) return false;
-      return deadline.isBefore(DateTime.now()) &&
-          (task['status'] ?? '').toString() != 'done';
-    }).length;
-
     final List<Map<String, dynamic>> timelineTasks =
-        List<Map<String, dynamic>>.from(filteredTasks);
+        List<Map<String, dynamic>>.from(widget.tasks);
     timelineTasks.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
       final DateTime? da =
           DateTime.tryParse((a['deadline'] ?? '').toString())?.toLocal();
@@ -2493,77 +2451,45 @@ class _TasksScreenState extends State<TasksScreen> {
       child: Column(
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: StitchPageHeader(
-              title: 'Điều phối công việc',
-              subtitle:
-                  'Theo dõi công việc theo trạng thái, hạn chót và tiến độ xử lý để quản lý đội nhóm trên mobile thuận tiện hơn.',
-              icon: Icons.assignment_outlined,
-              stats: <StitchHeaderStat>[
-                StitchHeaderStat(label: 'Đang hiển thị', value: '${filteredTasks.length}'),
-                StitchHeaderStat(
-                  label: 'Đang làm',
-                  value: '$doingCount',
-                  accent: StitchTheme.primary,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Bảng công việc',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                 ),
-                StitchHeaderStat(
-                  label: 'Quá hạn',
-                  value: '$overdueCount',
-                  accent: StitchTheme.danger,
-                ),
-                StitchHeaderStat(
-                  label: 'Hoàn tất',
-                  value: '$doneCount',
-                  accent: StitchTheme.success,
+                const SizedBox(height: 4),
+                Text(
+                  widget.currentFilter.isEmpty
+                      ? 'Theo dõi toàn bộ công việc theo trạng thái và hạn chót.'
+                      : 'Đang lọc: ${_prettyStatus(widget.currentFilter)}.',
+                  style: const TextStyle(
+                    color: StitchTheme.textMuted,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            child: StitchSurfaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  TextField(
-                    onChanged: (String value) {
-                      setState(() => _searchQuery = value);
-                    },
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Tìm theo công việc, dự án, phòng ban hoặc nhân sự',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _SegmentedControl(
-                    value: _viewMode,
-                    options: const <String, String>{
-                      'board': 'Bảng',
-                      'timeline': 'Dòng thời gian',
-                      'gantt': 'Biểu đồ Gantt',
-                    },
-                    onChanged: (String value) => setState(() => _viewMode = value),
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: statuses.map((String status) {
-                      final bool selected = widget.currentFilter == status;
-                      final String label = _prettyStatus(status);
-                      final IconData icon =
-                          status.isEmpty ? Icons.list_alt : _statusIcon(status);
-                      return _TaskStatusChip(
-                        label: label,
-                        icon: icon,
-                        selected: selected,
-                        onTap: () => widget.onRefresh(status: status),
-                      );
-                    }).toList(),
-                  ),
-                  if ((_canImportTasks || _canCreateTask) && widget.isAuthenticated) ...<Widget>[
-                    const SizedBox(height: 16),
-                    Wrap(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _SegmentedControl(
+                  value: _viewMode,
+                  options: const <String, String>{
+                    'board': 'Bảng',
+                    'timeline': 'Dòng thời gian',
+                    'gantt': 'Biểu đồ Gantt',
+                  },
+                  onChanged: (String value) => setState(() => _viewMode = value),
+                ),
+                if ((_canImportTasks || _canCreateTask) && widget.isAuthenticated)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Wrap(
                       spacing: 10,
                       runSpacing: 10,
                       children: <Widget>[
@@ -2572,29 +2498,82 @@ class _TasksScreenState extends State<TasksScreen> {
                             onPressed: _importTasks,
                             icon: const Icon(Icons.file_upload_outlined),
                             label: const Text('Import Excel'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                            ),
                           ),
                         if (_canCreateTask)
-                          FilledButton.icon(
+                          OutlinedButton.icon(
                             onPressed: _openCreateTaskModal,
                             icon: const Icon(Icons.add_circle_outline),
-                            label: const Text('Tạo công việc'),
+                            label: const Text('Thêm công việc'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                            ),
                           ),
                       ],
                     ),
-                  ],
-                  if (blockedCount > 0) ...<Widget>[
-                    const SizedBox(height: 16),
-                    StitchInfoPill(
-                      label: 'Bị chặn',
-                      value:
-                          '$blockedCount công việc đang cần xử lý vướng mắc hoặc chờ phối hợp',
-                      accent: StitchTheme.warning,
-                    ),
-                  ],
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
+          SizedBox(
+            height: 48,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              scrollDirection: Axis.horizontal,
+              itemCount: statuses.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (BuildContext context, int index) {
+                final String status = statuses[index];
+                final bool selected = widget.currentFilter == status;
+                final String label = _prettyStatus(status);
+                final IconData icon =
+                    status.isEmpty ? Icons.list_alt : _statusIcon(status);
+                return InkWell(
+                  onTap: () => widget.onRefresh(status: status),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: selected ? StitchTheme.primary : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(icon,
+                            size: 18,
+                            color: selected
+                                ? StitchTheme.primary
+                                : StitchTheme.textSubtle),
+                        const SizedBox(width: 6),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: selected
+                                ? StitchTheme.primary
+                                : StitchTheme.textSubtle,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => widget.onRefresh(status: widget.currentFilter),
@@ -2602,46 +2581,38 @@ class _TasksScreenState extends State<TasksScreen> {
                 padding: EdgeInsets.fromLTRB(20, 8, 20, 24 + bottomInset),
                 children: <Widget>[
                   if (!widget.isAuthenticated)
-                    const StitchEmptyStateCard(
-                      title: 'Cần đăng nhập để thao tác',
-                      message:
-                          'Hãy đăng nhập ở tab Tài khoản để xem, cập nhật và trao đổi theo từng công việc.',
-                      icon: Icons.lock_outline,
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: StitchTheme.border),
+                      ),
+                      child: const Text(
+                        'Vui lòng đăng nhập ở tab Tài khoản để thao tác công việc.',
+                        style: TextStyle(color: StitchTheme.textMuted),
+                      ),
                     ),
                   if (widget.loading)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 24),
                       child: Center(child: CircularProgressIndicator()),
                     ),
-                  if (!widget.loading &&
-                      widget.message.isNotEmpty &&
-                      widget.tasks.isEmpty)
+                  if (widget.message.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: StitchEmptyStateCard(
-                        title: 'Chưa có công việc',
-                        message: widget.message,
-                        icon: Icons.assignment_late_outlined,
-                      ),
-                    ),
-                  if (!widget.loading &&
-                      filteredTasks.isEmpty &&
-                      widget.tasks.isNotEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 12),
-                      child: StitchEmptyStateCard(
-                        title: 'Không có kết quả phù hợp',
-                        message:
-                            'Bộ lọc hiện tại hoặc từ khóa tìm kiếm chưa khớp công việc nào.',
-                        icon: Icons.filter_alt_off_outlined,
+                      child: Text(
+                        widget.message,
+                        style: const TextStyle(color: StitchTheme.textMuted),
                       ),
                     ),
                   if (_viewMode == 'gantt')
-                    _buildGanttView(filteredTasks)
+                    _buildGanttView(widget.tasks)
                   else if (_viewMode == 'timeline')
                     ...timelineTasks.map(_buildTimelineItem)
                   else
-                    ...filteredTasks.map(_buildTaskCard),
+                    ...widget.tasks.map(_buildTaskCard),
                 ],
               ),
             ),
@@ -3035,55 +3006,6 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 }
 
-class _TaskStatusChip extends StatelessWidget {
-  const _TaskStatusChip({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color color = selected ? StitchTheme.primary : StitchTheme.textMuted;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? StitchTheme.primarySoft : Colors.white,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: selected
-                ? StitchTheme.primary.withValues(alpha: 0.24)
-                : StitchTheme.border,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _PriorityStyle {
   const _PriorityStyle({
@@ -3402,6 +3324,7 @@ class _CommentBubble extends StatelessWidget {
     required this.time,
     required this.content,
     required this.attachment,
+    required this.attachmentName,
     required this.onDelete,
   });
 
@@ -3409,6 +3332,7 @@ class _CommentBubble extends StatelessWidget {
   final String time;
   final String content;
   final String attachment;
+  final String attachmentName;
   final VoidCallback onDelete;
 
   @override
@@ -3458,20 +3382,56 @@ class _CommentBubble extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(
-                        content,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: StitchTheme.textMuted,
+                      RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: StitchTheme.textMuted,
+                            height: 1.45,
+                          ),
+                          children: _buildLinkifiedTextSpans(context, content),
                         ),
                       ),
                       if (attachment.isNotEmpty) ...<Widget>[
                         const SizedBox(height: 6),
-                        Text(
-                          'File: $attachment',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: StitchTheme.textSubtle,
+                        InkWell(
+                          onTap: () => _openExternalUrl(context, attachment),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: StitchTheme.primarySoft,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Icon(
+                                  Icons.attach_file,
+                                  size: 16,
+                                  color: StitchTheme.primary,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    _attachmentNameFromPath(
+                                      attachment,
+                                      fallback: attachmentName,
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: StitchTheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -3500,4 +3460,93 @@ IconData _attachmentIcon(String type) {
     default:
       return Icons.link;
   }
+}
+
+String _resolveExternalUrl(String value) {
+  return AppEnv.resolveMediaUrl(value);
+}
+
+String _attachmentNameFromPath(
+  String rawValue, {
+  String? fallback,
+}) {
+  final String preferred = (fallback ?? '').trim();
+  if (preferred.isNotEmpty) {
+    return preferred;
+  }
+
+  final String resolved = _resolveExternalUrl(rawValue);
+  final Uri? uri = Uri.tryParse(resolved);
+  if (uri != null && uri.pathSegments.isNotEmpty) {
+    final String name = uri.pathSegments.last;
+    if (name.isNotEmpty) {
+      return Uri.decodeComponent(name);
+    }
+  }
+
+  return rawValue;
+}
+
+Future<void> _openExternalUrl(BuildContext context, String rawValue) async {
+  final String resolved = _resolveExternalUrl(rawValue);
+  final Uri? uri = Uri.tryParse(resolved);
+  if (uri == null) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Liên kết không hợp lệ.')));
+    return;
+  }
+
+  final bool opened = await launchUrl(
+    uri,
+    mode: LaunchMode.externalApplication,
+  );
+  if (!opened && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Không mở được liên kết hoặc tệp đính kèm.')),
+    );
+  }
+}
+
+List<InlineSpan> _buildLinkifiedTextSpans(
+  BuildContext context,
+  String text,
+) {
+  final RegExp linkReg = RegExp(r'https?:\/\/[^\s]+', caseSensitive: false);
+  final List<InlineSpan> spans = <InlineSpan>[];
+  int currentIndex = 0;
+
+  for (final RegExpMatch match in linkReg.allMatches(text)) {
+    final int start = match.start;
+    final int end = match.end;
+    if (start > currentIndex) {
+      spans.add(TextSpan(text: text.substring(currentIndex, start)));
+    }
+
+    final String rawUrl = text.substring(start, end);
+    spans.add(
+      TextSpan(
+        text: rawUrl,
+        style: TextStyle(
+          color: StitchTheme.primary,
+          fontWeight: FontWeight.w600,
+          decoration: TextDecoration.underline,
+        ),
+        recognizer:
+            TapGestureRecognizer()
+              ..onTap = () => _openExternalUrl(context, rawUrl),
+      ),
+    );
+    currentIndex = end;
+  }
+
+  if (currentIndex < text.length) {
+    spans.add(TextSpan(text: text.substring(currentIndex)));
+  }
+
+  if (spans.isEmpty) {
+    spans.add(TextSpan(text: text));
+  }
+
+  return spans;
 }

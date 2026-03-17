@@ -45,7 +45,11 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
+  static const Set<String> _chatNotificationTypes = <String>{
+    'task_chat_message',
+    'task_comment_tag',
+  };
   final MobileApiService _api = MobileApiService();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -59,12 +63,7 @@ class _HomeShellState extends State<HomeShell> {
   Map<String, dynamic> overview = <String, dynamic>{};
   Map<String, dynamic> accounts = <String, dynamic>{};
   List<Map<String, dynamic>> tasks = <Map<String, dynamic>>[];
-  List<String> taskStatuses = <String>[
-    'todo',
-    'doing',
-    'done',
-    'blocked',
-  ];
+  List<String> taskStatuses = <String>['todo', 'doing', 'done', 'blocked'];
   int unreadNotifications = 0;
   int unreadChats = 0;
   bool taskLoading = false;
@@ -76,6 +75,8 @@ class _HomeShellState extends State<HomeShell> {
   List<String> savedAccounts = <String>[];
   bool rememberAccount = true;
   StreamSubscription<RemoteMessage>? _foregroundSub;
+  Timer? _sessionGuardTimer;
+  bool _isCheckingSession = false;
 
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
@@ -83,6 +84,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSavedAccounts();
     _bootstrap();
     if (AppFirebase.isConfigured) {
@@ -97,10 +99,19 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _foregroundSub?.cancel();
+    _sessionGuardTimer?.cancel();
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_validateActiveSession());
+    }
   }
 
   Duration get _bootstrapTimeout =>
@@ -158,10 +169,7 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _toggleRemember(bool value) async {
     if (!mounted) return;
     setState(() => rememberAccount = value);
-    await _secureStorage.write(
-      key: _rememberKey,
-      value: value ? '1' : '0',
-    );
+    await _secureStorage.write(key: _rememberKey, value: value ? '1' : '0');
   }
 
   void _selectSavedAccount(String email) {
@@ -185,14 +193,13 @@ class _HomeShellState extends State<HomeShell> {
     Map<String, dynamic> meta = <String, dynamic>{};
     Map<String, dynamic> settings = <String, dynamic>{};
     try {
-      final List<Map<String, dynamic>> results = await Future.wait(
-        <Future<Map<String, dynamic>>>[
-          _safeMap(_api.getPublicSummary()),
-          _safeMap(_api.getPublicAccountsSummary()),
-          _safeMap(_api.getMeta()),
-          _safeMap(_api.getSettings()),
-        ],
-      );
+      final List<Map<String, dynamic>> results =
+          await Future.wait(<Future<Map<String, dynamic>>>[
+            _safeMap(_api.getPublicSummary()),
+            _safeMap(_api.getPublicAccountsSummary()),
+            _safeMap(_api.getMeta()),
+            _safeMap(_api.getSettings()),
+          ]);
       summary = results[0];
       accountSummary = results[1];
       meta = results[2];
@@ -223,6 +230,81 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _isBootstrapDone = true);
   }
 
+  void _startSessionGuard() {
+    _sessionGuardTimer?.cancel();
+    if (authToken == null || authToken!.isEmpty) {
+      return;
+    }
+    _sessionGuardTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      unawaited(_validateActiveSession(silent: true));
+    });
+  }
+
+  void _stopSessionGuard() {
+    _sessionGuardTimer?.cancel();
+    _sessionGuardTimer = null;
+  }
+
+  Future<void> _clearLocalSession({
+    required String message,
+    bool clearAuthMessage = true,
+  }) async {
+    _stopSessionGuard();
+    await _secureStorage.delete(key: _tokenKey);
+    if (!mounted) return;
+    setState(() {
+      authUser = null;
+      authToken = null;
+      authMessage = clearAuthMessage ? message : '';
+      tasks = <Map<String, dynamic>>[];
+      taskMessage = '';
+      taskStatusFilter = '';
+      unreadNotifications = 0;
+      unreadChats = 0;
+      _tabIndex = 0;
+    });
+  }
+
+  Future<void> _handleSessionRevoked() async {
+    await _clearLocalSession(
+      message:
+          'Tài khoản đã đăng nhập trên thiết bị di động khác. Vui lòng đăng nhập lại.',
+    );
+  }
+
+  Future<void> _validateActiveSession({bool silent = false}) async {
+    final String? token = authToken;
+    if (token == null || token.isEmpty || _isCheckingSession) {
+      return;
+    }
+
+    _isCheckingSession = true;
+    try {
+      final Map<String, dynamic> me = await _api
+          .me(token)
+          .timeout(_bootstrapTimeout);
+      final int statusCode = (me['statusCode'] ?? 500) as int;
+
+      if (statusCode == 401) {
+        await _handleSessionRevoked();
+        return;
+      }
+
+      if (statusCode == 200 && mounted) {
+        setState(() {
+          authUser = me['body'] as Map<String, dynamic>;
+          if (!silent && authMessage.contains('thiết bị di động khác')) {
+            authMessage = '';
+          }
+        });
+      }
+    } catch (_) {
+      // Keep current session if the network is temporarily unavailable.
+    } finally {
+      _isCheckingSession = false;
+    }
+  }
+
   Future<void> _restoreSession() async {
     final String? token = await _secureStorage.read(key: _tokenKey);
     if (token == null || token.isEmpty) return;
@@ -238,6 +320,7 @@ class _HomeShellState extends State<HomeShell> {
         authUser = me['body'] as Map<String, dynamic>;
         authMessage = 'Đã khôi phục phiên đăng nhập.';
       });
+      _startSessionGuard();
       await _ensureFirebaseAuth();
       await _registerDeviceToken();
       try {
@@ -247,20 +330,46 @@ class _HomeShellState extends State<HomeShell> {
       }
       await _refreshNotificationBadge();
     } else {
-      await _secureStorage.delete(key: _tokenKey);
+      final int statusCode = (me['statusCode'] ?? 500) as int;
+      if (statusCode == 401) {
+        await _handleSessionRevoked();
+      } else {
+        await _clearLocalSession(
+          message: 'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.',
+        );
+      }
     }
   }
 
   int _extractUnreadCount(Map<String, dynamic> data) {
-    final dynamic raw = data['unread_count'];
-    if (raw is int) return raw;
-    if (raw is String) return int.tryParse(raw) ?? 0;
-    final List<dynamic> notifications = (data['notifications'] ?? <dynamic>[]) as List<dynamic>;
-    final List<dynamic> reminders = (data['reminders'] ?? <dynamic>[]) as List<dynamic>;
+    final List<dynamic> notifications =
+        (data['notifications'] ?? <dynamic>[]) as List<dynamic>;
+    final List<dynamic> reminders =
+        (data['reminders'] ?? <dynamic>[]) as List<dynamic>;
     final List<dynamic> logs = (data['logs'] ?? <dynamic>[]) as List<dynamic>;
-    int countUnread(List<dynamic> list) =>
-        list.where((dynamic item) => item is Map && item['is_read'] != true).length;
-    return countUnread(notifications) + countUnread(reminders) + countUnread(logs);
+    int countUnread(
+      List<dynamic> list, {
+      bool Function(Map<String, dynamic> item)? predicate,
+    }) {
+      int count = 0;
+      for (final dynamic item in list) {
+        if (item is! Map<String, dynamic>) continue;
+        if (item['is_read'] == true) continue;
+        if (predicate != null && !predicate(item)) continue;
+        count += 1;
+      }
+      return count;
+    }
+
+    return countUnread(
+          notifications,
+          predicate: (Map<String, dynamic> item) {
+            final String type = (item['type'] ?? '').toString();
+            return !_chatNotificationTypes.contains(type);
+          },
+        ) +
+        countUnread(reminders) +
+        countUnread(logs);
   }
 
   int _extractUnreadChats(Map<String, dynamic> data) {
@@ -271,7 +380,7 @@ class _HomeShellState extends State<HomeShell> {
       if (item is! Map<String, dynamic>) continue;
       if (item['is_read'] == true) continue;
       final String type = (item['type'] ?? '').toString();
-      if (type == 'task_chat_message' || type == 'task_comment_tag') {
+      if (_chatNotificationTypes.contains(type)) {
         count += 1;
       }
     }
@@ -281,8 +390,9 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _refreshNotificationBadge() async {
     if (authToken == null || authToken!.isEmpty) return;
     try {
-      final Map<String, dynamic> data =
-          await _api.getNotifications(authToken!).timeout(_bootstrapTimeout);
+      final Map<String, dynamic> data = await _api
+          .getNotifications(authToken!)
+          .timeout(_bootstrapTimeout);
       if (!mounted) return;
       setState(() {
         unreadNotifications = _extractUnreadCount(data);
@@ -297,6 +407,7 @@ class _HomeShellState extends State<HomeShell> {
     required String email,
     required String password,
   }) async {
+    _stopSessionGuard();
     setState(() {
       _isLoggingIn = true;
       authMessage = '';
@@ -338,6 +449,7 @@ class _HomeShellState extends State<HomeShell> {
         accounts = accountSummary;
         _isLoggingIn = false;
       });
+      _startSessionGuard();
       await _ensureFirebaseAuth();
       await _registerDeviceToken();
       await _addSavedAccount(email);
@@ -355,33 +467,45 @@ class _HomeShellState extends State<HomeShell> {
     if (authToken != null && authToken!.isNotEmpty) {
       await _api.logout(authToken!);
     }
-    await _secureStorage.delete(key: _tokenKey);
-      setState(() {
-        authUser = null;
-        authToken = null;
-        authMessage = 'Đã đăng xuất token.';
-        tasks = <Map<String, dynamic>>[];
-        taskMessage = '';
-        taskStatusFilter = '';
-        unreadNotifications = 0;
-        unreadChats = 0;
-      });
+    await _clearLocalSession(message: 'Đã đăng xuất token.');
   }
 
-  Future<void> _registerDeviceToken() async {
-    if (authToken == null || authToken!.isEmpty) return;
-    if (!AppFirebase.isConfigured) return;
+  Future<Map<String, dynamic>> _registerDeviceToken() async {
+    if (authToken == null || authToken!.isEmpty) {
+      return <String, dynamic>{'ok': false, 'reason': 'missing_auth_token'};
+    }
+    if (!AppFirebase.isConfigured) {
+      return <String, dynamic>{
+        'ok': false,
+        'reason': 'firebase_not_configured',
+      };
+    }
+    Map<String, dynamic> lastResult = <String, dynamic>{
+      'ok': false,
+      'reason': 'push_token_unavailable',
+    };
     try {
-      await AppFirebase.registerPushToken(onToken: (String token) async {
-        await _api.registerDeviceToken(
-          authToken!,
-          deviceToken: token,
-          platform: Platform.isIOS ? 'ios' : 'android',
-          deviceName: AppEnv.appName,
-        );
-      });
+      await AppFirebase.registerPushToken(
+        onToken: (String token, bool notificationsEnabled) async {
+          lastResult = await _api.registerDeviceTokenWithResult(
+            authToken!,
+            deviceToken: token,
+            platform: Platform.isIOS ? 'ios' : 'android',
+            deviceName: AppEnv.appName,
+            notificationsEnabled: notificationsEnabled,
+          );
+          lastResult['device_token_suffix'] =
+              token.length > 12 ? token.substring(token.length - 12) : token;
+          lastResult['notifications_enabled'] = notificationsEnabled;
+        },
+      );
+      return lastResult;
     } catch (_) {
       // Avoid blocking app startup if push token can't be registered yet.
+      return <String, dynamic>{
+        'ok': false,
+        'reason': 'register_device_token_exception',
+      };
     }
   }
 
@@ -430,7 +554,10 @@ class _HomeShellState extends State<HomeShell> {
     await fetchTasks(status: taskStatusFilter, silent: true);
     setState(() {
       taskLoading = false;
-      taskMessage = ok ? 'Đã cập nhật trạng thái công việc.' : 'Cập nhật công việc thất bại.';
+      taskMessage =
+          ok
+              ? 'Đã cập nhật trạng thái công việc.'
+              : 'Cập nhật công việc thất bại.';
     });
   }
 
@@ -475,173 +602,194 @@ class _HomeShellState extends State<HomeShell> {
 
     final bool canManageMeetings = _hasRole(<String>['admin', 'quan_ly']);
     final bool canDeleteMeetings = _hasRole(<String>['admin']);
-    final bool canManageCrm = _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']);
+    final bool canManageCrm = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+    ]);
     final bool canDeleteCrm = _hasRole(<String>['admin']);
-    final bool canManageContracts =
-        _hasRole(<String>['admin', 'quan_ly', 'nhan_vien', 'ke_toan']);
+    final bool canManageContracts = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+      'ke_toan',
+    ]);
     final bool canDeleteContracts = _hasRole(<String>['admin']);
     final bool canCreateProject = _hasRole(<String>['admin', 'quan_ly']);
     final bool canViewProjects = _hasRole(<String>['admin', 'quan_ly']);
     final bool canViewReports = _hasRole(<String>['admin', 'quan_ly']);
     final bool canViewDepartments = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewDeptAssignments =
-        _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']);
+    final bool canViewDeptAssignments = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+    ]);
     final bool canViewRevenue = _hasRole(<String>['admin']);
-    final bool canViewDeadlines = _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']);
-    final bool canViewHandover = _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']);
-    final bool canViewChat = _hasRole(<String>['admin', 'quan_ly', 'nhan_vien', 'ke_toan']);
+    final bool canViewDeadlines = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+    ]);
+    final bool canViewHandover = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+    ]);
+    final bool canViewChat = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+      'ke_toan',
+    ]);
     final bool canViewLogs = _hasRole(<String>['admin', 'quan_ly']);
     final bool canViewMeetings = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewOpportunities = _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']);
+    final bool canViewOpportunities = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+    ]);
     final bool canViewLeadForms = _hasRole(<String>['admin']);
     final bool canViewLeadTypes = _hasRole(<String>['admin']);
     final bool canViewRevenueTiers = _hasRole(<String>['admin']);
 
     Future<void> openScreen(Widget Function() builder) {
-      return Navigator.of(context).push(
-        MaterialPageRoute<Widget>(builder: (_) => builder()),
-      );
+      return Navigator.of(
+        context,
+      ).push(MaterialPageRoute<Widget>(builder: (_) => builder()));
     }
 
-    void openProjects() => openScreen(
-          () => ProjectsScreen(token: authToken!, apiService: _api),
-        );
+    void openProjects() =>
+        openScreen(() => ProjectsScreen(token: authToken!, apiService: _api));
     void openDeadline() => openScreen(
-          () => DeadlineRemindersScreen(token: authToken!, apiService: _api),
-        );
+      () => DeadlineRemindersScreen(token: authToken!, apiService: _api),
+    );
     void openHandover() => openScreen(
-          () => HandoverCenterScreen(token: authToken!, apiService: _api),
-        );
-    void openChat() => openScreen(
-          () {
-            final dynamic rawId = authUser == null ? null : authUser!['id'];
-            final int? currentUserId = rawId is int
-                ? rawId
-                : int.tryParse('${rawId ?? ''}');
-            return ChatScreen(
-              token: authToken!,
-              apiService: _api,
-              currentUserId: currentUserId,
-            );
-          },
-        );
+      () => HandoverCenterScreen(token: authToken!, apiService: _api),
+    );
+    void openChat() => openScreen(() {
+      final dynamic rawId = authUser == null ? null : authUser!['id'];
+      final int? currentUserId =
+          rawId is int ? rawId : int.tryParse('${rawId ?? ''}');
+      return ChatScreen(
+        token: authToken!,
+        apiService: _api,
+        currentUserId: currentUserId,
+      );
+    });
     void openActivityLogs() => openScreen(
-          () => ActivityLogScreen(token: authToken!, apiService: _api),
-        );
+      () => ActivityLogScreen(token: authToken!, apiService: _api),
+    );
     void openNotifications() => openScreen(
-          () => NotificationsScreen(token: authToken!, apiService: _api),
-        ).then((_) => _refreshNotificationBadge());
+      () => NotificationsScreen(token: authToken!, apiService: _api),
+    ).then((_) => _refreshNotificationBadge());
     void openMeetings() => openScreen(
-          () => MeetingsScreen(
-            token: authToken!,
-            apiService: _api,
-            canManage: canManageMeetings,
-            canDelete: canDeleteMeetings,
-          ),
-        );
+      () => MeetingsScreen(
+        token: authToken!,
+        apiService: _api,
+        canManage: canManageMeetings,
+        canDelete: canDeleteMeetings,
+      ),
+    );
     void openCrm() => openScreen(
-          () => CrmScreen(
-            token: authToken!,
-            apiService: _api,
-            canManageClients: canManageCrm,
-            canManagePayments: _hasRole(<String>['admin', 'ke_toan']),
-            canDelete: canDeleteCrm,
-            currentUserRole: (authUser?['role'] ?? '').toString(),
-          ),
-        );
+      () => CrmScreen(
+        token: authToken!,
+        apiService: _api,
+        canManageClients: canManageCrm,
+        canManagePayments: _hasRole(<String>['admin', 'ke_toan']),
+        canDelete: canDeleteCrm,
+        currentUserRole: (authUser?['role'] ?? '').toString(),
+      ),
+    );
     void openOpportunities() => openScreen(
-          () => OpportunitiesScreen(
-            token: authToken!,
-            apiService: _api,
-            canManage: _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']),
-          ),
-        );
+      () => OpportunitiesScreen(
+        token: authToken!,
+        apiService: _api,
+        canManage: _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']),
+      ),
+    );
     void openContracts() => openScreen(
-          () => ContractsScreen(
-            token: authToken!,
-            apiService: _api,
-            canManage: canManageContracts,
-            canDelete: canDeleteContracts,
-            canApprove: _hasRole(<String>['admin', 'ke_toan']),
-          ),
-        );
+      () => ContractsScreen(
+        token: authToken!,
+        apiService: _api,
+        canManage: canManageContracts,
+        canDelete: canDeleteContracts,
+        canApprove: _hasRole(<String>['admin', 'ke_toan']),
+      ),
+    );
     void openProducts() => openScreen(
-          () => ProductsScreen(
-            token: authToken!,
-            apiService: _api,
-            canManage: _hasRole(<String>['admin', 'quan_ly']),
-            canDelete: _hasRole(<String>['admin']),
-          ),
-        );
+      () => ProductsScreen(
+        token: authToken!,
+        apiService: _api,
+        canManage: _hasRole(<String>['admin', 'quan_ly']),
+        canDelete: _hasRole(<String>['admin']),
+      ),
+    );
     void openDepartments() => openScreen(
-          () => DepartmentsScreen(
-            token: authToken!,
-            apiService: _api,
-            canManage: _hasRole(<String>['admin']),
-          ),
-        );
+      () => DepartmentsScreen(
+        token: authToken!,
+        apiService: _api,
+        canManage: _hasRole(<String>['admin']),
+      ),
+    );
     void openDepartmentAssignments() => openScreen(
-          () => DepartmentAssignmentsScreen(
-            token: authToken!,
-            apiService: _api,
-            canCreate: _hasRole(<String>['admin']),
-            canUpdate: _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']),
-          ),
-        );
+      () => DepartmentAssignmentsScreen(
+        token: authToken!,
+        apiService: _api,
+        canCreate: _hasRole(<String>['admin']),
+        canUpdate: _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']),
+      ),
+    );
     void openRevenueReport() => openScreen(
-          () => RevenueReportScreen(
-            token: authToken!,
-            apiService: _api,
-            currentUserRole: (authUser?['role'] ?? '').toString(),
-          ),
-        );
-    void openLeadForms() => openScreen(
-          () => LeadFormsScreen(token: authToken!, apiService: _api),
-        );
-    void openLeadTypes() => openScreen(
-          () => LeadTypesScreen(token: authToken!, apiService: _api),
-        );
+      () => RevenueReportScreen(
+        token: authToken!,
+        apiService: _api,
+        currentUserRole: (authUser?['role'] ?? '').toString(),
+      ),
+    );
+    void openLeadForms() =>
+        openScreen(() => LeadFormsScreen(token: authToken!, apiService: _api));
+    void openLeadTypes() =>
+        openScreen(() => LeadTypesScreen(token: authToken!, apiService: _api));
     void openRevenueTiers() => openScreen(
-          () => RevenueTiersScreen(token: authToken!, apiService: _api),
-        );
-    void openReports() => openScreen(
-          () => ReportsScreen(token: authToken!, apiService: _api),
-        );
+      () => RevenueTiersScreen(token: authToken!, apiService: _api),
+    );
+    void openReports() =>
+        openScreen(() => ReportsScreen(token: authToken!, apiService: _api));
     void openServices() => openScreen(
-          () => ServicesScreen(
-            token: authToken!,
-            apiService: _api,
-            canManage: _hasRole(<String>['admin', 'quan_ly']),
-            canDelete: _hasRole(<String>['admin']),
-          ),
-        );
+      () => ServicesScreen(
+        token: authToken!,
+        apiService: _api,
+        canManage: _hasRole(<String>['admin', 'quan_ly']),
+        canDelete: _hasRole(<String>['admin']),
+      ),
+    );
     void openCreateProject() => openScreen(
-          () => CreateProjectScreen(token: authToken!, apiService: _api),
-        );
+      () => CreateProjectScreen(token: authToken!, apiService: _api),
+    );
 
     Widget buildModuleCenter() => ModuleCenterScreen(
-          onOpenProjects: canViewProjects ? openProjects : null,
-          onOpenDeadline: canViewDeadlines ? openDeadline : null,
-          onOpenHandover: canViewHandover ? openHandover : null,
-          onOpenChat: canViewChat ? openChat : null,
-          onOpenActivityLogs: canViewLogs ? openActivityLogs : null,
-          onOpenNotifications: openNotifications,
-          onOpenCreateProject: canCreateProject ? openCreateProject : null,
-          onOpenMeetings: canViewMeetings ? openMeetings : null,
-          onOpenCrm: canManageCrm ? openCrm : null,
-          onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
-          onOpenContracts: canManageContracts ? openContracts : null,
-          onOpenProducts: canManageContracts ? openProducts : null,
-          onOpenDepartments: canViewDepartments ? openDepartments : null,
-          onOpenDepartmentAssignments:
-              canViewDeptAssignments ? openDepartmentAssignments : null,
-          onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
-          onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
-          onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
-          onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
-          onOpenReports: canViewReports ? openReports : null,
-          onOpenServices: canViewProjects ? openServices : null,
-        );
+      onOpenProjects: canViewProjects ? openProjects : null,
+      onOpenDeadline: canViewDeadlines ? openDeadline : null,
+      onOpenHandover: canViewHandover ? openHandover : null,
+      onOpenChat: canViewChat ? openChat : null,
+      onOpenActivityLogs: canViewLogs ? openActivityLogs : null,
+      onOpenNotifications: openNotifications,
+      onOpenCreateProject: canCreateProject ? openCreateProject : null,
+      onOpenMeetings: canViewMeetings ? openMeetings : null,
+      onOpenCrm: canManageCrm ? openCrm : null,
+      onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
+      onOpenContracts: canManageContracts ? openContracts : null,
+      onOpenProducts: canManageContracts ? openProducts : null,
+      onOpenDepartments: canViewDepartments ? openDepartments : null,
+      onOpenDepartmentAssignments:
+          canViewDeptAssignments ? openDepartmentAssignments : null,
+      onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
+      onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
+      onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
+      onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
+      onOpenReports: canViewReports ? openReports : null,
+      onOpenServices: canViewProjects ? openServices : null,
+    );
 
     final List<OverviewQuickAction> quickActions = <OverviewQuickAction>[
       if (canViewProjects)
@@ -776,23 +924,23 @@ class _HomeShellState extends State<HomeShell> {
         onLogout: logoutMobile,
         token: authToken,
         apiService: _api,
+        onSyncDeviceToken: _registerDeviceToken,
       ),
     ];
 
     return Scaffold(
       extendBody: true,
       body: tabs[_tabIndex],
-      floatingActionButton: canCreateProject
-          ? FloatingActionButton(
-              elevation: 4,
-              backgroundColor: StitchTheme.primary,
-              foregroundColor: Colors.white,
-              onPressed: authToken == null
-                  ? null
-                  : openCreateProject,
-              child: const Icon(Icons.add, color: Colors.white),
-            )
-          : null,
+      floatingActionButton:
+          canCreateProject
+              ? FloatingActionButton(
+                elevation: 10,
+                backgroundColor: StitchTheme.primary,
+                foregroundColor: Colors.white,
+                onPressed: authToken == null ? null : openCreateProject,
+                child: const Icon(Icons.add, color: Colors.white),
+              )
+              : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: _BottomNavBar(
         currentIndex: _tabIndex,
@@ -816,71 +964,70 @@ class _BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: StitchTheme.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: StitchTheme.border),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: StitchTheme.shadow,
-                blurRadius: 24,
-                offset: Offset(0, 10),
-              ),
-            ],
-          ),
-          child: BottomAppBar(
-            shape: hasCenterButton ? const CircularNotchedRectangle() : null,
-            notchMargin: hasCenterButton ? 8 : 0,
-            elevation: 0,
-            color: Colors.transparent,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _NavItem(
-                      label: 'Tổng quan',
-                      icon: Icons.home_outlined,
-                      activeIcon: Icons.home,
-                      isActive: currentIndex == 0,
-                      onTap: () => onTap(0),
-                    ),
+    final MediaQueryData media = MediaQuery.of(context);
+    final bool compact = media.size.height < 720 || media.size.width < 380;
+    return ColoredBox(
+      color: StitchTheme.bg,
+      child: SafeArea(
+        top: false,
+        minimum: EdgeInsets.only(bottom: compact ? 2 : 4),
+        child: BottomAppBar(
+          shape: hasCenterButton ? const CircularNotchedRectangle() : null,
+          notchMargin: hasCenterButton ? 8 : 0,
+          elevation: 12,
+          surfaceTintColor: Colors.transparent,
+          color: StitchTheme.surface,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              12,
+              compact ? 4 : 6,
+              12,
+              compact ? 4 : 6,
+            ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: _NavItem(
+                    label: 'Tổng quan',
+                    icon: Icons.home_outlined,
+                    activeIcon: Icons.home,
+                    isActive: currentIndex == 0,
+                    onTap: () => onTap(0),
+                    compact: compact,
                   ),
-                  Expanded(
-                    child: _NavItem(
-                      label: 'Công việc',
-                      icon: Icons.event_note_outlined,
-                      activeIcon: Icons.event_note,
-                      isActive: currentIndex == 1,
-                      onTap: () => onTap(1),
-                    ),
+                ),
+                Expanded(
+                  child: _NavItem(
+                    label: 'Công việc',
+                    icon: Icons.event_note_outlined,
+                    activeIcon: Icons.event_note,
+                    isActive: currentIndex == 1,
+                    onTap: () => onTap(1),
+                    compact: compact,
                   ),
-                  if (hasCenterButton) const SizedBox(width: 72),
-                  Expanded(
-                    child: _NavItem(
-                      label: 'CRM',
-                      icon: Icons.groups_outlined,
-                      activeIcon: Icons.groups,
-                      isActive: currentIndex == 2,
-                      onTap: () => onTap(2),
-                    ),
+                ),
+                if (hasCenterButton) SizedBox(width: compact ? 60 : 72),
+                Expanded(
+                  child: _NavItem(
+                    label: 'CRM',
+                    icon: Icons.groups_outlined,
+                    activeIcon: Icons.groups,
+                    isActive: currentIndex == 2,
+                    onTap: () => onTap(2),
+                    compact: compact,
                   ),
-                  Expanded(
-                    child: _NavItem(
-                      label: 'Tài khoản',
-                      icon: Icons.person_outline,
-                      activeIcon: Icons.person,
-                      isActive: currentIndex == 3,
-                      onTap: () => onTap(3),
-                    ),
+                ),
+                Expanded(
+                  child: _NavItem(
+                    label: 'Tài khoản',
+                    icon: Icons.person_outline,
+                    activeIcon: Icons.person,
+                    isActive: currentIndex == 3,
+                    onTap: () => onTap(3),
+                    compact: compact,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -896,6 +1043,7 @@ class _NavItem extends StatelessWidget {
     required this.activeIcon,
     required this.isActive,
     required this.onTap,
+    required this.compact,
   });
 
   final String label;
@@ -903,34 +1051,34 @@ class _NavItem extends StatelessWidget {
   final IconData activeIcon;
   final bool isActive;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final Color color = isActive ? StitchTheme.primary : StitchTheme.textSubtle;
     return InkWell(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: EdgeInsets.symmetric(vertical: compact ? 2 : 3),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: isActive ? StitchTheme.primarySoft : Colors.transparent,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(isActive ? activeIcon : icon, color: color),
+            Icon(
+              isActive ? activeIcon : icon,
+              color: color,
+              size: compact ? 19 : 21,
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: compact ? 2 : 4),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                fontSize: compact ? 9.5 : 10.5,
+                height: 1.1,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
                 color: color,
               ),
             ),

@@ -2,272 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/stitch_theme.dart';
 
-class StitchSurfaceCard extends StatelessWidget {
-  const StitchSurfaceCard({
-    super.key,
-    required this.child,
-    this.padding = const EdgeInsets.all(18),
-    this.margin,
-    this.backgroundColor,
-  });
-
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final EdgeInsetsGeometry? margin;
-  final Color? backgroundColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: margin,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: backgroundColor ?? Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: StitchTheme.border),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: StitchTheme.shadow,
-            blurRadius: 22,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-}
-
-class StitchHeaderStat {
-  const StitchHeaderStat({
-    required this.label,
-    required this.value,
-    this.accent,
-  });
-
-  final String label;
-  final String value;
-  final Color? accent;
-}
-
-class StitchPageHeader extends StatelessWidget {
-  const StitchPageHeader({
-    super.key,
-    required this.title,
-    required this.subtitle,
-    this.icon = Icons.dashboard_outlined,
-    this.trailing,
-    this.stats = const <StitchHeaderStat>[],
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Widget? trailing;
-  final List<StitchHeaderStat> stats;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: <Color>[
-            StitchTheme.primaryStrong,
-            Color.alphaBlend(
-              const Color(0x2206B6D4),
-              StitchTheme.primaryStrong.withValues(alpha: 0.94),
-            ),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x220F172A),
-            blurRadius: 26,
-            offset: Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-                ),
-                child: Icon(icon, color: Colors.white, size: 26),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFFE2E8F0),
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (trailing != null) ...<Widget>[
-                const SizedBox(width: 12),
-                trailing!,
-              ],
-            ],
-          ),
-          if (stats.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: stats
-                  .map((StitchHeaderStat stat) => StitchInfoPill(
-                        label: stat.label,
-                        value: stat.value,
-                        accent: stat.accent,
-                        light: true,
-                      ))
-                  .toList(),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class StitchInfoPill extends StatelessWidget {
-  const StitchInfoPill({
-    super.key,
-    required this.label,
-    required this.value,
-    this.accent,
-    this.light = false,
-  });
-
-  final String label;
-  final String value;
-  final Color? accent;
-  final bool light;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color resolvedAccent = accent ?? StitchTheme.primary;
-    final Color foreground = light ? Colors.white : resolvedAccent;
-    final Color background = light
-        ? Colors.white.withValues(alpha: 0.12)
-        : resolvedAccent.withValues(alpha: 0.10);
-    final Color border = light
-        ? Colors.white.withValues(alpha: 0.14)
-        : resolvedAccent.withValues(alpha: 0.16);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: light ? Colors.white70 : StitchTheme.textMuted,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: foreground,
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class StitchEmptyStateCard extends StatelessWidget {
-  const StitchEmptyStateCard({
-    super.key,
-    required this.title,
-    required this.message,
-    this.icon = Icons.inbox_outlined,
-  });
-
-  final String title;
-  final String message;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return StitchSurfaceCard(
-      child: Column(
-        children: <Widget>[
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: StitchTheme.primarySoft,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Icon(icon, color: StitchTheme.primary, size: 28),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: StitchTheme.textMain,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: StitchTheme.textMuted,
-              height: 1.45,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class StitchHeroCard extends StatelessWidget {
   const StitchHeroCard({
     super.key,
@@ -425,13 +159,13 @@ class StitchMetricCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: StitchTheme.shadow,
-            blurRadius: 18,
-            offset: Offset(0, 8),
+            color: Color(0x0D0F172A),
+            blurRadius: 16,
+            offset: Offset(0, 6),
           ),
         ],
       ),
@@ -496,13 +230,13 @@ class StitchProgressCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: StitchTheme.shadow,
+            color: Color(0x0D0F172A),
             blurRadius: 18,
-            offset: Offset(0, 8),
+            offset: Offset(0, 6),
           ),
         ],
       ),

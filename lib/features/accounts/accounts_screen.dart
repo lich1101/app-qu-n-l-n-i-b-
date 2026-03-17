@@ -5,6 +5,7 @@ import '../../config/app_env.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
+import '../modules/notification_preferences_screen.dart';
 import '../modules/system_settings_screen.dart';
 
 class AccountsScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class AccountsScreen extends StatefulWidget {
     required this.onLogout,
     required this.token,
     required this.apiService,
+    this.onSyncDeviceToken,
   });
 
   final Map<String, dynamic> summary;
@@ -22,6 +24,7 @@ class AccountsScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
   final String? token;
   final MobileApiService apiService;
+  final Future<Map<String, dynamic>> Function()? onSyncDeviceToken;
 
   @override
   State<AccountsScreen> createState() => _AccountsScreenState();
@@ -48,15 +51,15 @@ class _AccountsScreenState extends State<AccountsScreen> {
   }
 
   String _initials(String name) {
-    final List<String> parts = name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((String p) => p.isNotEmpty)
-        .toList();
+    final List<String> parts =
+        name
+            .trim()
+            .split(RegExp(r'\s+'))
+            .where((String p) => p.isNotEmpty)
+            .toList();
     if (parts.isEmpty) return 'U';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first.substring(0, 1) +
-            parts.last.substring(0, 1))
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
         .toUpperCase();
   }
 
@@ -125,8 +128,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
     final double bottomInset = MediaQuery.of(context).padding.bottom + 80;
     final String displayName =
         (widget.authUser?['name'] ?? 'Nhân sự').toString();
-    final String displayRole =
-        _roleLabel((widget.authUser?['role'] ?? '').toString());
+    final String displayRole = _roleLabel(
+      (widget.authUser?['role'] ?? '').toString(),
+    );
     final String email = (widget.authUser?['email'] ?? '').toString();
     final List<dynamic> roles =
         (widget.summary['roles'] ?? <dynamic>[]) as List<dynamic>;
@@ -148,15 +152,18 @@ class _AccountsScreenState extends State<AccountsScreen> {
         barrierDismissible: false,
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
-      final Map<String, dynamic> result =
-          await widget.apiService.testPush(widget.token!);
+      final Map<String, dynamic> result = await widget.apiService.testPush(
+        widget.token!,
+      );
       if (context.mounted) {
         Navigator.of(context).pop();
       }
       if (result['error'] == true) {
         _messengerKey.currentState?.showSnackBar(
           const SnackBar(
-            content: Text('Không thể gửi push. Kiểm tra quyền admin và cấu hình Firebase.'),
+            content: Text(
+              'Không thể gửi push. Kiểm tra quyền admin và cấu hình Firebase.',
+            ),
             behavior: SnackBarBehavior.floating,
             margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
           ),
@@ -166,15 +173,37 @@ class _AccountsScreenState extends State<AccountsScreen> {
       final int tokenCount = (result['token_count'] ?? 0) as int;
       final bool pushSent = result['push_sent'] == true;
       final bool emailSent = result['email_sent'] == true;
+      final Map<String, dynamic> tokenByPlatform =
+          result['token_by_platform'] is Map
+              ? Map<String, dynamic>.from(result['token_by_platform'] as Map)
+              : <String, dynamic>{};
+      final int androidTokens =
+          (tokenByPlatform['android'] as num?)?.toInt() ?? 0;
+      final int iosTokens = (tokenByPlatform['ios'] as num?)?.toInt() ?? 0;
+      final int webTokens = (tokenByPlatform['web'] as num?)?.toInt() ?? 0;
+      final int tokenEnabled =
+          (result['token_notifications_enabled'] as num?)?.toInt() ?? 0;
+      final int tokenDisabled =
+          (result['token_notifications_disabled'] as num?)?.toInt() ?? 0;
+      final Map<String, dynamic> pushResult =
+          result['push_result'] is Map
+              ? Map<String, dynamic>.from(result['push_result'] as Map)
+              : <String, dynamic>{};
+      final String pushReason =
+          (pushResult['error'] ?? result['error'] ?? '—').toString();
       final String? localToken = AppFirebase.lastPushToken;
-      final String? localTokenAt = AppFirebase.lastPushTokenAt == null
-          ? null
-          : AppFirebase.lastPushTokenAt!.toLocal().toString();
+      final String? localTokenAt =
+          AppFirebase.lastPushTokenAt == null
+              ? null
+              : AppFirebase.lastPushTokenAt!.toLocal().toString();
       final StringBuffer buffer = StringBuffer();
       if (pushSent) {
         buffer.write('Đã gửi push thử nghiệm.');
       } else {
         buffer.write('Không gửi được push (token: $tokenCount).');
+        if (tokenCount <= 0) {
+          buffer.write(' Mở Cài đặt thông báo trên app để đồng bộ token.');
+        }
       }
       if (emailSent) {
         buffer.write(' Đã gửi email dự phòng.');
@@ -191,55 +220,73 @@ class _AccountsScreenState extends State<AccountsScreen> {
       if (!context.mounted) return;
       showDialog<void>(
         context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Chi tiết test thông báo'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                _StatusRow(
-                  label: 'Kết quả push',
-                  value: pushSent ? 'Đã gửi' : 'Không gửi',
-                  color: pushSent ? Colors.green : Colors.red,
+        builder:
+            (_) => AlertDialog(
+              title: const Text('Chi tiết test thông báo'),
+              content: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _StatusRow(
+                      label: 'Kết quả push',
+                      value: pushSent ? 'Đã gửi' : 'Không gửi',
+                      color: pushSent ? Colors.green : Colors.red,
+                    ),
+                    _StatusRow(
+                      label: 'Email dự phòng',
+                      value: emailSent ? 'Đã gửi' : 'Không gửi',
+                      color: emailSent ? Colors.green : Colors.red,
+                    ),
+                    _StatusRow(
+                      label: 'Token server',
+                      value: tokenCount.toString(),
+                      color: StitchTheme.textMain,
+                    ),
+                    _StatusRow(
+                      label: 'Lý do',
+                      value: pushReason,
+                      color: StitchTheme.textMuted,
+                    ),
+                    _StatusRow(
+                      label: 'Token Android / iOS / Web',
+                      value: '$androidTokens / $iosTokens / $webTokens',
+                      color: StitchTheme.textMain,
+                    ),
+                    _StatusRow(
+                      label: 'Token quyền ON / OFF',
+                      value: '$tokenEnabled / $tokenDisabled',
+                      color: StitchTheme.textMain,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Token thiết bị (cục bộ)',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    SelectableText(
+                      localToken?.isNotEmpty == true
+                          ? localToken!
+                          : 'Chưa có token',
+                      style: const TextStyle(color: StitchTheme.textMuted),
+                    ),
+                    if (localTokenAt != null) ...<Widget>[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Cập nhật: $localTokenAt',
+                        style: const TextStyle(color: StitchTheme.textMuted),
+                      ),
+                    ],
+                  ],
                 ),
-                _StatusRow(
-                  label: 'Email dự phòng',
-                  value: emailSent ? 'Đã gửi' : 'Không gửi',
-                  color: emailSent ? Colors.green : Colors.red,
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Đóng'),
                 ),
-                _StatusRow(
-                  label: 'Token server',
-                  value: tokenCount.toString(),
-                  color: StitchTheme.textMain,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Token thiết bị (cục bộ)',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 6),
-                SelectableText(
-                  localToken?.isNotEmpty == true ? localToken! : 'Chưa có token',
-                  style: const TextStyle(color: StitchTheme.textMuted),
-                ),
-                if (localTokenAt != null) ...<Widget>[
-                  const SizedBox(height: 6),
-                  Text(
-                    'Cập nhật: $localTokenAt',
-                    style: const TextStyle(color: StitchTheme.textMuted),
-                  ),
-                ],
               ],
             ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Đóng'),
-            ),
-          ],
-        ),
       );
     }
 
@@ -280,16 +327,17 @@ class _AccountsScreenState extends State<AccountsScreen> {
                             (_avatarUrl != null && _avatarUrl!.isNotEmpty)
                                 ? NetworkImage(_avatarUrl!)
                                 : null,
-                        child: (_avatarUrl == null || _avatarUrl!.isEmpty)
-                            ? Text(
-                                _initials(displayName),
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : null,
+                        child:
+                            (_avatarUrl == null || _avatarUrl!.isEmpty)
+                                ? Text(
+                                  _initials(displayName),
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : null,
                       ),
                       InkWell(
                         onTap: _pickAvatar,
@@ -302,7 +350,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: Colors.white, width: 2),
                           ),
-                          child: const Icon(Icons.edit, size: 14, color: Colors.white),
+                          child: const Icon(
+                            Icons.edit,
+                            size: 14,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ],
@@ -346,31 +398,62 @@ class _AccountsScreenState extends State<AccountsScreen> {
             const SizedBox(height: 8),
             _MenuCard(
               children: <Widget>[
-                _MenuItem(icon: Icons.person_outline, title: 'Thông tin cá nhân'),
+                _MenuItem(
+                  icon: Icons.person_outline,
+                  title: 'Thông tin cá nhân',
+                ),
                 _MenuDivider(),
                 _MenuItem(icon: Icons.lock_outline, title: 'Đổi mật khẩu'),
                 _MenuDivider(),
-                _MenuItem(icon: Icons.notifications_none, title: 'Cài đặt thông báo'),
+                _MenuItem(
+                  icon: Icons.notifications_none,
+                  title: 'Cài đặt thông báo',
+                  onTap: () {
+                    if (widget.token == null || widget.token!.isEmpty) {
+                      _messengerKey.currentState?.showSnackBar(
+                        const SnackBar(
+                          content: Text('Cần đăng nhập để cấu hình thông báo.'),
+                          behavior: SnackBarBehavior.floating,
+                          margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.of(context).push(
+                      MaterialPageRoute<Widget>(
+                        builder:
+                            (_) => NotificationPreferencesScreen(
+                              token: widget.token!,
+                              apiService: widget.apiService,
+                              onSyncDeviceToken: widget.onSyncDeviceToken,
+                            ),
+                      ),
+                    );
+                  },
+                ),
                 _MenuDivider(),
                 _MenuItem(
                   icon: Icons.language,
                   title: 'Ngôn ngữ',
-                  trailing: const Text('Tiếng Việt',
-                      style: TextStyle(color: StitchTheme.textMuted)),
+                  trailing: const Text(
+                    'Tiếng Việt',
+                    style: TextStyle(color: StitchTheme.textMuted),
+                  ),
                 ),
                 if (isAdmin) ...<Widget>[
                   _MenuDivider(),
                   _MenuItem(
                     icon: Icons.settings,
                     title: 'Cài đặt hệ thống',
-                        onTap: () {
+                    onTap: () {
                       if (widget.token == null || widget.token!.isEmpty) return;
                       Navigator.of(context).push(
                         MaterialPageRoute<Widget>(
-                          builder: (_) => SystemSettingsScreen(
-                            token: widget.token!,
-                            apiService: widget.apiService,
-                          ),
+                          builder:
+                              (_) => SystemSettingsScreen(
+                                token: widget.token!,
+                                apiService: widget.apiService,
+                              ),
                         ),
                       );
                     },
@@ -515,10 +598,7 @@ class _MenuItem extends StatelessWidget {
         ),
         child: Icon(icon, color: Colors.white),
       ),
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
       trailing: trailing ?? const Icon(Icons.chevron_right),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),

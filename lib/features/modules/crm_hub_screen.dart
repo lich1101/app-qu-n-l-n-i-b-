@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
-import '../../core/widgets/stitch_widgets.dart';
 
 class CrmHubScreen extends StatelessWidget {
   const CrmHubScreen({
@@ -53,7 +52,7 @@ class CrmHubScreen extends StatelessWidget {
       if (onOpenProducts != null)
         _CrmItem(
           title: 'Sản phẩm & danh mục',
-          subtitle: 'Quản lý sản phẩm, nhóm danh mục và đơn giá',
+          subtitle: 'Danh mục sản phẩm, nhóm hàng và đơn giá',
           icon: Icons.shopping_bag_outlined,
           onTap: onOpenProducts!,
         ),
@@ -94,72 +93,23 @@ class CrmHubScreen extends StatelessWidget {
       child: ListView(
         padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomInset),
         children: <Widget>[
-          StitchPageHeader(
-            title: 'CRM & Kinh doanh',
-            subtitle:
-                'Tập trung khách hàng, cơ hội, hợp đồng và sản phẩm vào một luồng làm việc thống nhất để theo dõi doanh thu.',
-            icon: Icons.groups_2_outlined,
-            stats: <StitchHeaderStat>[
-              StitchHeaderStat(
-                label: 'Phân hệ chính',
-                value: mainItems.length.toString(),
-              ),
-              StitchHeaderStat(
-                label: 'Cấu hình CRM',
-                value: configItems.length.toString(),
-                accent: StitchTheme.warning,
-              ),
-            ],
+          const Text(
+            'CRM & Sales',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Quản lý khách hàng, cơ hội bán hàng, hợp đồng và sản phẩm.',
+            style: TextStyle(color: StitchTheme.textMuted),
           ),
           const SizedBox(height: 16),
-          StitchSurfaceCard(
-            child: Row(
-              children: <Widget>[
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: StitchTheme.primarySoft,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(
-                    Icons.alt_route_outlined,
-                    color: StitchTheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Luồng CRM chuẩn',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Khách hàng -> Cơ hội -> Hợp đồng -> Dự án -> Doanh thu công ty.',
-                        style: TextStyle(
-                          color: StitchTheme.textMuted,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          const StitchSectionHeader(title: 'Vận hành CRM'),
-          const SizedBox(height: 12),
           ...mainItems.map(_CrmItemCard.new),
           const SizedBox(height: 16),
           if (configItems.isNotEmpty) ...<Widget>[
-            const StitchSectionHeader(title: 'Cấu hình CRM'),
+            const Text(
+              'Cấu hình CRM',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 10),
             ...configItems.map(_CrmItemCard.new),
           ],
@@ -190,33 +140,42 @@ class _CrmItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: item.onTap,
-      child: StitchSurfaceCard(
-        margin: const EdgeInsets.only(bottom: 12),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: item.onTap,
         child: Row(
           children: <Widget>[
             Container(
-              width: 48,
-              height: 48,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                color: StitchTheme.primarySoft,
-                borderRadius: BorderRadius.circular(16),
+                color: StitchTheme.primary,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(item.icon, color: StitchTheme.primary),
+              child: Icon(item.icon, color: Colors.white),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
                     item.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -224,7 +183,7 @@ class _CrmItemCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       color: StitchTheme.textMuted,
-                      height: 1.4,
+                      height: 1.3,
                     ),
                   ),
                 ],

@@ -29,15 +29,17 @@ class MobileApiService {
   }
 
   Future<Map<String, dynamic>> getMeta() async {
-    final http.Response res =
-        await http.get(Uri.parse('${AppEnv.apiBaseUrl}/meta'));
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/meta'),
+    );
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> getSettings() async {
-    final http.Response res =
-        await http.get(Uri.parse('${AppEnv.apiBaseUrl}/settings'));
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/settings'),
+    );
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -56,7 +58,9 @@ class MobileApiService {
       if (brandName != null) request.fields['brand_name'] = brandName;
       if (primaryColor != null) request.fields['primary_color'] = primaryColor;
       if (logoUrl != null) request.fields['logo_url'] = logoUrl;
-      request.files.add(await http.MultipartFile.fromPath('logo', logoFile.path));
+      request.files.add(
+        await http.MultipartFile.fromPath('logo', logoFile.path),
+      );
       final http.StreamedResponse res = await request.send();
       if (res.statusCode != 200) return <String, dynamic>{'error': true};
       final String body = await res.stream.bytesToString();
@@ -76,8 +80,9 @@ class MobileApiService {
   }
 
   Future<Map<String, dynamic>> getPublicSummary() async {
-    final http.Response res =
-        await http.get(Uri.parse('${AppEnv.apiBaseUrl}/public/summary'));
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/public/summary'),
+    );
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -117,9 +122,10 @@ class MobileApiService {
     );
     return <String, dynamic>{
       'statusCode': res.statusCode,
-      'body': res.statusCode == 200
-          ? jsonDecode(res.body) as Map<String, dynamic>
-          : <String, dynamic>{},
+      'body':
+          res.statusCode == 200
+              ? jsonDecode(res.body) as Map<String, dynamic>
+              : <String, dynamic>{},
     };
   }
 
@@ -136,7 +142,8 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return null;
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final String? firebaseToken = body['token']?.toString();
     return firebaseToken?.isNotEmpty == true ? firebaseToken : null;
   }
@@ -163,14 +170,12 @@ class MobileApiService {
         if (status != null && status.isNotEmpty) 'status': status,
       },
     );
-    final http.Response res = await http.get(
-      uri,
-      headers: _jsonHeaders(token),
-    );
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
     final Map<String, dynamic> payload =
         jsonDecode(res.body) as Map<String, dynamic>;
-    final List<dynamic> rows = (payload['data'] ?? <dynamic>[]) as List<dynamic>;
+    final List<dynamic> rows =
+        (payload['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
 
@@ -199,7 +204,8 @@ class MobileApiService {
         if (ownerId != null) 'owner_id': ownerId,
         if (startDate != null) 'start_date': startDate,
         if (deadline != null) 'deadline': deadline,
-        if (customerRequirement != null) 'customer_requirement': customerRequirement,
+        if (customerRequirement != null)
+          'customer_requirement': customerRequirement,
         if (repoUrl != null) 'repo_url': repoUrl,
       }),
     );
@@ -217,9 +223,7 @@ class MobileApiService {
     bool availableOnly = false,
     int? projectId,
   }) async {
-    final Map<String, String> params = <String, String>{
-      'per_page': '$perPage',
-    };
+    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
     if (withItems) {
       params['with_items'] = '1';
     }
@@ -241,12 +245,13 @@ class MobileApiService {
         params['project_id'] = projectId.toString();
       }
     }
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/contracts').replace(
-      queryParameters: params,
-    );
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/contracts',
+    ).replace(queryParameters: params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -263,12 +268,13 @@ class MobileApiService {
     if (role.trim().isNotEmpty) {
       params['role'] = role.trim();
     }
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/users/lookup').replace(
-      queryParameters: params.isEmpty ? null : params,
-    );
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/users/lookup',
+    ).replace(queryParameters: params.isEmpty ? null : params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -411,7 +417,9 @@ class MobileApiService {
     String? note,
   }) async {
     final http.Response res = await http.put(
-      Uri.parse('${AppEnv.apiBaseUrl}/contracts/$contractId/payments/$paymentId'),
+      Uri.parse(
+        '${AppEnv.apiBaseUrl}/contracts/$contractId/payments/$paymentId',
+      ),
       headers: _jsonHeaders(token),
       body: jsonEncode(<String, dynamic>{
         'amount': amount,
@@ -423,9 +431,15 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
-  Future<bool> deleteContractPayment(String token, int contractId, int paymentId) async {
+  Future<bool> deleteContractPayment(
+    String token,
+    int contractId,
+    int paymentId,
+  ) async {
     final http.Response res = await http.delete(
-      Uri.parse('${AppEnv.apiBaseUrl}/contracts/$contractId/payments/$paymentId'),
+      Uri.parse(
+        '${AppEnv.apiBaseUrl}/contracts/$contractId/payments/$paymentId',
+      ),
       headers: _jsonHeaders(token),
     );
     return res.statusCode == 200;
@@ -487,7 +501,11 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
-  Future<bool> deleteContractCost(String token, int contractId, int costId) async {
+  Future<bool> deleteContractCost(
+    String token,
+    int contractId,
+    int costId,
+  ) async {
     final http.Response res = await http.delete(
       Uri.parse('${AppEnv.apiBaseUrl}/contracts/$contractId/costs/$costId'),
       headers: _jsonHeaders(token),
@@ -665,9 +683,7 @@ class MobileApiService {
     String isActive = '',
     int? categoryId,
   }) async {
-    final Map<String, String> params = <String, String>{
-      'per_page': '$perPage',
-    };
+    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
     if (search.trim().isNotEmpty) {
       params['search'] = search.trim();
     }
@@ -677,11 +693,13 @@ class MobileApiService {
     if (categoryId != null) {
       params['category_id'] = '$categoryId';
     }
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/products')
-        .replace(queryParameters: params);
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/products',
+    ).replace(queryParameters: params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -753,20 +771,20 @@ class MobileApiService {
     String search = '',
     String isActive = '',
   }) async {
-    final Map<String, String> params = <String, String>{
-      'per_page': '$perPage',
-    };
+    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
     if (search.trim().isNotEmpty) {
       params['search'] = search.trim();
     }
     if (isActive.trim().isNotEmpty) {
       params['is_active'] = isActive.trim();
     }
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/product-categories')
-        .replace(queryParameters: params);
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/product-categories',
+    ).replace(queryParameters: params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -835,17 +853,17 @@ class MobileApiService {
     int perPage = 200,
     String search = '',
   }) async {
-    final Map<String, String> params = <String, String>{
-      'per_page': '$perPage',
-    };
+    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
     if (search.trim().isNotEmpty) {
       params['search'] = search.trim();
     }
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/users/accounts')
-        .replace(queryParameters: params);
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/users/accounts',
+    ).replace(queryParameters: params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows =
         ((body['users'] ?? <String, dynamic>{})['data'] ?? <dynamic>[])
             as List<dynamic>;
@@ -905,20 +923,20 @@ class MobileApiService {
     int? departmentId,
     String status = '',
   }) async {
-    final Map<String, String> params = <String, String>{
-      'per_page': '$perPage',
-    };
+    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
     if (departmentId != null) {
       params['department_id'] = departmentId.toString();
     }
     if (status.trim().isNotEmpty) {
       params['status'] = status.trim();
     }
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/department-assignments')
-        .replace(queryParameters: params);
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/department-assignments',
+    ).replace(queryParameters: params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -999,13 +1017,10 @@ class MobileApiService {
     if (targetRevenue != null && targetRevenue.trim().isNotEmpty) {
       params['target_revenue'] = targetRevenue.trim();
     }
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/reports/company').replace(
-      queryParameters: params.isEmpty ? null : params,
-    );
-    final http.Response res = await http.get(
-      uri,
-      headers: _jsonHeaders(token),
-    );
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/reports/company',
+    ).replace(queryParameters: params.isEmpty ? null : params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -1016,7 +1031,8 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1095,7 +1111,8 @@ class MobileApiService {
     );
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1154,11 +1171,13 @@ class MobileApiService {
     int taskId, {
     int perPage = 50,
   }) async {
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId/items')
-        .replace(queryParameters: <String, String>{'per_page': '$perPage'});
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/tasks/$taskId/items',
+    ).replace(queryParameters: <String, String>{'per_page': '$perPage'});
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1219,11 +1238,7 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
-  Future<bool> deleteTaskItem(
-    String token,
-    int taskId,
-    int itemId,
-  ) async {
+  Future<bool> deleteTaskItem(String token, int taskId, int itemId) async {
     final http.Response res = await http.delete(
       Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId'),
       headers: _jsonHeaders(token),
@@ -1237,12 +1252,13 @@ class MobileApiService {
     int itemId, {
     int perPage = 20,
   }) async {
-    final Uri uri =
-        Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates')
-            .replace(queryParameters: <String, String>{'per_page': '$perPage'});
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates',
+    ).replace(queryParameters: <String, String>{'per_page': '$perPage'});
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1257,7 +1273,8 @@ class MobileApiService {
     File? attachment,
   }) async {
     final Uri uri = Uri.parse(
-        '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates');
+      '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates',
+    );
     if (attachment != null) {
       final http.MultipartRequest request = http.MultipartRequest('POST', uri);
       request.headers.addAll(_jsonHeaders(token));
@@ -1270,8 +1287,9 @@ class MobileApiService {
       if (note != null && note.trim().isNotEmpty) {
         request.fields['note'] = note.trim();
       }
-      request.files.add(await http.MultipartFile.fromPath(
-          'attachment', attachment.path));
+      request.files.add(
+        await http.MultipartFile.fromPath('attachment', attachment.path),
+      );
       final http.StreamedResponse res = await request.send();
       return res.statusCode == 201;
     }
@@ -1298,7 +1316,8 @@ class MobileApiService {
   }) async {
     final http.Response res = await http.post(
       Uri.parse(
-          '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates/$updateId/approve'),
+        '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates/$updateId/approve',
+      ),
       headers: _jsonHeaders(token),
       body: jsonEncode(<String, dynamic>{
         if (status != null && status.isNotEmpty) 'status': status,
@@ -1318,7 +1337,8 @@ class MobileApiService {
   }) async {
     final http.Response res = await http.post(
       Uri.parse(
-          '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates/$updateId/reject'),
+        '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates/$updateId/reject',
+      ),
       headers: _jsonHeaders(token),
       body: jsonEncode(<String, dynamic>{'review_note': reviewNote}),
     );
@@ -1359,7 +1379,8 @@ class MobileApiService {
     final int taskId = (task['id'] ?? 0) as int;
     if (taskId <= 0) return false;
     final DateTime now = DateTime.now();
-    final String stamp = '${now.year.toString().padLeft(4, '0')}-'
+    final String stamp =
+        '${now.year.toString().padLeft(4, '0')}-'
         '${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:'
@@ -1393,11 +1414,13 @@ class MobileApiService {
     int taskId, {
     int perPage = 20,
   }) async {
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId/updates')
-        .replace(queryParameters: <String, String>{'per_page': '$perPage'});
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/tasks/$taskId/updates',
+    ).replace(queryParameters: <String, String>{'per_page': '$perPage'});
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1423,7 +1446,9 @@ class MobileApiService {
       if (note != null && note.trim().isNotEmpty) {
         request.fields['note'] = note.trim();
       }
-      request.files.add(await http.MultipartFile.fromPath('attachment', attachment.path));
+      request.files.add(
+        await http.MultipartFile.fromPath('attachment', attachment.path),
+      );
       final http.StreamedResponse res = await request.send();
       return res.statusCode == 201;
     }
@@ -1528,18 +1553,61 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
+  Future<Map<String, dynamic>> getNotificationPreferences(String token) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/notification-preferences'),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) {
+      return <String, dynamic>{
+        'notifications_enabled': true,
+        'category_system_enabled': true,
+        'category_crm_realtime_enabled': true,
+      };
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateNotificationPreferences(
+    String token, {
+    bool? notificationsEnabled,
+    bool? categorySystemEnabled,
+    bool? categoryCrmRealtimeEnabled,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/notification-preferences'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        if (notificationsEnabled != null)
+          'notifications_enabled': notificationsEnabled,
+        if (categorySystemEnabled != null)
+          'category_system_enabled': categorySystemEnabled,
+        if (categoryCrmRealtimeEnabled != null)
+          'category_crm_realtime_enabled': categoryCrmRealtimeEnabled,
+      }),
+    );
+    if (res.statusCode != 200) {
+      return <String, dynamic>{'error': true, 'status': res.statusCode};
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> getActivityLogs(
     String token, {
     int perPage = 20,
   }) async {
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/activity-logs').replace(
-      queryParameters: <String, String>{'per_page': '$perPage'},
-    );
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/activity-logs',
+    ).replace(queryParameters: <String, String>{'per_page': '$perPage'});
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) {
-      return <String, dynamic>{'statusCode': res.statusCode, 'data': <dynamic>[]};
+      return <String, dynamic>{
+        'statusCode': res.statusCode,
+        'data': <dynamic>[],
+      };
     }
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return <String, dynamic>{'statusCode': res.statusCode, 'data': rows};
   }
@@ -1561,10 +1629,7 @@ class MobileApiService {
         if (attendeeId != null) 'attendee_id': '$attendeeId',
       },
     );
-    final http.Response res = await http.get(
-      uri,
-      headers: _jsonHeaders(token),
-    );
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -1633,9 +1698,7 @@ class MobileApiService {
     int? leadTypeId,
     bool leadOnly = false,
   }) async {
-    final Map<String, String> params = <String, String>{
-      'per_page': '$perPage',
-    };
+    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
     if (search.trim().isNotEmpty) {
       params['search'] = search.trim();
     }
@@ -1645,14 +1708,13 @@ class MobileApiService {
     if (leadOnly) {
       params['lead_only'] = '1';
     }
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/crm/clients')
-        .replace(queryParameters: params);
-    final http.Response res = await http.get(
-      uri,
-      headers: _jsonHeaders(token),
-    );
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/crm/clients',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1746,7 +1808,8 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1830,7 +1893,8 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1879,7 +1943,8 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -1890,20 +1955,20 @@ class MobileApiService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId/comments').replace(
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/tasks/$taskId/comments',
+    ).replace(
       queryParameters: <String, String>{
         'per_page': '$perPage',
         'page': '$page',
       },
     );
-    final http.Response res = await http.get(
-      uri,
-      headers: _jsonHeaders(token),
-    );
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) {
       return PaginatedResult<Map<String, dynamic>>.empty();
     }
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return PaginatedResult<Map<String, dynamic>>(
       data: rows.map((dynamic e) => e as Map<String, dynamic>).toList(),
@@ -1921,7 +1986,8 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -2012,7 +2078,11 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
-  Future<bool> deleteTaskComment(String token, int taskId, int commentId) async {
+  Future<bool> deleteTaskComment(
+    String token,
+    int taskId,
+    int commentId,
+  ) async {
     final http.Response res = await http.delete(
       Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId/comments/$commentId'),
       headers: _jsonHeaders(token),
@@ -2025,6 +2095,24 @@ class MobileApiService {
     required String deviceToken,
     String? platform,
     String? deviceName,
+    bool? notificationsEnabled,
+  }) async {
+    final Map<String, dynamic> result = await registerDeviceTokenWithResult(
+      token,
+      deviceToken: deviceToken,
+      platform: platform,
+      deviceName: deviceName,
+      notificationsEnabled: notificationsEnabled,
+    );
+    return result['ok'] == true;
+  }
+
+  Future<Map<String, dynamic>> registerDeviceTokenWithResult(
+    String token, {
+    required String deviceToken,
+    String? platform,
+    String? deviceName,
+    bool? notificationsEnabled,
   }) async {
     final http.Response res = await http.post(
       Uri.parse('${AppEnv.apiBaseUrl}/device-tokens'),
@@ -2033,9 +2121,26 @@ class MobileApiService {
         'token': deviceToken,
         if (platform != null) 'platform': platform,
         if (deviceName != null) 'device_name': deviceName,
+        if (notificationsEnabled != null)
+          'notifications_enabled': notificationsEnabled,
       }),
     );
-    return res.statusCode == 200;
+    Map<String, dynamic> body = <String, dynamic>{};
+    try {
+      final dynamic decoded = jsonDecode(res.body);
+      if (decoded is Map<String, dynamic>) {
+        body = decoded;
+      }
+    } catch (_) {
+      body = <String, dynamic>{'raw': res.body};
+    }
+
+    return <String, dynamic>{
+      'ok': res.statusCode == 200,
+      'status': res.statusCode,
+      'body': body,
+      'message': body['message']?.toString() ?? '',
+    };
   }
 
   Future<String?> updateProfileAvatar(
@@ -2051,7 +2156,8 @@ class MobileApiService {
     final http.StreamedResponse streamed = await request.send();
     final http.Response res = await http.Response.fromStream(streamed);
     if (res.statusCode != 200) return null;
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     return (body['avatar_url'] ?? '').toString();
   }
 
@@ -2064,7 +2170,8 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -2120,9 +2227,7 @@ class MobileApiService {
     int attachmentId,
   ) async {
     final http.Response res = await http.delete(
-      Uri.parse(
-        '${AppEnv.apiBaseUrl}/tasks/$taskId/attachments/$attachmentId',
-      ),
+      Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId/attachments/$attachmentId'),
       headers: _jsonHeaders(token),
     );
     return res.statusCode == 200;
@@ -2137,7 +2242,8 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body = jsonDecode(res.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
@@ -2185,14 +2291,17 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
-  Future<bool> deleteTaskReminder(String token, int taskId, int reminderId) async {
+  Future<bool> deleteTaskReminder(
+    String token,
+    int taskId,
+    int reminderId,
+  ) async {
     final http.Response res = await http.delete(
       Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId/reminders/$reminderId'),
       headers: _jsonHeaders(token),
     );
     return res.statusCode == 200;
   }
-
 }
 
 class PaginatedResult<T> {

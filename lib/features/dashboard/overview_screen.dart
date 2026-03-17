@@ -111,12 +111,14 @@ class OverviewScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final MediaQueryData media = MediaQuery.of(context);
     final String name = (authUser?['name'] ?? 'Bạn').toString();
     final String avatarUrl = AppEnv.resolveMediaUrl(
       (authUser?['avatar_url'] ?? '').toString(),
     );
     final String dateLabel = _formatDate(DateTime.now());
-    final double bottomInset = MediaQuery.of(context).padding.bottom + 80;
+    final bool compact = media.size.width < 380;
+    final double bottomInset = media.padding.bottom + (compact ? 94 : 90);
 
     final int totalProjects = _readInt(
       <String>['projects_total', 'projects_in_progress', 'projects'],
@@ -138,86 +140,127 @@ class OverviewScreen extends StatelessWidget {
       child: ListView(
         padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
         children: <Widget>[
-          StitchPageHeader(
-            title: 'Trung tâm điều hành',
-            subtitle:
-                'Theo dõi tiến độ công việc, cảnh báo vận hành và các hành động quan trọng của hệ thống nội bộ.',
-            icon: Icons.space_dashboard_outlined,
-            stats: <StitchHeaderStat>[
-              StitchHeaderStat(label: 'Hôm nay', value: dateLabel),
-              StitchHeaderStat(
-                label: 'Thông báo chưa đọc',
-                value: unreadNotifications.toString(),
-                accent: StitchTheme.warning,
-              ),
-              StitchHeaderStat(
-                label: 'Tin nhắn công việc',
-                value: unreadChats.toString(),
-                accent: StitchTheme.success,
-              ),
-            ],
+          Text(
+            'Tổng quan hệ thống',
+            style: Theme.of(context).textTheme.titleLarge,
           ),
-          const SizedBox(height: 16),
-          StitchSurfaceCard(
-            child: Row(
-              children: <Widget>[
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: StitchTheme.primary,
-                  backgroundImage:
-                      avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                  child: avatarUrl.isEmpty
-                      ? Text(
-                          _initials(name),
-                          style: const TextStyle(
-                            color: Colors.white,
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final bool stackActions = constraints.maxWidth < 360;
+
+              Widget actionButton({
+                required IconData icon,
+                required VoidCallback? onTap,
+                required bool showDot,
+              }) {
+                return Stack(
+                  children: <Widget>[
+                    IconButton(
+                      onPressed: onTap,
+                      icon: Icon(icon, color: StitchTheme.primary),
+                      visualDensity: compact
+                          ? const VisualDensity(horizontal: -2, vertical: -2)
+                          : VisualDensity.standard,
+                    ),
+                    if (showDot)
+                      const Positioned(
+                        right: 10,
+                        top: 10,
+                        child: _UnreadDot(),
+                      ),
+                  ],
+                );
+              }
+
+              final Widget userInfo = Row(
+                children: <Widget>[
+                  CircleAvatar(
+                    radius: compact ? 22 : 24,
+                    backgroundColor: StitchTheme.primary,
+                    backgroundImage:
+                        avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                    child: avatarUrl.isEmpty
+                        ? Text(
+                            _initials(name),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Chào $name!',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: compact ? 17 : 18,
                             fontWeight: FontWeight.w700,
                           ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Xin chào, $name',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Ưu tiên kiểm tra các hạng mục quá hạn, chờ duyệt và thông báo theo công việc.',
-                        style: TextStyle(
-                          color: StitchTheme.textMuted,
-                          height: 1.45,
+                        const SizedBox(height: 4),
+                        Text(
+                          dateLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: StitchTheme.textMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Column(
+                ],
+              );
+
+              final List<Widget> actions = <Widget>[
+                if (onOpenNotifications != null)
+                  actionButton(
+                    icon: Icons.notifications_none,
+                    onTap: onOpenNotifications,
+                    showDot: unreadNotifications > 0,
+                  ),
+                if (onOpenChat != null)
+                  actionButton(
+                    icon: Icons.chat_bubble_outline,
+                    onTap: onOpenChat,
+                    showDot: unreadChats > 0,
+                  ),
+              ];
+
+              if (!stackActions) {
+                return Row(
                   children: <Widget>[
-                    _ActionIconButton(
-                      icon: Icons.notifications_none,
-                      onTap: onOpenNotifications,
-                      showDot: unreadNotifications > 0,
-                    ),
-                    const SizedBox(height: 8),
-                    _ActionIconButton(
-                      icon: Icons.chat_bubble_outline,
-                      onTap: onOpenChat,
-                      showDot: unreadChats > 0,
-                    ),
+                    Expanded(child: userInfo),
+                    ...actions,
                   ],
-                ),
-              ],
-            ),
+                );
+              }
+
+              return Column(
+                children: <Widget>[
+                  userInfo,
+                  if (actions.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: actions,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
           GridView.count(
             crossAxisCount: 2,
             childAspectRatio: 1.7,
@@ -267,11 +310,17 @@ class OverviewScreen extends StatelessWidget {
           const StitchSectionHeader(title: 'Tiến độ dự án'),
           const SizedBox(height: 12),
           if (progressItems.isEmpty)
-            const StitchEmptyStateCard(
-              title: 'Chưa có tiến độ dự án',
-              message:
-                  'Các dự án đang triển khai sẽ xuất hiện tại đây để theo dõi theo ngày và theo phần trăm hoàn thành.',
-              icon: Icons.track_changes_outlined,
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: StitchTheme.border),
+              ),
+              child: const Text(
+                'Chưa có dữ liệu tiến độ dự án. Các dự án đang triển khai sẽ hiển thị tại đây.',
+                style: TextStyle(color: StitchTheme.textMuted),
+              ),
             )
           else
             SizedBox(
@@ -299,46 +348,38 @@ class OverviewScreen extends StatelessWidget {
           const StitchSectionHeader(title: 'Hoạt động gần đây'),
           const SizedBox(height: 12),
           if (activities.isEmpty)
-            const StitchEmptyStateCard(
-              title: 'Chưa có nhật ký hoạt động',
-              message:
-                  'Khi dự án, công việc hoặc đầu việc được cập nhật, dòng thời gian vận hành sẽ hiển thị tại đây.',
-              icon: Icons.history_toggle_off_outlined,
+            const Text(
+              'Chưa có hoạt động gần đây.',
+              style: TextStyle(color: StitchTheme.textMuted),
             )
           else
-            StitchSurfaceCard(
-              child: Column(
-                children: List<Widget>.generate(
-                  activities.length,
-                  (int index) {
-                    final Map<String, dynamic> activity = activities[index];
-                    final String user =
-                        (activity['user'] ?? activity['name'] ?? 'Nhân sự')
-                            .toString();
-                    final String content =
-                        (activity['content'] ?? activity['message'] ?? 'cập nhật')
-                            .toString();
-                    final String time =
-                        (activity['time'] ?? activity['created_at'] ?? 'vừa xong')
-                            .toString();
-                    return StitchTimelineItem(
-                      title: '$user $content',
-                      time: time,
-                      isLast: index == activities.length - 1,
-                    );
-                  },
-                ),
-              ),
+            ...List<Widget>.generate(
+              activities.length,
+              (int index) {
+                final Map<String, dynamic> activity = activities[index];
+                final String user =
+                    (activity['user'] ?? activity['name'] ?? 'Nhân sự')
+                        .toString();
+                final String content =
+                    (activity['content'] ?? activity['message'] ?? 'cập nhật')
+                        .toString();
+                final String time =
+                    (activity['time'] ?? activity['created_at'] ?? 'vừa xong')
+                        .toString();
+                return StitchTimelineItem(
+                  title: '$user $content',
+                  time: time,
+                  isLast: index == activities.length - 1,
+                );
+              },
             ),
           const SizedBox(height: 24),
           const StitchSectionHeader(title: 'Nhân sự quá tải'),
           const SizedBox(height: 12),
           if (overloadList.isEmpty)
-            const StitchEmptyStateCard(
-              title: 'Chưa có cảnh báo quá tải',
-              message:
-                  'Hệ thống sẽ cảnh báo nhân sự có số lượng công việc xử lý vượt ngưỡng cấu hình.',
-              icon: Icons.monitor_heart_outlined,
+            const Text(
+              'Chưa có nhân sự quá tải.',
+              style: TextStyle(color: StitchTheme.textMuted),
             )
           else
             ...overloadList.map((Map<String, dynamic> item) {
@@ -356,9 +397,14 @@ class OverviewScreen extends StatelessWidget {
                     ? item['overdue_tasks'] as int
                     : int.tryParse('${item['overdue_tasks'] ?? 0}') ?? 0,
               );
-              return StitchSurfaceCard(
+              return Container(
                 margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: StitchTheme.border),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
@@ -427,79 +473,18 @@ class OverviewScreen extends StatelessWidget {
   }
 }
 
-class _BlinkingDot extends StatefulWidget {
-  const _BlinkingDot();
-
-  @override
-  State<_BlinkingDot> createState() => _BlinkingDotState();
-}
-
-class _ActionIconButton extends StatelessWidget {
-  const _ActionIconButton({
-    required this.icon,
-    required this.onTap,
-    required this.showDot,
-  });
-
-  final IconData icon;
-  final VoidCallback? onTap;
-  final bool showDot;
+class _UnreadDot extends StatelessWidget {
+  const _UnreadDot();
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: <Widget>[
-        InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: StitchTheme.surfaceAlt,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: StitchTheme.border),
-            ),
-            child: Icon(icon, color: StitchTheme.primary),
-          ),
-        ),
-        if (showDot)
-          const Positioned(
-            right: -2,
-            top: -2,
-            child: _BlinkingDot(),
-          ),
-      ],
-    );
-  }
-}
-
-class _BlinkingDotState extends State<_BlinkingDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
-        ..repeat(reverse: true);
-  late final Animation<double> _opacity =
-      Tween<double>(begin: 0.3, end: 1).animate(_controller);
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _opacity,
-      child: Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(
-          color: StitchTheme.danger,
-          shape: BoxShape.circle,
-        ),
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: StitchTheme.danger,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 1.4),
       ),
     );
   }
@@ -529,10 +514,14 @@ class _QuickActionsGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double width = constraints.maxWidth;
-        final int columns = width >= 360 ? 4 : 3;
+        final int columns = width >= 390
+            ? 4
+            : width >= 300
+                ? 3
+                : 2;
         return GridView.count(
           crossAxisCount: columns,
-          childAspectRatio: 0.95,
+          childAspectRatio: width < 360 ? 0.9 : 0.95,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
           shrinkWrap: true,
@@ -560,13 +549,13 @@ class _QuickActionTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: StitchTheme.border),
           boxShadow: const <BoxShadow>[
             BoxShadow(
-              color: StitchTheme.shadow,
-              blurRadius: 16,
-              offset: Offset(0, 8),
+              color: Color(0x0A0F172A),
+              blurRadius: 10,
+              offset: Offset(0, 4),
             ),
           ],
         ),
@@ -591,7 +580,7 @@ class _QuickActionTile extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],

@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_env.dart';
 import '../../core/theme/stitch_theme.dart';
@@ -37,6 +39,13 @@ Map<String, dynamic>? _asMap(dynamic value) {
     return Map<String, dynamic>.from(value);
   }
   return null;
+}
+
+class _MentionRange {
+  const _MentionRange(this.start, this.end);
+
+  final int start;
+  final int end;
 }
 
 class _ChatScreenState extends State<ChatScreen> {
@@ -312,6 +321,73 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return buffer.toString().replaceAll(RegExp(r'\s+'), '');
   }
 
+  String _normalizeMentionPhrase(String value) {
+    final String lower = value.toLowerCase();
+    final StringBuffer buffer = StringBuffer();
+    for (final int codeUnit in lower.codeUnits) {
+      final String ch = String.fromCharCode(codeUnit);
+      buffer.write(_diacriticMap[ch] ?? ch);
+    }
+    return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  String _mentionIdentity(Map<String, dynamic> user) {
+    final int id = _asInt(user['id']);
+    if (id > 0) {
+      return 'id:$id';
+    }
+    final String email = (user['email'] ?? '').toString().trim().toLowerCase();
+    if (email.isNotEmpty) {
+      return 'email:$email';
+    }
+    final String name = _normalizeMentionPhrase((user['name'] ?? '').toString());
+    return name.isEmpty ? '' : 'name:$name';
+  }
+
+  List<Map<String, dynamic>> _mentionCandidates() {
+    final Map<String, Map<String, dynamic>> unique =
+        <String, Map<String, dynamic>>{};
+
+    void addUsers(List<Map<String, dynamic>> users) {
+      for (final Map<String, dynamic> user in users) {
+        final String key = _mentionIdentity(user);
+        if (key.isEmpty || unique.containsKey(key)) {
+          continue;
+        }
+        unique[key] = <String, dynamic>{
+          'id': user['id'],
+          'name': (user['name'] ?? '').toString(),
+          'email': (user['email'] ?? '').toString(),
+          'avatar_url': user['avatar_url'],
+          'role': user['role'],
+        };
+      }
+    }
+
+    addUsers(taggedUsers);
+    addUsers(participants);
+    return unique.values.toList();
+  }
+
+  void _registerTaggedUser(Map<String, dynamic> user) {
+    final String key = _mentionIdentity(user);
+    if (key.isEmpty) {
+      return;
+    }
+    if (taggedUsers.any(
+      (Map<String, dynamic> item) => _mentionIdentity(item) == key,
+    )) {
+      return;
+    }
+    taggedUsers.add(<String, dynamic>{
+      'id': user['id'],
+      'name': (user['name'] ?? 'Người dùng').toString(),
+      'email': (user['email'] ?? '').toString(),
+      'avatar_url': user['avatar_url'],
+      'role': user['role'],
+    });
+  }
+
   List<String> _extractMentions(String text) {
     final Set<String> tokens = <String>{};
     final RegExp reg = RegExp(r'@([^\s@]+)');
@@ -325,14 +401,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Map<String, dynamic>? _matchMentionToken(String key) {
-    for (final Map<String, dynamic> u in taggedUsers) {
-      final String nameKey = _normalizeToken((u['name'] ?? '').toString());
-      final String emailKey = _normalizeToken((u['email'] ?? '').toString());
-      if (nameKey == key || emailKey == key || emailKey.contains(key)) {
-        return u;
-      }
-    }
-    for (final Map<String, dynamic> u in participants) {
+    for (final Map<String, dynamic> u in _mentionCandidates()) {
       final String nameKey = _normalizeToken((u['name'] ?? '').toString());
       final String emailKey = _normalizeToken((u['email'] ?? '').toString());
       if (nameKey == key || emailKey == key || emailKey.contains(key)) {
@@ -342,34 +411,152 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return null;
   }
 
+  bool _startsWithMentionBoundary(String phrase, String candidate) {
+    if (phrase == candidate) {
+      return true;
+    }
+    if (!phrase.startsWith(candidate) || phrase.length <= candidate.length) {
+      return false;
+    }
+    final String next = phrase.substring(candidate.length, candidate.length + 1);
+    return RegExp(r'[\s\.,!?:;\)\]\}]').hasMatch(next);
+  }
+
+  Map<String, dynamic>? _matchCompletedMention(String value) {
+    final String phrase = _normalizeMentionPhrase(value);
+    if (phrase.isEmpty) {
+      return null;
+    }
+
+    Map<String, dynamic>? bestMatch;
+    int bestLength = -1;
+
+    for (final Map<String, dynamic> user in _mentionCandidates()) {
+      final List<String> candidates = <String>[
+        _normalizeMentionPhrase((user['name'] ?? '').toString()),
+        _normalizeMentionPhrase((user['email'] ?? '').toString()),
+      ].where((String item) => item.isNotEmpty).toList();
+
+      for (final String candidate in candidates) {
+        if (_startsWithMentionBoundary(phrase, candidate) &&
+            candidate.length > bestLength) {
+          bestMatch = user;
+          bestLength = candidate.length;
+        }
+      }
+    }
+
+    return bestMatch;
+  }
+
+  bool _containsExactMention(
+    String normalizedText,
+    String candidate,
+  ) {
+    if (candidate.isEmpty) {
+      return false;
+    }
+    final String needle = '@$candidate';
+    int start = 0;
+    while (true) {
+      final int index = normalizedText.indexOf(needle, start);
+      if (index < 0) {
+        return false;
+      }
+      final int end = index + needle.length;
+      if (end >= normalizedText.length) {
+        return true;
+      }
+      final String next = normalizedText.substring(end, end + 1);
+      if (RegExp(r'[\s\.,!?:;\)\]\}]').hasMatch(next)) {
+        return true;
+      }
+      start = index + 1;
+    }
+  }
+
+  List<Map<String, dynamic>> _extractExactMentionMatches(String text) {
+    final String normalizedText = _normalizeMentionPhrase(text);
+    if (normalizedText.isEmpty) {
+      return <Map<String, dynamic>>[];
+    }
+
+    final Map<String, Map<String, dynamic>> matches =
+        <String, Map<String, dynamic>>{};
+
+    for (final Map<String, dynamic> user in _mentionCandidates()) {
+      final String identity = _mentionIdentity(user);
+      if (identity.isEmpty) {
+        continue;
+      }
+
+      final List<String> candidates = <String>[
+        _normalizeMentionPhrase((user['name'] ?? '').toString()),
+        _normalizeMentionPhrase((user['email'] ?? '').toString()),
+      ].where((String item) => item.isNotEmpty).toList();
+
+      for (final String candidate in candidates) {
+        if (_containsExactMention(normalizedText, candidate)) {
+          matches[identity] = user;
+          break;
+        }
+      }
+    }
+
+    return matches.values.toList();
+  }
+
   Map<String, dynamic> _collectMentionTargets(String text) {
     final List<String> tokens = _extractMentions(text);
+    final Map<String, Map<String, dynamic>> resolvedByIdentity =
+        <String, Map<String, dynamic>>{};
+    for (final Map<String, dynamic> user in _extractExactMentionMatches(text)) {
+      final String identity = _mentionIdentity(user);
+      if (identity.isNotEmpty) {
+        resolvedByIdentity[identity] = user;
+      }
+    }
+
     if (tokens.isEmpty) {
       return <String, dynamic>{
         'tokens': <String>[],
-        'resolved': <Map<String, dynamic>>[],
+        'resolved': resolvedByIdentity.values.toList(),
         'unresolved': <String>[],
       };
     }
-    final List<Map<String, dynamic>> resolved = <Map<String, dynamic>>[];
     final List<String> unresolved = <String>[];
     for (final String token in tokens) {
       final String key = _normalizeToken(token);
       if (key.isEmpty) continue;
       final Map<String, dynamic>? match = _matchMentionToken(key);
       if (match != null) {
-        resolved.add({
-          'id': match['id'],
-          'name': match['name'],
-          'email': match['email'],
-        });
+        final String identity = _mentionIdentity(match);
+        if (identity.isNotEmpty) {
+          resolvedByIdentity[identity] = <String, dynamic>{
+            'id': match['id'],
+            'name': match['name'],
+            'email': match['email'],
+          };
+        }
       } else {
-        unresolved.add(token);
+        final bool coveredByExactMatch = resolvedByIdentity.values.any(
+          (Map<String, dynamic> user) {
+            final String nameKey =
+                _normalizeToken((user['name'] ?? '').toString());
+            final String emailKey =
+                _normalizeToken((user['email'] ?? '').toString());
+            return (nameKey.isNotEmpty && nameKey.startsWith(key)) ||
+                (emailKey.isNotEmpty && emailKey.startsWith(key));
+          },
+        );
+        if (!coveredByExactMatch) {
+          unresolved.add(token);
+        }
       }
     }
     return <String, dynamic>{
       'tokens': tokens,
-      'resolved': resolved,
+      'resolved': resolvedByIdentity.values.toList(),
       'unresolved': unresolved,
     };
   }
@@ -570,12 +757,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   void _onMessageChanged(String value) {
-    final RegExpMatch? match = RegExp(r'@([^\s@]*)$').firstMatch(value);
-    if (match != null) {
+    final int anchor = value.lastIndexOf('@');
+    if (anchor >= 0) {
+      final String query = value.substring(anchor + 1);
+      final Map<String, dynamic>? completedUser = _matchCompletedMention(query);
       setState(() {
-        mentionQuery = match.group(1) ?? '';
+        if (completedUser != null) {
+          _registerTaggedUser(completedUser);
+          mentionOpen = false;
+          mentionQuery = '';
+          mentionAnchor = -1;
+          return;
+        }
+        mentionQuery = query;
         mentionOpen = true;
-        mentionAnchor = value.lastIndexOf('@');
+        mentionAnchor = anchor;
       });
     } else if (mentionOpen) {
       setState(() {
@@ -589,11 +785,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void _pickMention(Map<String, dynamic> user) {
     if (mentionAnchor < 0) return;
     final String name = (user['name'] ?? 'Người dùng').toString();
-    final String email = (user['email'] ?? '').toString();
     final String text = messageCtrl.text;
     final String before = text.substring(0, mentionAnchor);
     final String after = text.substring(mentionAnchor);
-    final String replaced = after.replaceFirst(RegExp(r'@([^\s@]*)'), '@$name ');
+    final String replaced =
+        after.replaceFirst(RegExp(r'^@([^\n@]*)'), '@$name ');
     final String next = '$before$replaced';
     messageCtrl.text = next;
     messageCtrl.selection = TextSelection.collapsed(offset: next.length);
@@ -601,14 +797,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       mentionOpen = false;
       mentionQuery = '';
       mentionAnchor = -1;
-      if (!taggedUsers.any((Map<String, dynamic> u) => u['id'] == user['id'])) {
-        taggedUsers.add({
-          'id': user['id'],
-          'name': name,
-          'email': email,
-          'avatar_url': user['avatar_url'],
-        });
-      }
+      _registerTaggedUser(user);
     });
   }
 
@@ -646,6 +835,94 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return AppEnv.resolveMediaUrl(value?.toString());
   }
 
+  String _resolveExternalUrl(String value) {
+    return AppEnv.resolveMediaUrl(value);
+  }
+
+  String _attachmentLabel(
+    String rawValue, {
+    String? fallback,
+  }) {
+    final String preferred = (fallback ?? '').trim();
+    if (preferred.isNotEmpty) {
+      return preferred;
+    }
+
+    final String resolved = _resolveExternalUrl(rawValue);
+    final Uri? uri = Uri.tryParse(resolved);
+    if (uri != null && uri.pathSegments.isNotEmpty) {
+      final String name = uri.pathSegments.last;
+      if (name.isNotEmpty) {
+        return Uri.decodeComponent(name);
+      }
+    }
+
+    return rawValue;
+  }
+
+  Future<void> _openExternal(String rawValue) async {
+    final String resolved = _resolveExternalUrl(rawValue);
+    final Uri? uri = Uri.tryParse(resolved);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Liên kết không hợp lệ.')));
+      return;
+    }
+
+    final bool opened = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không mở được liên kết hoặc tệp đính kèm.')),
+      );
+    }
+  }
+
+  List<InlineSpan> _buildLinkifiedSpans(
+    String text, {
+    TextStyle? style,
+  }) {
+    final List<InlineSpan> spans = <InlineSpan>[];
+    final RegExp linkReg = RegExp(r'https?:\/\/[^\s]+', caseSensitive: false);
+    int currentIndex = 0;
+
+    for (final RegExpMatch match in linkReg.allMatches(text)) {
+      final int start = match.start;
+      final int end = match.end;
+      if (start > currentIndex) {
+        spans.add(TextSpan(text: text.substring(currentIndex, start), style: style));
+      }
+      final String rawUrl = text.substring(start, end);
+      spans.add(
+        TextSpan(
+          text: rawUrl,
+          style: (style ?? const TextStyle()).copyWith(
+            color: StitchTheme.primary,
+            decoration: TextDecoration.underline,
+            fontWeight: FontWeight.w600,
+          ),
+          recognizer:
+              TapGestureRecognizer()..onTap = () => _openExternal(rawUrl),
+        ),
+      );
+      currentIndex = end;
+    }
+
+    if (currentIndex < text.length) {
+      spans.add(TextSpan(text: text.substring(currentIndex), style: style));
+    }
+
+    if (spans.isEmpty) {
+      spans.add(TextSpan(text: text, style: style));
+    }
+
+    return spans;
+  }
+
   Widget _buildAvatar(
     Map<String, dynamic>? user,
     String fallbackName, {
@@ -669,19 +946,66 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-  List<TextSpan> _buildMentionSpans(String text) {
-    final RegExp mentionReg = RegExp(r'@([^\s@]+)');
-    final List<TextSpan> spans = <TextSpan>[];
+  List<InlineSpan> _buildMentionSpans(
+    String text,
+    List<Map<String, dynamic>> taggedUsers,
+  ) {
+    final List<String> mentionPatterns = taggedUsers
+        .expand((Map<String, dynamic> user) => <String>[
+              if ((user['name'] ?? '').toString().trim().isNotEmpty)
+                '@${(user['name'] ?? '').toString().trim()}',
+              if ((user['email'] ?? '').toString().trim().isNotEmpty)
+                '@${(user['email'] ?? '').toString().trim()}',
+            ])
+        .toSet()
+        .toList()
+      ..sort((String a, String b) => b.length.compareTo(a.length));
+
+    if (mentionPatterns.isEmpty) {
+      return _buildLinkifiedSpans(text);
+    }
+
+    final List<_MentionRange> ranges = <_MentionRange>[];
+    int cursor = 0;
+    while (cursor < text.length) {
+      String? matchedPattern;
+      for (final String pattern in mentionPatterns) {
+        final int end = cursor + pattern.length;
+        if (end > text.length) {
+          continue;
+        }
+        final String slice = text.substring(cursor, end);
+        if (slice.toLowerCase() != pattern.toLowerCase()) {
+          continue;
+        }
+        final String next = end < text.length ? text.substring(end, end + 1) : '';
+        if (next.isEmpty || RegExp(r'[\s\.,!?:;\)\]\}]').hasMatch(next)) {
+          matchedPattern = pattern;
+          break;
+        }
+      }
+
+      if (matchedPattern != null) {
+        ranges.add(_MentionRange(cursor, cursor + matchedPattern.length));
+        cursor += matchedPattern.length;
+      } else {
+        cursor += 1;
+      }
+    }
+
+    if (ranges.isEmpty) {
+      return _buildLinkifiedSpans(text);
+    }
+
+    final List<InlineSpan> spans = <InlineSpan>[];
     int currentIndex = 0;
-    for (final RegExpMatch match in mentionReg.allMatches(text)) {
-      final int start = match.start;
-      final int end = match.end;
-      if (start > currentIndex) {
-        spans.add(TextSpan(text: text.substring(currentIndex, start)));
+    for (final _MentionRange range in ranges) {
+      if (range.start > currentIndex) {
+        spans.addAll(_buildLinkifiedSpans(text.substring(currentIndex, range.start)));
       }
       spans.add(
         TextSpan(
-          text: text.substring(start, end),
+          text: text.substring(range.start, range.end),
           style: TextStyle(
             color: StitchTheme.successStrong,
             fontWeight: FontWeight.w700,
@@ -689,10 +1013,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
         ),
       );
-      currentIndex = end;
+      currentIndex = range.end;
     }
     if (currentIndex < text.length) {
-      spans.add(TextSpan(text: text.substring(currentIndex)));
+      spans.addAll(_buildLinkifiedSpans(text.substring(currentIndex)));
     }
     return spans;
   }
@@ -710,8 +1034,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ? 'Tin nhắn đã bị thu hồi.'
         : (c['content'] ?? '').toString();
     final String attachment = (c['attachment_path'] ?? '').toString();
+    final String attachmentName = _attachmentLabel(
+      attachment,
+      fallback: (c['attachment_name'] ?? '').toString(),
+    );
     final dynamic tagUsers = c['tagged_users'];
     final dynamic rawTags = c['tagged_user_ids'];
+    final List<Map<String, dynamic>> taggedUserList = tagUsers is List
+        ? tagUsers
+            .whereType<Map>()
+            .map((Map item) => Map<String, dynamic>.from(item))
+            .toList()
+        : <Map<String, dynamic>>[];
     String tagLabel = '';
     if (tagUsers is List) {
       tagLabel = tagUsers
@@ -773,17 +1107,47 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         color: StitchTheme.textMain,
                         height: 1.4,
                       ),
-                      children: _buildMentionSpans(content),
+                      children: _buildMentionSpans(content, taggedUserList),
                     ),
                     softWrap: true,
                   ),
             if (!isRecalled && attachment.isNotEmpty) ...<Widget>[
               const SizedBox(height: 6),
-              Text(
-                'File: $attachment',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: StitchTheme.textMuted,
+              InkWell(
+                onTap: () => _openExternal(attachment),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: StitchTheme.border),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(
+                        Icons.attach_file,
+                        size: 16,
+                        color: StitchTheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          attachmentName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: StitchTheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

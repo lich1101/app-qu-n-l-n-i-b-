@@ -4,7 +4,7 @@ class AppEnv {
   static String get appName =>
       dotenv.env['APP_NAME']?.trim().isNotEmpty == true
           ? dotenv.env['APP_NAME']!
-          : 'Quản lý công việc nội bộ';
+          : 'Job ClickOn';
 
   static String get apiBaseUrl =>
       dotenv.env['API_BASE_URL'] ?? 'http://127.0.0.1:8000/api/v1';

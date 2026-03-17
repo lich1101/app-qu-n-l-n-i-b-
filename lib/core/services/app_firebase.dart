@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -51,9 +52,8 @@ class AppFirebase {
   }
 
   static Future<void> _initializeFirebase() async {
-    final String appId = Platform.isIOS
-        ? AppEnv.firebaseAppIdIos
-        : AppEnv.firebaseAppIdAndroid;
+    final String appId =
+        Platform.isIOS ? AppEnv.firebaseAppIdIos : AppEnv.firebaseAppIdAndroid;
     if (appId.isEmpty) return;
 
     final bool hasDefaultApp = Firebase.apps.any(
@@ -106,16 +106,26 @@ class AppFirebase {
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
 
-    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-      alert: false,
-      badge: true,
-      sound: true,
-    );
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+          alert: false,
+          badge: true,
+          sound: true,
+        );
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      if (kDebugMode) {
+        debugPrint(
+          '[Push][Foreground] id=${message.messageId ?? '-'} '
+          'title=${message.notification?.title ?? message.data['title'] ?? '-'} '
+          'body=${message.notification?.body ?? message.data['body'] ?? '-'} '
+          'data=${_compactData(message.data)}',
+        );
+      }
       if (_isDuplicateForegroundMessage(message)) {
         return;
       }
@@ -132,18 +142,20 @@ class AppFirebase {
   ) async {
     final RemoteNotification? notification = message.notification;
     final String title =
-        notification?.title ?? (message.data['title'] ?? 'Thông báo').toString();
+        notification?.title ??
+        (message.data['title'] ?? 'Thông báo').toString();
     final String body =
         notification?.body ?? (message.data['body'] ?? '').toString();
     if (title.trim().isEmpty && body.trim().isEmpty) return;
 
-    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      channel.id,
-      channel.name,
-      channelDescription: channel.description,
-      importance: Importance.max,
-      priority: Priority.high,
-    );
+    final AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+          channel.id,
+          channel.name,
+          channelDescription: channel.description,
+          importance: Importance.max,
+          priority: Priority.high,
+        );
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
 
     await _localNotifications.show(
@@ -173,8 +185,10 @@ class AppFirebase {
     final String taskId = (message.data['task_id'] ?? '').toString();
     final String itemId = (message.data['task_item_id'] ?? '').toString();
     final String commentId = (message.data['comment_id'] ?? '').toString();
-    final String title = (notification?.title ?? message.data['title'] ?? '').toString();
-    final String body = (notification?.body ?? message.data['body'] ?? '').toString();
+    final String title =
+        (notification?.title ?? message.data['title'] ?? '').toString();
+    final String body =
+        (notification?.body ?? message.data['body'] ?? '').toString();
     return [
       message.messageId ?? '',
       type,
@@ -184,6 +198,16 @@ class AppFirebase {
       title,
       body,
     ].join('|');
+  }
+
+  static String _compactData(Map<String, dynamic> data) {
+    if (data.isEmpty) return '{}';
+    final Map<String, dynamic> compact = <String, dynamic>{};
+    data.forEach((String key, dynamic value) {
+      final String text = value?.toString() ?? '';
+      compact[key] = text.length > 64 ? '${text.substring(0, 64)}...' : text;
+    });
+    return compact.toString();
   }
 
   static FirebaseDatabase? get database => _database;
@@ -209,7 +233,9 @@ class AppFirebase {
 
   static Query? taskChatQuery(int taskId, {int? limit}) {
     if (!_initialized || _database == null) return null;
-    Query query = _database!.ref('task_chats/$taskId/messages').orderByChild('created_at');
+    Query query = _database!
+        .ref('task_chats/$taskId/messages')
+        .orderByChild('created_at');
     if (limit != null && limit > 0) {
       query = query.limitToLast(limit);
     }
@@ -217,13 +243,21 @@ class AppFirebase {
   }
 
   static Future<String?> registerPushToken({
-    required void Function(String token) onToken,
+    required FutureOr<void> Function(String token, bool notificationsEnabled)
+    onToken,
   }) async {
     if (!isConfigured) return null;
     await ensureInitialized();
     final FirebaseMessaging messaging = FirebaseMessaging.instance;
+    bool notificationsEnabled = false;
     try {
-      await messaging.requestPermission();
+      final NotificationSettings settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      notificationsEnabled = _isAuthorizedStatus(settings.authorizationStatus);
     } catch (_) {
       // Ignore permission errors and continue to avoid blocking app startup.
     }
@@ -232,7 +266,16 @@ class AppFirebase {
       if (newToken.isNotEmpty) {
         _lastPushToken = newToken;
         _lastPushTokenAt = DateTime.now();
-        onToken(newToken);
+        if (kDebugMode) {
+          final String suffix =
+              newToken.length > 12
+                  ? newToken.substring(newToken.length - 12)
+                  : newToken;
+          debugPrint('[Push][TokenRefresh] suffix=$suffix');
+        }
+        notificationPermissionGranted().then(
+          (bool permission) => onToken(newToken, permission),
+        );
       }
     });
 
@@ -261,8 +304,46 @@ class AppFirebase {
     if (token != null && token.isNotEmpty) {
       _lastPushToken = token;
       _lastPushTokenAt = DateTime.now();
-      onToken(token);
+      if (kDebugMode) {
+        final String suffix =
+            token.length > 12 ? token.substring(token.length - 12) : token;
+        debugPrint(
+          '[Push][TokenInit] suffix=$suffix permission=$notificationsEnabled',
+        );
+      }
+      await onToken(token, notificationsEnabled);
     }
     return token;
+  }
+
+  static Future<AuthorizationStatus> notificationAuthorizationStatus() async {
+    if (!isConfigured) return AuthorizationStatus.notDetermined;
+    await ensureInitialized();
+    final NotificationSettings settings =
+        await FirebaseMessaging.instance.getNotificationSettings();
+    return settings.authorizationStatus;
+  }
+
+  static Future<bool> notificationPermissionGranted() async {
+    final AuthorizationStatus status = await notificationAuthorizationStatus();
+    return _isAuthorizedStatus(status);
+  }
+
+  static Future<bool> requestNotificationPermission() async {
+    if (!isConfigured) return false;
+    await ensureInitialized();
+    final NotificationSettings settings = await FirebaseMessaging.instance
+        .requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+          provisional: false,
+        );
+    return _isAuthorizedStatus(settings.authorizationStatus);
+  }
+
+  static bool _isAuthorizedStatus(AuthorizationStatus status) {
+    return status == AuthorizationStatus.authorized ||
+        status == AuthorizationStatus.provisional;
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -8,6 +9,13 @@ import 'core/services/app_firebase.dart';
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await dotenv.load(fileName: '.env');
   await AppFirebase.ensureInitialized();
+  if (kDebugMode) {
+    debugPrint(
+      '[Push][Background] id=${message.messageId ?? '-'} '
+      'title=${message.notification?.title ?? message.data['title'] ?? '-'} '
+      'body=${message.notification?.body ?? message.data['body'] ?? '-'}',
+    );
+  }
 }
 
 Future<void> main() async {
