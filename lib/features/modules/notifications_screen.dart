@@ -6,22 +6,30 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/services/app_firebase.dart';
 import '../../data/services/mobile_api_service.dart';
+import 'chat_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({
     super.key,
     required this.token,
     required this.apiService,
+    this.currentUserId,
   });
 
   final String token;
   final MobileApiService apiService;
+  final int? currentUserId;
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
+  static const Set<String> _chatNotificationTypes = <String>{
+    'task_chat_message',
+    'task_comment_tag',
+  };
+
   List<Map<String, dynamic>> notifications = <Map<String, dynamic>>[];
   bool loading = false;
   StreamSubscription<RemoteMessage>? _foregroundSub;
@@ -42,18 +50,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final Map<String, dynamic> data =
-        await widget.apiService.getNotifications(widget.token);
+    final Map<String, dynamic> data = await widget.apiService.getNotifications(
+      widget.token,
+    );
     if (!mounted) return;
     setState(() {
       loading = false;
-      notifications = ((data['notifications'] ?? <dynamic>[]) as List<dynamic>)
-          .map((dynamic e) => e as Map<String, dynamic>)
-          .toList();
+      notifications =
+          ((data['notifications'] ?? <dynamic>[]) as List<dynamic>)
+              .map((dynamic e) => e as Map<String, dynamic>)
+              .toList();
     });
   }
 
-  Future<void> _markRead(String sourceType, int sourceId) async {
+  Future<void> _markRead(
+    String sourceType,
+    int sourceId, {
+    bool refresh = true,
+  }) async {
     final bool ok = await widget.apiService.markNotificationRead(
       widget.token,
       sourceType: sourceType,
@@ -61,14 +75,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
     if (!mounted) return;
     if (!ok) return;
-    await _fetch();
-  }
-
-  Future<void> _markAllReadOnExit() async {
-    await widget.apiService.markAllNotificationsRead(
-      widget.token,
-      sourceType: 'in_app',
-    );
+    if (refresh) {
+      await _fetch();
+    }
   }
 
   Future<void> _clearRead() async {
@@ -79,13 +88,57 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     await _fetch();
   }
 
-  void _openNotificationDetail(Map<String, dynamic> item) {
+  int _extractTaskId(Map<String, dynamic> item) {
+    final int rootTaskId = ((item['task_id'] as num?) ?? 0).toInt();
+    if (rootTaskId > 0) {
+      return rootTaskId;
+    }
+    final dynamic rawData = item['data'];
+    if (rawData is Map<String, dynamic>) {
+      return ((rawData['task_id'] as num?) ?? 0).toInt();
+    }
+    if (rawData is Map) {
+      return ((rawData['task_id'] as num?) ?? 0).toInt();
+    }
+    return 0;
+  }
+
+  Future<void> _openNotificationDetail(Map<String, dynamic> item) async {
     final bool isRead = item['is_read'] == true;
-    if (!isRead) {
-      _markRead('in_app', (item['id'] ?? 0) as int);
+    final int sourceId = ((item['id'] as num?) ?? 0).toInt();
+    final String type = (item['type'] ?? 'general').toString();
+    final bool isChatNotification = _chatNotificationTypes.contains(type);
+    final int taskId = _extractTaskId(item);
+
+    if (!isRead && sourceId > 0) {
+      await _markRead('in_app', sourceId, refresh: false);
     }
 
-    showModalBottomSheet<void>(
+    if (isChatNotification && taskId > 0) {
+      final Map<String, dynamic>? task = await widget.apiService.getTaskDetail(
+        widget.token,
+        taskId,
+      );
+      if (!mounted) return;
+      if (task != null && task.isNotEmpty) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<Widget>(
+            builder:
+                (_) => ChatDetailScreen(
+                  token: widget.token,
+                  apiService: widget.apiService,
+                  task: task,
+                  currentUserId: widget.currentUserId,
+                ),
+          ),
+        );
+        await _fetch();
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       shape: const RoundedRectangleBorder(
@@ -105,7 +158,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             children: <Widget>[
               Text(
                 title,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -115,19 +171,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               const SizedBox(height: 12),
               Row(
                 children: <Widget>[
-                  const Icon(Icons.info_outline, size: 16, color: StitchTheme.textMuted),
+                  const Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: StitchTheme.textMuted,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'Loại: $type',
-                    style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: StitchTheme.textMuted,
+                    ),
                   ),
                   const SizedBox(width: 12),
-                  const Icon(Icons.schedule, size: 16, color: StitchTheme.textMuted),
+                  const Icon(
+                    Icons.schedule,
+                    size: 16,
+                    color: StitchTheme.textMuted,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       createdAt,
-                      style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: StitchTheme.textMuted,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -138,6 +208,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       },
     );
+
+    if (!isRead) {
+      await _fetch();
+    }
   }
 
   IconData _notificationIcon(String type) {
@@ -187,10 +261,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isRead ? Colors.white : StitchTheme.primary.withValues(alpha: 0.05),
+          color:
+              isRead
+                  ? Colors.white
+                  : StitchTheme.primary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isRead ? StitchTheme.border : StitchTheme.primary.withValues(alpha: 0.2),
+            color:
+                isRead
+                    ? StitchTheme.border
+                    : StitchTheme.primary.withValues(alpha: 0.2),
           ),
         ),
         child: Row(
@@ -202,7 +282,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 color: _notificationColor(type).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(_notificationIcon(type), color: _notificationColor(type)),
+              child: Icon(
+                _notificationIcon(type),
+                color: _notificationColor(type),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -217,7 +300,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     const SizedBox(height: 4),
                     Text(
                       body,
-                      style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: StitchTheme.textMuted,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -279,7 +365,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void dispose() {
     _foregroundSub?.cancel();
-    _markAllReadOnExit();
     super.dispose();
   }
 }

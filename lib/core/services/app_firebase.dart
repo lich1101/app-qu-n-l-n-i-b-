@@ -280,27 +280,19 @@ class AppFirebase {
     });
 
     if (Platform.isIOS) {
-      try {
-        final String? apnsToken = await messaging.getAPNSToken();
-        if (apnsToken == null || apnsToken.isEmpty) {
-          return null;
-        }
-      } catch (_) {
-        return null;
+      final String? apnsToken = await _waitForApnsToken(messaging);
+      if (kDebugMode) {
+        final String suffix =
+            (apnsToken != null && apnsToken.isNotEmpty)
+                ? (apnsToken.length > 12
+                    ? apnsToken.substring(apnsToken.length - 12)
+                    : apnsToken)
+                : 'missing';
+        debugPrint('[Push][APNS] token_suffix=$suffix');
       }
     }
 
-    String? token;
-    try {
-      token = await messaging.getToken();
-    } on FirebaseException catch (e) {
-      if (e.code == 'apns-token-not-set') {
-        return null;
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
+    final String? token = await _waitForFcmToken(messaging);
     if (token != null && token.isNotEmpty) {
       _lastPushToken = token;
       _lastPushTokenAt = DateTime.now();
@@ -314,6 +306,45 @@ class AppFirebase {
       await onToken(token, notificationsEnabled);
     }
     return token;
+  }
+
+  static Future<String?> _waitForApnsToken(FirebaseMessaging messaging) async {
+    if (!Platform.isIOS) return null;
+    for (int attempt = 0; attempt < 8; attempt++) {
+      try {
+        final String? token = await messaging.getAPNSToken();
+        if (token != null && token.isNotEmpty) {
+          return token;
+        }
+      } catch (_) {
+        // Retry because iOS may not expose APNs token immediately after launch.
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 750));
+    }
+    return null;
+  }
+
+  static Future<String?> _waitForFcmToken(FirebaseMessaging messaging) async {
+    for (int attempt = 0; attempt < 8; attempt++) {
+      try {
+        final String? token = await messaging.getToken();
+        if (token != null && token.isNotEmpty) {
+          return token;
+        }
+      } on FirebaseException catch (e) {
+        if (e.code != 'apns-token-not-set') {
+          if (kDebugMode) {
+            debugPrint('[Push][FCM] getToken error=${e.code}');
+          }
+          return null;
+        }
+      } catch (_) {
+        return null;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+    }
+    return null;
   }
 
   static Future<AuthorizationStatus> notificationAuthorizationStatus() async {

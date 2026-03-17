@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_env.dart';
 import '../../core/theme/stitch_theme.dart';
-import '../../core/widgets/stitch_widgets.dart';
 import '../../core/services/app_firebase.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -61,8 +60,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> data =
-        await widget.apiService.getTasks(widget.token, perPage: 40);
+    final List<Map<String, dynamic>> data = await widget.apiService.getTasks(
+      widget.token,
+      perPage: 40,
+    );
     if (!mounted) return;
     setState(() {
       loading = false;
@@ -72,16 +73,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> filtered = tasks.where((task) {
-      if (search.isEmpty) return true;
-      final String title = (task['title'] ?? '').toString().toLowerCase();
-      final String project =
-          ((task['project'] as Map<String, dynamic>?)?['name'] ?? '')
-              .toString()
-              .toLowerCase();
-      return title.contains(search.toLowerCase()) ||
-          project.contains(search.toLowerCase());
-    }).toList();
+    final List<Map<String, dynamic>> filtered =
+        tasks.where((task) {
+          if (search.isEmpty) return true;
+          final String title = (task['title'] ?? '').toString().toLowerCase();
+          final String project =
+              ((task['project'] as Map<String, dynamic>?)?['name'] ?? '')
+                  .toString()
+                  .toLowerCase();
+          return title.contains(search.toLowerCase()) ||
+              project.contains(search.toLowerCase());
+        }).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Chat nội bộ')),
@@ -90,15 +92,30 @@ class _ChatScreenState extends State<ChatScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: <Widget>[
-            const StitchHeroCard(
-              title: 'Trao đổi theo công việc',
-              subtitle: 'Gắn thẻ, lưu lịch sử trao đổi và đính kèm tệp.',
+            const Text(
+              'Đoạn chat',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Trao đổi theo công việc giống hộp thư Messenger.',
+              style: TextStyle(color: StitchTheme.textMuted, fontSize: 13),
             ),
             const SizedBox(height: 12),
             TextField(
-              decoration: const InputDecoration(
-                labelText: 'Tìm theo công việc hoặc dự án',
-                prefixIcon: Icon(Icons.search),
+              decoration: InputDecoration(
+                hintText: 'Tìm theo công việc hoặc dự án',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: const Color(0xFFF1F5F9),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
               ),
               onChanged: (String value) {
                 setState(() => search = value.trim());
@@ -116,78 +133,107 @@ class _ChatScreenState extends State<ChatScreen> {
                 style: TextStyle(color: StitchTheme.textMuted),
               ),
             ...filtered.map((Map<String, dynamic> task) {
-              final int comments = (task['comments_count'] ?? 0) is int
-                  ? task['comments_count'] as int
-                  : int.tryParse('${task['comments_count'] ?? 0}') ?? 0;
+              final int comments =
+                  (task['comments_count'] ?? 0) is int
+                      ? task['comments_count'] as int
+                      : int.tryParse('${task['comments_count'] ?? 0}') ?? 0;
               final String title = (task['title'] ?? 'Công việc').toString();
               final Map<String, dynamic>? projectMap = _asMap(task['project']);
               final String project =
                   (projectMap?['name'] ?? 'Dự án').toString();
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: StitchTheme.border),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: StitchTheme.primary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.forum, color: Colors.white),
+              final String initial =
+                  title.trim().isEmpty ? 'C' : title.trim()[0];
+              return InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<Widget>(
+                      builder:
+                          (_) => ChatDetailScreen(
+                            token: widget.token,
+                            apiService: widget.apiService,
+                            task: task,
+                            currentUserId: widget.currentUserId,
+                          ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 4),
-                          Text(
-                            project,
+                  );
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: StitchTheme.border),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: const Color(0xFFE0E7FF),
+                        child: Text(
+                          initial.toUpperCase(),
+                          style: const TextStyle(
+                            color: Color(0xFF4338CA),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              project,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: StitchTheme.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (comments > 0)
+                        Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 20,
+                            minHeight: 20,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: StitchTheme.danger,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            comments > 99 ? '99+' : '$comments',
                             style: const TextStyle(
-                              fontSize: 12,
-                              color: StitchTheme.textMuted,
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ],
+                        ),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        size: 14,
+                        color: StitchTheme.textMuted,
                       ),
-                    ),
-                    Column(
-                      children: <Widget>[
-                        Text(
-                          comments.toString(),
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const Text(
-                          'Tin nhắn',
-                          style: TextStyle(fontSize: 10, color: StitchTheme.textMuted),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<Widget>(
-                            builder: (_) => ChatDetailScreen(
-                              token: widget.token,
-                              apiService: widget.apiService,
-                              task: task,
-                              currentUserId: widget.currentUserId,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             }),
@@ -340,7 +386,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (email.isNotEmpty) {
       return 'email:$email';
     }
-    final String name = _normalizeMentionPhrase((user['name'] ?? '').toString());
+    final String name = _normalizeMentionPhrase(
+      (user['name'] ?? '').toString(),
+    );
     return name.isEmpty ? '' : 'name:$name';
   }
 
@@ -418,7 +466,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (!phrase.startsWith(candidate) || phrase.length <= candidate.length) {
       return false;
     }
-    final String next = phrase.substring(candidate.length, candidate.length + 1);
+    final String next = phrase.substring(
+      candidate.length,
+      candidate.length + 1,
+    );
     return RegExp(r'[\s\.,!?:;\)\]\}]').hasMatch(next);
   }
 
@@ -432,10 +483,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     int bestLength = -1;
 
     for (final Map<String, dynamic> user in _mentionCandidates()) {
-      final List<String> candidates = <String>[
-        _normalizeMentionPhrase((user['name'] ?? '').toString()),
-        _normalizeMentionPhrase((user['email'] ?? '').toString()),
-      ].where((String item) => item.isNotEmpty).toList();
+      final List<String> candidates =
+          <String>[
+            _normalizeMentionPhrase((user['name'] ?? '').toString()),
+            _normalizeMentionPhrase((user['email'] ?? '').toString()),
+          ].where((String item) => item.isNotEmpty).toList();
 
       for (final String candidate in candidates) {
         if (_startsWithMentionBoundary(phrase, candidate) &&
@@ -449,10 +501,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return bestMatch;
   }
 
-  bool _containsExactMention(
-    String normalizedText,
-    String candidate,
-  ) {
+  bool _containsExactMention(String normalizedText, String candidate) {
     if (candidate.isEmpty) {
       return false;
     }
@@ -490,10 +539,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         continue;
       }
 
-      final List<String> candidates = <String>[
-        _normalizeMentionPhrase((user['name'] ?? '').toString()),
-        _normalizeMentionPhrase((user['email'] ?? '').toString()),
-      ].where((String item) => item.isNotEmpty).toList();
+      final List<String> candidates =
+          <String>[
+            _normalizeMentionPhrase((user['name'] ?? '').toString()),
+            _normalizeMentionPhrase((user['email'] ?? '').toString()),
+          ].where((String item) => item.isNotEmpty).toList();
 
       for (final String candidate in candidates) {
         if (_containsExactMention(normalizedText, candidate)) {
@@ -539,16 +589,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           };
         }
       } else {
-        final bool coveredByExactMatch = resolvedByIdentity.values.any(
-          (Map<String, dynamic> user) {
-            final String nameKey =
-                _normalizeToken((user['name'] ?? '').toString());
-            final String emailKey =
-                _normalizeToken((user['email'] ?? '').toString());
-            return (nameKey.isNotEmpty && nameKey.startsWith(key)) ||
-                (emailKey.isNotEmpty && emailKey.startsWith(key));
-          },
-        );
+        final bool coveredByExactMatch = resolvedByIdentity.values.any((
+          Map<String, dynamic> user,
+        ) {
+          final String nameKey = _normalizeToken(
+            (user['name'] ?? '').toString(),
+          );
+          final String emailKey = _normalizeToken(
+            (user['email'] ?? '').toString(),
+          );
+          return (nameKey.isNotEmpty && nameKey.startsWith(key)) ||
+              (emailKey.isNotEmpty && emailKey.startsWith(key));
+        });
         if (!coveredByExactMatch) {
           unresolved.add(token);
         }
@@ -605,13 +657,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (loadingMore || !_hasMore) return;
       setState(() => loadingMore = true);
     }
-    final PaginatedResult<Map<String, dynamic>> result =
-        await widget.apiService.getTaskCommentsPage(
-      widget.token,
-      taskId,
-      page: _page,
-      perPage: _pageSize,
-    );
+    final PaginatedResult<Map<String, dynamic>> result = await widget.apiService
+        .getTaskCommentsPage(
+          widget.token,
+          taskId,
+          page: _page,
+          perPage: _pageSize,
+        );
     if (!mounted) return;
     final List<Map<String, dynamic>> rows = result.data;
     final List<Map<String, dynamic>> ordered = rows.reversed.toList();
@@ -632,15 +684,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _scrollToBottom();
     } else {
       final double beforeMax =
-          _scrollController.hasClients ? _scrollController.position.maxScrollExtent : 0;
+          _scrollController.hasClients
+              ? _scrollController.position.maxScrollExtent
+              : 0;
       final double beforeOffset =
           _scrollController.hasClients ? _scrollController.position.pixels : 0;
-      final List<Map<String, dynamic>> older = ordered
-          .where((Map<String, dynamic> c) {
+      final List<Map<String, dynamic>> older =
+          ordered.where((Map<String, dynamic> c) {
             final String id = c['id']?.toString() ?? '';
             return id.isEmpty || !_messageKeys.contains(id);
-          })
-          .toList();
+          }).toList();
       for (final Map<String, dynamic> c in older) {
         final String id = c['id']?.toString() ?? '';
         if (id.isNotEmpty) _messageKeys.add(id);
@@ -663,8 +716,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _fetchParticipants() async {
     final int taskId = _asInt(widget.task['id']);
     if (taskId <= 0) return;
-    final List<Map<String, dynamic>> data =
-        await widget.apiService.getChatParticipants(widget.token, taskId);
+    final List<Map<String, dynamic>> data = await widget.apiService
+        .getChatParticipants(widget.token, taskId);
     if (!mounted) return;
     setState(() {
       participants = data;
@@ -695,10 +748,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
   }
 
-  Map<String, dynamic>? _normalizeRealtimeMessage(
-    dynamic value,
-    String? key,
-  ) {
+  Map<String, dynamic>? _normalizeRealtimeMessage(dynamic value, String? key) {
     if (value is! Map) return null;
     final Map<String, dynamic> data = Map<String, dynamic>.from(value);
     if (key != null && key.isNotEmpty && data['id'] == null) {
@@ -714,7 +764,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     setState(() {
       comments = <Map<String, dynamic>>[...comments, messageData];
     });
-    final bool isMine = widget.currentUserId != null &&
+    final bool isMine =
+        widget.currentUserId != null &&
         _asInt(messageData['user_id']) == widget.currentUserId;
     if (_isNearBottom() || isMine) {
       _scrollToBottom();
@@ -725,10 +776,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final String id = messageData['id']?.toString() ?? '';
     if (id.isEmpty) return;
     setState(() {
-      comments = comments
-          .map((Map<String, dynamic> c) =>
-              c['id']?.toString() == id ? {...c, ...messageData} : c)
-          .toList();
+      comments =
+          comments
+              .map(
+                (Map<String, dynamic> c) =>
+                    c['id']?.toString() == id ? {...c, ...messageData} : c,
+              )
+              .toList();
     });
   }
 
@@ -743,14 +797,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _chatAddSub?.cancel();
     _chatChangeSub?.cancel();
     _chatAddSub = query.onChildAdded.listen((DatabaseEvent event) {
-      final Map<String, dynamic>? data =
-          _normalizeRealtimeMessage(event.snapshot.value, event.snapshot.key);
+      final Map<String, dynamic>? data = _normalizeRealtimeMessage(
+        event.snapshot.value,
+        event.snapshot.key,
+      );
       if (data == null) return;
       _appendMessage(data);
     });
     _chatChangeSub = query.onChildChanged.listen((DatabaseEvent event) {
-      final Map<String, dynamic>? data =
-          _normalizeRealtimeMessage(event.snapshot.value, event.snapshot.key);
+      final Map<String, dynamic>? data = _normalizeRealtimeMessage(
+        event.snapshot.value,
+        event.snapshot.key,
+      );
       if (data == null) return;
       _updateMessage(data);
     });
@@ -788,8 +846,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final String text = messageCtrl.text;
     final String before = text.substring(0, mentionAnchor);
     final String after = text.substring(mentionAnchor);
-    final String replaced =
-        after.replaceFirst(RegExp(r'^@([^\n@]*)'), '@$name ');
+    final String replaced = after.replaceFirst(
+      RegExp(r'^@([^\n@]*)'),
+      '@$name ',
+    );
     final String next = '$before$replaced';
     messageCtrl.text = next;
     messageCtrl.selection = TextSelection.collapsed(offset: next.length);
@@ -839,10 +899,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return AppEnv.resolveMediaUrl(value);
   }
 
-  String _attachmentLabel(
-    String rawValue, {
-    String? fallback,
-  }) {
+  String _attachmentLabel(String rawValue, {String? fallback}) {
     final String preferred = (fallback ?? '').trim();
     if (preferred.isNotEmpty) {
       return preferred;
@@ -877,15 +934,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
     if (!opened && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không mở được liên kết hoặc tệp đính kèm.')),
+        const SnackBar(
+          content: Text('Không mở được liên kết hoặc tệp đính kèm.'),
+        ),
       );
     }
   }
 
-  List<InlineSpan> _buildLinkifiedSpans(
-    String text, {
-    TextStyle? style,
-  }) {
+  List<InlineSpan> _buildLinkifiedSpans(String text, {TextStyle? style}) {
     final List<InlineSpan> spans = <InlineSpan>[];
     final RegExp linkReg = RegExp(r'https?:\/\/[^\s]+', caseSensitive: false);
     int currentIndex = 0;
@@ -894,7 +950,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final int start = match.start;
       final int end = match.end;
       if (start > currentIndex) {
-        spans.add(TextSpan(text: text.substring(currentIndex, start), style: style));
+        spans.add(
+          TextSpan(text: text.substring(currentIndex, start), style: style),
+        );
       }
       final String rawUrl = text.substring(start, end);
       spans.add(
@@ -933,16 +991,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       radius: radius,
       backgroundColor: StitchTheme.primary,
       backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-      child: avatarUrl.isEmpty
-          ? Text(
-              _initials(fallbackName),
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: radius * 0.66,
-              ),
-            )
-          : null,
+      child:
+          avatarUrl.isEmpty
+              ? Text(
+                _initials(fallbackName),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: radius * 0.66,
+                ),
+              )
+              : null,
     );
   }
 
@@ -950,16 +1009,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     String text,
     List<Map<String, dynamic>> taggedUsers,
   ) {
-    final List<String> mentionPatterns = taggedUsers
-        .expand((Map<String, dynamic> user) => <String>[
-              if ((user['name'] ?? '').toString().trim().isNotEmpty)
-                '@${(user['name'] ?? '').toString().trim()}',
-              if ((user['email'] ?? '').toString().trim().isNotEmpty)
-                '@${(user['email'] ?? '').toString().trim()}',
-            ])
-        .toSet()
-        .toList()
-      ..sort((String a, String b) => b.length.compareTo(a.length));
+    final List<String> mentionPatterns =
+        taggedUsers
+            .expand(
+              (Map<String, dynamic> user) => <String>[
+                if ((user['name'] ?? '').toString().trim().isNotEmpty)
+                  '@${(user['name'] ?? '').toString().trim()}',
+                if ((user['email'] ?? '').toString().trim().isNotEmpty)
+                  '@${(user['email'] ?? '').toString().trim()}',
+              ],
+            )
+            .toSet()
+            .toList()
+          ..sort((String a, String b) => b.length.compareTo(a.length));
 
     if (mentionPatterns.isEmpty) {
       return _buildLinkifiedSpans(text);
@@ -978,7 +1040,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         if (slice.toLowerCase() != pattern.toLowerCase()) {
           continue;
         }
-        final String next = end < text.length ? text.substring(end, end + 1) : '';
+        final String next =
+            end < text.length ? text.substring(end, end + 1) : '';
         if (next.isEmpty || RegExp(r'[\s\.,!?:;\)\]\}]').hasMatch(next)) {
           matchedPattern = pattern;
           break;
@@ -1001,7 +1064,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     int currentIndex = 0;
     for (final _MentionRange range in ranges) {
       if (range.start > currentIndex) {
-        spans.addAll(_buildLinkifiedSpans(text.substring(currentIndex, range.start)));
+        spans.addAll(
+          _buildLinkifiedSpans(text.substring(currentIndex, range.start)),
+        );
       }
       spans.add(
         TextSpan(
@@ -1030,9 +1095,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final bool isMine =
         widget.currentUserId != null && userId == widget.currentUserId;
     final bool isRecalled = c['is_recalled'] == true;
-    final String content = isRecalled
-        ? 'Tin nhắn đã bị thu hồi.'
-        : (c['content'] ?? '').toString();
+    final String content =
+        isRecalled
+            ? 'Tin nhắn đã bị thu hồi.'
+            : (c['content'] ?? '').toString();
     final String attachment = (c['attachment_path'] ?? '').toString();
     final String attachmentName = _attachmentLabel(
       attachment,
@@ -1040,12 +1106,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
     final dynamic tagUsers = c['tagged_users'];
     final dynamic rawTags = c['tagged_user_ids'];
-    final List<Map<String, dynamic>> taggedUserList = tagUsers is List
-        ? tagUsers
-            .whereType<Map>()
-            .map((Map item) => Map<String, dynamic>.from(item))
-            .toList()
-        : <Map<String, dynamic>>[];
+    final List<Map<String, dynamic>> taggedUserList =
+        tagUsers is List
+            ? tagUsers
+                .whereType<Map>()
+                .map((Map item) => Map<String, dynamic>.from(item))
+                .toList()
+            : <Map<String, dynamic>>[];
     String tagLabel = '';
     if (tagUsers is List) {
       tagLabel = tagUsers
@@ -1058,12 +1125,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       tagLabel = rawTags.toString();
     }
 
-    final Color bubbleColor = isMine
-        ? StitchTheme.primarySoft
-        : (isRecalled ? StitchTheme.surfaceAlt : Colors.white);
-    final Color borderColor = isMine
-        ? StitchTheme.primary.withValues(alpha: 0.25)
-        : StitchTheme.border;
+    final Color bubbleColor =
+        isMine
+            ? StitchTheme.primarySoft
+            : (isRecalled ? StitchTheme.surfaceAlt : Colors.white);
+    final Color borderColor =
+        isMine
+            ? StitchTheme.primary.withValues(alpha: 0.25)
+            : StitchTheme.border;
     final BorderRadius borderRadius = BorderRadius.only(
       topLeft: const Radius.circular(16),
       topRight: const Radius.circular(16),
@@ -1088,29 +1157,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           crossAxisAlignment:
               isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              name,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
+            Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             isRecalled
                 ? const Text(
-                    'Tin nhắn đã bị thu hồi.',
-                    style: TextStyle(
-                      color: StitchTheme.textMuted,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  )
-                : RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        color: StitchTheme.textMain,
-                        height: 1.4,
-                      ),
-                      children: _buildMentionSpans(content, taggedUserList),
-                    ),
-                    softWrap: true,
+                  'Tin nhắn đã bị thu hồi.',
+                  style: TextStyle(
+                    color: StitchTheme.textMuted,
+                    fontStyle: FontStyle.italic,
                   ),
+                )
+                : RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      color: StitchTheme.textMain,
+                      height: 1.4,
+                    ),
+                    children: _buildMentionSpans(content, taggedUserList),
+                  ),
+                  softWrap: true,
+                ),
             if (!isRecalled && attachment.isNotEmpty) ...<Widget>[
               const SizedBox(height: 6),
               InkWell(
@@ -1183,10 +1249,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
 
     if (isMine) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: contentBody,
-      );
+      return Align(alignment: Alignment.centerRight, child: contentBody);
     }
 
     return Align(
@@ -1208,9 +1271,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final bool isRecalled = c['is_recalled'] == true;
     if (isTaskClosed || isRecalled) {
       setState(() {
-        message = isTaskClosed
-            ? 'Công việc đã hoàn thành, không thể chỉnh sửa.'
-            : 'Tin nhắn đã bị thu hồi, không thể chỉnh sửa.';
+        message =
+            isTaskClosed
+                ? 'Công việc đã hoàn thành, không thể chỉnh sửa.'
+                : 'Tin nhắn đã bị thu hồi, không thể chỉnh sửa.';
       });
       return;
     }
@@ -1264,7 +1328,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (taskId <= 0) return;
     final int id = _asInt(c['id']);
     if (id <= 0) return;
-    final bool confirmed = await showDialog<bool>(
+    final bool confirmed =
+        await showDialog<bool>(
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
@@ -1328,11 +1393,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               const SizedBox(height: 8),
               Row(
                 children: <Widget>[
-                  const Icon(Icons.schedule, size: 16, color: StitchTheme.textMuted),
+                  const Icon(
+                    Icons.schedule,
+                    size: 16,
+                    color: StitchTheme.textMuted,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     time.isEmpty ? 'Không xác định' : time,
-                    style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: StitchTheme.textMuted,
+                    ),
                   ),
                 ],
               ),
@@ -1378,12 +1450,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final String content = messageCtrl.text.trim();
     if (content.isEmpty) return;
     final Map<String, dynamic> mentionMeta = _collectMentionTargets(content);
-    final List<String> mentionTokens =
-        (mentionMeta['tokens'] as List<String>);
+    final List<String> mentionTokens = (mentionMeta['tokens'] as List<String>);
     final List<Map<String, dynamic>> resolved =
         (mentionMeta['resolved'] as List<Map<String, dynamic>>);
-    final List<String> unresolved =
-        (mentionMeta['unresolved'] as List<String>);
+    final List<String> unresolved = (mentionMeta['unresolved'] as List<String>);
     if (mentionTokens.isNotEmpty && unresolved.isNotEmpty) {
       setState(() {
         message = 'Vui lòng chọn người cần tag từ danh sách gợi ý.';
@@ -1401,31 +1471,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (email.isNotEmpty) tagEmails.add(email);
     }
     final String attachment = attachmentCtrl.text.trim();
-    final bool ok = editingId == null
-        ? await widget.apiService.createTaskComment(
-            widget.token,
-            taskId,
-            content: content,
-            taggedUserIds: tagIds.isEmpty ? null : tagIds.toList(),
-            taggedUserEmails: tagEmails.isEmpty ? null : tagEmails.toList(),
-            attachmentPath: attachment.isEmpty ? null : attachment,
-          )
-        : await widget.apiService.updateTaskComment(
-            widget.token,
-            taskId,
-            editingId!,
-            content: content,
-            taggedUserIds: tagIds.isEmpty ? null : tagIds.toList(),
-            taggedUserEmails: tagEmails.isEmpty ? null : tagEmails.toList(),
-            attachmentPath: attachment.isEmpty ? null : attachment,
-          );
+    final bool ok =
+        editingId == null
+            ? await widget.apiService.createTaskComment(
+              widget.token,
+              taskId,
+              content: content,
+              taggedUserIds: tagIds.isEmpty ? null : tagIds.toList(),
+              taggedUserEmails: tagEmails.isEmpty ? null : tagEmails.toList(),
+              attachmentPath: attachment.isEmpty ? null : attachment,
+            )
+            : await widget.apiService.updateTaskComment(
+              widget.token,
+              taskId,
+              editingId!,
+              content: content,
+              taggedUserIds: tagIds.isEmpty ? null : tagIds.toList(),
+              taggedUserEmails: tagEmails.isEmpty ? null : tagEmails.toList(),
+              attachmentPath: attachment.isEmpty ? null : attachment,
+            );
     if (!mounted) return;
     setState(() {
-      message = ok
-          ? (editingId == null ? 'Đã gửi tin nhắn.' : 'Đã cập nhật tin nhắn.')
-          : (editingId == null
-              ? 'Gửi tin nhắn thất bại.'
-              : 'Cập nhật tin nhắn thất bại.');
+      message =
+          ok
+              ? (editingId == null
+                  ? 'Đã gửi tin nhắn.'
+                  : 'Đã cập nhật tin nhắn.')
+              : (editingId == null
+                  ? 'Gửi tin nhắn thất bại.'
+                  : 'Cập nhật tin nhắn thất bại.');
       sending = false;
     });
     if (ok) {
@@ -1472,7 +1546,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 child: ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  itemCount: comments.length +
+                  itemCount:
+                      comments.length +
                       (loadingMore ? 1 : 0) +
                       ((loading && comments.isEmpty) ||
                               (!loading && comments.isEmpty)
@@ -1496,12 +1571,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 20),
                           child: Center(
-                            child: loading
-                                ? const CircularProgressIndicator()
-                                : const Text(
-                                    'Chưa có trao đổi nào.',
-                                    style: TextStyle(color: StitchTheme.textMuted),
-                                  ),
+                            child:
+                                loading
+                                    ? const CircularProgressIndicator()
+                                    : const Text(
+                                      'Chưa có trao đổi nào.',
+                                      style: TextStyle(
+                                        color: StitchTheme.textMuted,
+                                      ),
+                                    ),
                           ),
                         );
                       }
@@ -1519,9 +1597,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             decoration: const BoxDecoration(
               color: Colors.white,
-              border: Border(
-                top: BorderSide(color: StitchTheme.border),
-              ),
+              border: Border(top: BorderSide(color: StitchTheme.border)),
             ),
             child: Column(
               children: <Widget>[
@@ -1546,7 +1622,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: <Widget>[
-                        const Icon(Icons.edit, size: 16, color: StitchTheme.textMuted),
+                        const Icon(
+                          Icons.edit,
+                          size: 16,
+                          color: StitchTheme.textMuted,
+                        ),
                         const SizedBox(width: 6),
                         const Expanded(
                           child: Text(
@@ -1564,9 +1644,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 Row(
                   children: <Widget>[
                     TextButton.icon(
-                      onPressed: isTaskClosed
-                          ? null
-                          : () => setState(() => showOptions = !showOptions),
+                      onPressed:
+                          isTaskClosed
+                              ? null
+                              : () =>
+                                  setState(() => showOptions = !showOptions),
                       icon: Icon(
                         showOptions ? Icons.expand_less : Icons.expand_more,
                         size: 18,
@@ -1577,7 +1659,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     if (showOptions)
                       const Text(
                         'Tệp đính kèm',
-                        style: TextStyle(fontSize: 11, color: StitchTheme.textMuted),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: StitchTheme.textMuted,
+                        ),
                       ),
                   ],
                 ),
@@ -1586,22 +1671,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 6,
-                      children: taggedUsers.map((Map<String, dynamic> u) {
-                        final String name = (u['name'] ?? 'User').toString();
-                        return Chip(
-                          backgroundColor: StitchTheme.successSoft,
-                          labelStyle: TextStyle(
-                            color: StitchTheme.successStrong,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          label: Text('@$name'),
-                          onDeleted: () {
-                            setState(() {
-                              taggedUsers.removeWhere((Map<String, dynamic> x) => x['id'] == u['id']);
-                            });
-                          },
-                        );
-                      }).toList(),
+                      children:
+                          taggedUsers.map((Map<String, dynamic> u) {
+                            final String name =
+                                (u['name'] ?? 'User').toString();
+                            return Chip(
+                              backgroundColor: StitchTheme.successSoft,
+                              labelStyle: TextStyle(
+                                color: StitchTheme.successStrong,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              label: Text('@$name'),
+                              onDeleted: () {
+                                setState(() {
+                                  taggedUsers.removeWhere(
+                                    (Map<String, dynamic> x) =>
+                                        x['id'] == u['id'],
+                                  );
+                                });
+                              },
+                            );
+                          }).toList(),
                     ),
                   if (taggedUsers.isNotEmpty) const SizedBox(height: 8),
                   TextField(
@@ -1662,37 +1752,53 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     constraints: const BoxConstraints(maxHeight: 160),
                     child: ListView(
                       shrinkWrap: true,
-                      children: participants
-                          .where((Map<String, dynamic> u) {
-                            final String q = _normalizeToken(mentionQuery);
-                            if (q.isEmpty) return true;
-                            final String name =
-                                _normalizeToken((u['name'] ?? '').toString());
-                            final String email =
-                                _normalizeToken((u['email'] ?? '').toString());
-                            return name.contains(q) || email.contains(q);
-                          })
-                          .take(8)
-                          .map((Map<String, dynamic> u) {
-                        final String name = (u['name'] ?? 'Người dùng').toString();
-                        final String email = (u['email'] ?? '').toString();
-                        final String role = (u['role'] ?? '').toString();
-                        return ListTile(
-                          dense: true,
-                          leading: _buildAvatar(u, name, radius: 16),
-                          title: Text('@$name'),
-                          subtitle: role.isEmpty
-                              ? (email.isEmpty
-                                  ? null
-                                  : Text(email,
-                                      style: const TextStyle(fontSize: 11)))
-                              : Text(
-                                  email.isEmpty ? role : '$role • $email',
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                          onTap: () => _pickMention(u),
-                        );
-                      }).toList(),
+                      children:
+                          participants
+                              .where((Map<String, dynamic> u) {
+                                final String q = _normalizeToken(mentionQuery);
+                                if (q.isEmpty) return true;
+                                final String name = _normalizeToken(
+                                  (u['name'] ?? '').toString(),
+                                );
+                                final String email = _normalizeToken(
+                                  (u['email'] ?? '').toString(),
+                                );
+                                return name.contains(q) || email.contains(q);
+                              })
+                              .take(8)
+                              .map((Map<String, dynamic> u) {
+                                final String name =
+                                    (u['name'] ?? 'Người dùng').toString();
+                                final String email =
+                                    (u['email'] ?? '').toString();
+                                final String role =
+                                    (u['role'] ?? '').toString();
+                                return ListTile(
+                                  dense: true,
+                                  leading: _buildAvatar(u, name, radius: 16),
+                                  title: Text('@$name'),
+                                  subtitle:
+                                      role.isEmpty
+                                          ? (email.isEmpty
+                                              ? null
+                                              : Text(
+                                                email,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                ),
+                                              ))
+                                          : Text(
+                                            email.isEmpty
+                                                ? role
+                                                : '$role • $email',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                  onTap: () => _pickMention(u),
+                                );
+                              })
+                              .toList(),
                     ),
                   ),
               ],

@@ -73,7 +73,8 @@ class OverviewScreen extends StatelessWidget {
   }
 
   List<Map<String, dynamic>> _extractProgressItems() {
-    final dynamic raw = summary['project_progress'] ??
+    final dynamic raw =
+        summary['project_progress'] ??
         summary['projects'] ??
         summary['project_cards'] ??
         summary['progress_items'];
@@ -120,21 +121,28 @@ class OverviewScreen extends StatelessWidget {
     final bool compact = media.size.width < 380;
     final double bottomInset = media.padding.bottom + (compact ? 94 : 90);
 
-    final int totalProjects = _readInt(
-      <String>['projects_total', 'projects_in_progress', 'projects'],
-    );
+    final int totalProjects = _readInt(<String>[
+      'projects_total',
+      'projects_in_progress',
+      'projects',
+    ]);
     final int overdueTasks = _readInt(<String>['tasks_overdue', 'overdue']);
-    final int pendingTasks = _readInt(
-      <String>['tasks_pending', 'tasks_waiting_approval', 'tasks_in_review'],
-    );
-    final int onTimeRate =
-        _readInt(<String>['on_time_rate', 'on_time_percent']);
+    final int pendingTasks = _readInt(<String>[
+      'tasks_pending',
+      'tasks_waiting_approval',
+      'tasks_in_review',
+    ]);
+    final int onTimeRate = _readInt(<String>[
+      'on_time_rate',
+      'on_time_percent',
+    ]);
 
     final List<Map<String, dynamic>> progressItems = _extractProgressItems();
     final List<Map<String, dynamic>> activities = _extractActivities();
     final List<Map<String, dynamic>> overloadList = _extractOverloadList();
-    final int workloadThreshold =
-        _readInt(<String>['workload_threshold'], fallback: 8);
+    final int workloadThreshold = _readInt(<String>[
+      'workload_threshold',
+    ], fallback: 8);
 
     return SafeArea(
       child: ListView(
@@ -152,22 +160,26 @@ class OverviewScreen extends StatelessWidget {
               Widget actionButton({
                 required IconData icon,
                 required VoidCallback? onTap,
-                required bool showDot,
+                required int unreadCount,
               }) {
                 return Stack(
                   children: <Widget>[
                     IconButton(
                       onPressed: onTap,
                       icon: Icon(icon, color: StitchTheme.primary),
-                      visualDensity: compact
-                          ? const VisualDensity(horizontal: -2, vertical: -2)
-                          : VisualDensity.standard,
+                      visualDensity:
+                          compact
+                              ? const VisualDensity(
+                                horizontal: -2,
+                                vertical: -2,
+                              )
+                              : VisualDensity.standard,
                     ),
-                    if (showDot)
-                      const Positioned(
-                        right: 10,
-                        top: 10,
-                        child: _UnreadDot(),
+                    if (unreadCount > 0)
+                      Positioned(
+                        right: 5,
+                        top: 5,
+                        child: _UnreadBadge(count: unreadCount),
                       ),
                   ],
                 );
@@ -180,15 +192,16 @@ class OverviewScreen extends StatelessWidget {
                     backgroundColor: StitchTheme.primary,
                     backgroundImage:
                         avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                    child: avatarUrl.isEmpty
-                        ? Text(
-                            _initials(name),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          )
-                        : null,
+                    child:
+                        avatarUrl.isEmpty
+                            ? Text(
+                              _initials(name),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            )
+                            : null,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -226,22 +239,19 @@ class OverviewScreen extends StatelessWidget {
                   actionButton(
                     icon: Icons.notifications_none,
                     onTap: onOpenNotifications,
-                    showDot: unreadNotifications > 0,
+                    unreadCount: unreadNotifications,
                   ),
                 if (onOpenChat != null)
                   actionButton(
                     icon: Icons.chat_bubble_outline,
                     onTap: onOpenChat,
-                    showDot: unreadChats > 0,
+                    unreadCount: unreadChats,
                   ),
               ];
 
               if (!stackActions) {
                 return Row(
-                  children: <Widget>[
-                    Expanded(child: userInfo),
-                    ...actions,
-                  ],
+                  children: <Widget>[Expanded(child: userInfo), ...actions],
                 );
               }
 
@@ -332,10 +342,12 @@ class OverviewScreen extends StatelessWidget {
                 itemBuilder: (BuildContext context, int index) {
                   final Map<String, dynamic> item = progressItems[index];
                   final String title = (item['name'] ?? 'Dự án').toString();
-                  final String team = (item['team'] ?? 'Team nội bộ').toString();
-                  final int progress = (item['progress'] ?? 0) is int
-                      ? item['progress'] as int
-                      : int.tryParse('${item['progress'] ?? 0}') ?? 0;
+                  final String team =
+                      (item['team'] ?? 'Team nội bộ').toString();
+                  final int progress =
+                      (item['progress'] ?? 0) is int
+                          ? item['progress'] as int
+                          : int.tryParse('${item['progress'] ?? 0}') ?? 0;
                   return StitchProgressCard(
                     title: title,
                     subtitle: team,
@@ -353,26 +365,23 @@ class OverviewScreen extends StatelessWidget {
               style: TextStyle(color: StitchTheme.textMuted),
             )
           else
-            ...List<Widget>.generate(
-              activities.length,
-              (int index) {
-                final Map<String, dynamic> activity = activities[index];
-                final String user =
-                    (activity['user'] ?? activity['name'] ?? 'Nhân sự')
-                        .toString();
-                final String content =
-                    (activity['content'] ?? activity['message'] ?? 'cập nhật')
-                        .toString();
-                final String time =
-                    (activity['time'] ?? activity['created_at'] ?? 'vừa xong')
-                        .toString();
-                return StitchTimelineItem(
-                  title: '$user $content',
-                  time: time,
-                  isLast: index == activities.length - 1,
-                );
-              },
-            ),
+            ...List<Widget>.generate(activities.length, (int index) {
+              final Map<String, dynamic> activity = activities[index];
+              final String user =
+                  (activity['user'] ?? activity['name'] ?? 'Nhân sự')
+                      .toString();
+              final String content =
+                  (activity['content'] ?? activity['message'] ?? 'cập nhật')
+                      .toString();
+              final String time =
+                  (activity['time'] ?? activity['created_at'] ?? 'vừa xong')
+                      .toString();
+              return StitchTimelineItem(
+                title: '$user $content',
+                time: time,
+                isLast: index == activities.length - 1,
+              );
+            }),
           const SizedBox(height: 24),
           const StitchSectionHeader(title: 'Nhân sự quá tải'),
           const SizedBox(height: 12),
@@ -387,15 +396,17 @@ class OverviewScreen extends StatelessWidget {
               final String role = (item['role'] ?? '').toString();
               final int active = _readInt(
                 <String>[],
-                fallback: (item['active_tasks'] ?? 0) is int
-                    ? item['active_tasks'] as int
-                    : int.tryParse('${item['active_tasks'] ?? 0}') ?? 0,
+                fallback:
+                    (item['active_tasks'] ?? 0) is int
+                        ? item['active_tasks'] as int
+                        : int.tryParse('${item['active_tasks'] ?? 0}') ?? 0,
               );
               final int overdue = _readInt(
                 <String>[],
-                fallback: (item['overdue_tasks'] ?? 0) is int
-                    ? item['overdue_tasks'] as int
-                    : int.tryParse('${item['overdue_tasks'] ?? 0}') ?? 0,
+                fallback:
+                    (item['overdue_tasks'] ?? 0) is int
+                        ? item['overdue_tasks'] as int
+                        : int.tryParse('${item['overdue_tasks'] ?? 0}') ?? 0,
               );
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -473,18 +484,30 @@ class OverviewScreen extends StatelessWidget {
   }
 }
 
-class _UnreadDot extends StatelessWidget {
-  const _UnreadDot();
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge({required this.count});
+
+  final int count;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 10,
-      height: 10,
+      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: StitchTheme.danger,
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.white, width: 1.4),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          height: 1,
+        ),
       ),
     );
   }
@@ -514,9 +537,10 @@ class _QuickActionsGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double width = constraints.maxWidth;
-        final int columns = width >= 390
-            ? 4
-            : width >= 300
+        final int columns =
+            width >= 390
+                ? 4
+                : width >= 300
                 ? 3
                 : 2;
         return GridView.count(
@@ -526,9 +550,10 @@ class _QuickActionsGrid extends StatelessWidget {
           mainAxisSpacing: 12,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          children: actions
-              .map((OverviewQuickAction action) => _QuickActionTile(action))
-              .toList(),
+          children:
+              actions
+                  .map((OverviewQuickAction action) => _QuickActionTile(action))
+                  .toList(),
         );
       },
     );
@@ -566,7 +591,9 @@ class _QuickActionTile extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: (action.color ?? StitchTheme.primaryStrong).withValues(alpha: 0.12),
+                color: (action.color ?? StitchTheme.primaryStrong).withValues(
+                  alpha: 0.12,
+                ),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(
@@ -578,10 +605,7 @@ class _QuickActionTile extends StatelessWidget {
             Text(
               action.label,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
             ),
           ],
         ),

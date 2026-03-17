@@ -111,6 +111,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_validateActiveSession());
+      if (authToken != null && authToken!.isNotEmpty) {
+        unawaited(_registerDeviceToken());
+      }
     }
   }
 
@@ -387,6 +390,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     return count;
   }
 
+  int? _parseUnreadValue(dynamic value) {
+    if (value is int) return value < 0 ? 0 : value;
+    if (value is num) {
+      final int parsed = value.toInt();
+      return parsed < 0 ? 0 : parsed;
+    }
+    final int? parsed = int.tryParse('${value ?? ''}');
+    if (parsed == null) return null;
+    return parsed < 0 ? 0 : parsed;
+  }
+
   Future<void> _refreshNotificationBadge() async {
     if (authToken == null || authToken!.isEmpty) return;
     try {
@@ -394,9 +408,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           .getNotifications(authToken!)
           .timeout(_bootstrapTimeout);
       if (!mounted) return;
+      final int? unreadNotificationFromApi = _parseUnreadValue(
+        data['unread_notification'],
+      );
+      final int? unreadChatFromApi = _parseUnreadValue(data['unread_chat']);
       setState(() {
-        unreadNotifications = _extractUnreadCount(data);
-        unreadChats = _extractUnreadChats(data);
+        unreadNotifications =
+            unreadNotificationFromApi ?? _extractUnreadCount(data);
+        unreadChats = unreadChatFromApi ?? _extractUnreadChats(data);
       });
     } catch (_) {
       // ignore
@@ -679,9 +698,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     void openActivityLogs() => openScreen(
       () => ActivityLogScreen(token: authToken!, apiService: _api),
     );
-    void openNotifications() => openScreen(
-      () => NotificationsScreen(token: authToken!, apiService: _api),
-    ).then((_) => _refreshNotificationBadge());
+    void openNotifications() => openScreen(() {
+      final dynamic rawId = authUser == null ? null : authUser!['id'];
+      final int? currentUserId =
+          rawId is int ? rawId : int.tryParse('${rawId ?? ''}');
+      return NotificationsScreen(
+        token: authToken!,
+        apiService: _api,
+        currentUserId: currentUserId,
+      );
+    }).then((_) => _refreshNotificationBadge());
     void openMeetings() => openScreen(
       () => MeetingsScreen(
         token: authToken!,
