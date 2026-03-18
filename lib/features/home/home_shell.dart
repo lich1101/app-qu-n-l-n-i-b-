@@ -505,17 +505,23 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     };
     try {
       await AppFirebase.registerPushToken(
-        onToken: (String token, bool notificationsEnabled) async {
+        onToken: (
+          String token,
+          bool notificationsEnabled,
+          String? apnsEnvironment,
+        ) async {
           lastResult = await _api.registerDeviceTokenWithResult(
             authToken!,
             deviceToken: token,
             platform: Platform.isIOS ? 'ios' : 'android',
             deviceName: AppEnv.appName,
             notificationsEnabled: notificationsEnabled,
+            apnsEnvironment: apnsEnvironment,
           );
           lastResult['device_token_suffix'] =
               token.length > 12 ? token.substring(token.length - 12) : token;
           lastResult['notifications_enabled'] = notificationsEnabled;
+          lastResult['apns_environment'] = apnsEnvironment;
         },
       );
       return lastResult;
@@ -677,6 +683,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ).push(MaterialPageRoute<Widget>(builder: (_) => builder()));
     }
 
+    final String currentUserRole = (authUser?['role'] ?? '').toString();
+    final dynamic rawUserId = authUser?['id'];
+    final int? resolvedUserId =
+        rawUserId is int ? rawUserId : int.tryParse('${rawUserId ?? ''}');
+
     void openProjects() =>
         openScreen(() => ProjectsScreen(token: authToken!, apiService: _api));
     void openDeadline() => openScreen(
@@ -740,6 +751,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         canManage: canManageContracts,
         canDelete: canDeleteContracts,
         canApprove: _hasRole(<String>['admin', 'ke_toan']),
+        currentUserRole: currentUserRole,
+        currentUserId: resolvedUserId,
       ),
     );
     void openProducts() => openScreen(
@@ -769,7 +782,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       () => RevenueReportScreen(
         token: authToken!,
         apiService: _api,
-        currentUserRole: (authUser?['role'] ?? '').toString(),
+        currentUserRole: currentUserRole,
       ),
     );
     void openLeadForms() =>
@@ -853,19 +866,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           onTap: openMeetings,
           color: const Color(0xFF4F46E5),
         ),
-      if (canViewChat)
-        OverviewQuickAction(
-          label: 'Chat',
-          icon: Icons.chat_bubble_outline,
-          onTap: openChat,
-          color: const Color(0xFF14B8A6),
-        ),
-      OverviewQuickAction(
-        label: 'Thông báo',
-        icon: Icons.notifications_outlined,
-        onTap: openNotifications,
-        color: const Color(0xFFF97316),
-      ),
       if (canViewLogs)
         OverviewQuickAction(
           label: 'Nhật ký',
@@ -904,10 +904,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         color: const Color(0xFF334155),
       ),
     ];
-
-    final dynamic rawUserId = authUser?['id'];
-    final int? resolvedUserId =
-        rawUserId is int ? rawUserId : int.tryParse('${rawUserId ?? ''}');
 
     final List<Widget> tabs = <Widget>[
       OverviewScreen(

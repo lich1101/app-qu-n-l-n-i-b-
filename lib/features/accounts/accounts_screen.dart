@@ -37,6 +37,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
   String _roleLabel(String value) {
     switch (value) {
+      case 'administrator':
+        return 'Administrator';
       case 'admin':
         return 'Admin';
       case 'quan_ly':
@@ -132,9 +134,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
       (widget.authUser?['role'] ?? '').toString(),
     );
     final String email = (widget.authUser?['email'] ?? '').toString();
-    final List<dynamic> roles =
-        (widget.summary['roles'] ?? <dynamic>[]) as List<dynamic>;
-    final bool isAdmin = (widget.authUser?['role'] ?? '') == 'admin';
+    final bool isAdministrator =
+        (widget.authUser?['role'] ?? '') == 'administrator';
 
     Future<void> handleTestPush() async {
       if (widget.token == null || widget.token!.isEmpty) {
@@ -162,7 +163,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
         _messengerKey.currentState?.showSnackBar(
           const SnackBar(
             content: Text(
-              'Không thể gửi push. Kiểm tra quyền admin và cấu hình Firebase.',
+              'Không thể gửi push. Kiểm tra quyền administrator và cấu hình Firebase.',
             ),
             behavior: SnackBarBehavior.floating,
             margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -193,9 +194,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
           (pushResult['error'] ?? result['error'] ?? '—').toString();
       final String? localToken = AppFirebase.lastPushToken;
       final String? localTokenAt =
-          AppFirebase.lastPushTokenAt == null
-              ? null
-              : AppFirebase.lastPushTokenAt!.toLocal().toString();
+          AppFirebase.lastPushTokenAt?.toLocal().toString();
       final StringBuffer buffer = StringBuffer();
       if (pushSent) {
         buffer.write('Đã gửi push thử nghiệm.');
@@ -440,7 +439,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                     style: TextStyle(color: StitchTheme.textMuted),
                   ),
                 ),
-                if (isAdmin) ...<Widget>[
+                if (isAdministrator) ...<Widget>[
                   _MenuDivider(),
                   _MenuItem(
                     icon: Icons.settings,
@@ -468,50 +467,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   ),
                 ],
               ],
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'PHÂN BỔ VAI TRÒ',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: StitchTheme.textSubtle,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: StitchTheme.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text(
-                    'Phân bổ vai trò',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  if (roles.isEmpty)
-                    const Text(
-                      'Chưa có dữ liệu vai trò.',
-                      style: TextStyle(color: StitchTheme.textMuted),
-                    )
-                  else
-                    ...roles.map((dynamic e) {
-                      final Map<String, dynamic> m = e as Map<String, dynamic>;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          '${m['label']}: ${m['value']}',
-                          style: const TextStyle(color: StitchTheme.textMuted),
-                        ),
-                      );
-                    }).toList(),
-                ],
-              ),
             ),
             const SizedBox(height: 18),
             const Text(
@@ -565,7 +520,7 @@ class _MenuCard extends StatelessWidget {
 }
 
 class _MenuDivider extends StatelessWidget {
-  const _MenuDivider({super.key});
+  const _MenuDivider();
 
   @override
   Widget build(BuildContext context) {

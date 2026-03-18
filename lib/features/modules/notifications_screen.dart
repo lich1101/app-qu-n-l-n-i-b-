@@ -34,6 +34,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool loading = false;
   StreamSubscription<RemoteMessage>? _foregroundSub;
 
+  int get _unreadCount =>
+      notifications.where((Map<String, dynamic> item) => item['is_read'] != true).length;
+
   @override
   void initState() {
     super.initState();
@@ -86,6 +89,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       sourceType: 'in_app',
     );
     await _fetch();
+  }
+
+  Future<void> _markAllRead() async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final bool ok = await widget.apiService.markAllNotificationsRead(
+      widget.token,
+      sourceType: 'all',
+    );
+    if (!mounted) return;
+    await _fetch();
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Đã đánh dấu toàn bộ thông báo là đã đọc.'
+              : 'Không thể cập nhật trạng thái thông báo.',
+        ),
+      ),
+    );
   }
 
   int _extractTaskId(Map<String, dynamic> item) {
@@ -332,10 +355,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         title: const Text('Thông báo'),
         actions: <Widget>[
-          IconButton(
-            tooltip: 'Xóa thông báo đã xem',
-            onPressed: _clearRead,
-            icon: const Icon(Icons.delete_outline),
+          if (_unreadCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: TextButton.icon(
+                onPressed: _markAllRead,
+                style: TextButton.styleFrom(
+                  foregroundColor: StitchTheme.primary,
+                  textStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                icon: const Icon(Icons.done_all_rounded, size: 18),
+                label: const Text('Đọc tất cả'),
+              ),
+            ),
+          PopupMenuButton<String>(
+            tooltip: 'Tùy chọn thông báo',
+            onSelected: (String value) {
+              if (value == 'clear_read') {
+                _clearRead();
+              }
+            },
+            itemBuilder:
+                (BuildContext context) => const <PopupMenuEntry<String>>[
+                  PopupMenuItem<String>(
+                    value: 'clear_read',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline),
+                      title: Text('Xóa thông báo đã xem'),
+                    ),
+                  ),
+                ],
           ),
         ],
       ),
@@ -344,6 +398,49 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: <Widget>[
+            if (notifications.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: StitchTheme.border),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        _unreadCount > 0
+                            ? 'Bạn còn $_unreadCount thông báo chưa đọc.'
+                            : 'Tất cả thông báo đã được đọc.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: StitchTheme.textMuted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (_unreadCount > 0)
+                      TextButton(
+                        onPressed: _markAllRead,
+                        style: TextButton.styleFrom(
+                          foregroundColor: StitchTheme.primary,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('Đọc tất cả'),
+                      ),
+                  ],
+                ),
+              ),
             if (loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),

@@ -148,10 +148,6 @@ class OverviewScreen extends StatelessWidget {
       child: ListView(
         padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
         children: <Widget>[
-          Text(
-            'Tổng quan hệ thống',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
@@ -164,16 +160,29 @@ class OverviewScreen extends StatelessWidget {
               }) {
                 return Stack(
                   children: <Widget>[
-                    IconButton(
-                      onPressed: onTap,
-                      icon: Icon(icon, color: StitchTheme.primary),
-                      visualDensity:
-                          compact
-                              ? const VisualDensity(
-                                horizontal: -2,
-                                vertical: -2,
-                              )
-                              : VisualDensity.standard,
+                    Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          width: compact ? 42 : 46,
+                          height: compact ? 42 : 46,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: StitchTheme.border),
+                            boxShadow: const <BoxShadow>[
+                              BoxShadow(
+                                color: Color(0x080F172A),
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Icon(icon, color: StitchTheme.primary),
+                        ),
+                      ),
                     ),
                     if (unreadCount > 0)
                       Positioned(
@@ -249,9 +258,32 @@ class OverviewScreen extends StatelessWidget {
                   ),
               ];
 
+              final Widget actionCluster = Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      for (
+                        int index = 0;
+                        index < actions.length;
+                        index++
+                      ) ...<Widget>[
+                        if (index > 0) const SizedBox(width: 8),
+                        actions[index],
+                      ],
+                    ],
+                  ),
+                ],
+              );
+
               if (!stackActions) {
                 return Row(
-                  children: <Widget>[Expanded(child: userInfo), ...actions],
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(child: userInfo),
+                    if (actions.isNotEmpty) actionCluster,
+                  ],
                 );
               }
 
@@ -261,9 +293,9 @@ class OverviewScreen extends StatelessWidget {
                   if (actions.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: actions,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: actionCluster,
                       ),
                     ),
                 ],

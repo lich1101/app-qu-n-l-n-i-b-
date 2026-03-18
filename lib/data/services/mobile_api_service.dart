@@ -285,9 +285,11 @@ class MobileApiService {
     required String title,
     required int clientId,
     int? projectId,
+    int? collectorUserId,
     double? value,
     int? paymentTimes,
     String status = 'draft',
+    bool createAndApprove = false,
     String? signedAt,
     String? startDate,
     String? endDate,
@@ -298,8 +300,10 @@ class MobileApiService {
       'title': title,
       'client_id': clientId,
       'status': status,
+      'create_and_approve': createAndApprove,
       if (code != null && code.trim().isNotEmpty) 'code': code.trim(),
       if (projectId != null) 'project_id': projectId,
+      if (collectorUserId != null) 'collector_user_id': collectorUserId,
       if (value != null) 'value': value,
       if (paymentTimes != null) 'payment_times': paymentTimes,
       if (signedAt != null) 'signed_at': signedAt,
@@ -323,6 +327,7 @@ class MobileApiService {
     required String title,
     required int clientId,
     int? projectId,
+    int? collectorUserId,
     double? value,
     int? paymentTimes,
     String status = 'draft',
@@ -338,6 +343,7 @@ class MobileApiService {
       'status': status,
       if (code != null && code.trim().isNotEmpty) 'code': code.trim(),
       if (projectId != null) 'project_id': projectId,
+      if (collectorUserId != null) 'collector_user_id': collectorUserId,
       if (value != null) 'value': value,
       if (paymentTimes != null) 'payment_times': paymentTimes,
       if (signedAt != null) 'signed_at': signedAt,
@@ -1328,6 +1334,40 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
+  Future<bool> updateTaskItemUpdate(
+    String token,
+    int taskId,
+    int itemId,
+    int updateId, {
+    String? status,
+    int? progressPercent,
+    String? note,
+    File? attachment,
+  }) async {
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates/$updateId',
+    );
+    final http.MultipartRequest request = http.MultipartRequest('POST', uri);
+    request.headers.addAll(_authHeaders(token));
+    request.fields['_method'] = 'PUT';
+    if (status != null && status.isNotEmpty) {
+      request.fields['status'] = status;
+    }
+    if (progressPercent != null) {
+      request.fields['progress_percent'] = '$progressPercent';
+    }
+    if (note != null) {
+      request.fields['note'] = note.trim();
+    }
+    if (attachment != null && _fileExists(attachment.path)) {
+      request.files.add(
+        await http.MultipartFile.fromPath('attachment', attachment.path),
+      );
+    }
+    final http.StreamedResponse res = await request.send();
+    return res.statusCode == 200;
+  }
+
   Future<bool> rejectTaskItemUpdate(
     String token,
     int taskId,
@@ -1341,6 +1381,21 @@ class MobileApiService {
       ),
       headers: _jsonHeaders(token),
       body: jsonEncode(<String, dynamic>{'review_note': reviewNote}),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<bool> deleteTaskItemUpdate(
+    String token,
+    int taskId,
+    int itemId,
+    int updateId,
+  ) async {
+    final http.Response res = await http.delete(
+      Uri.parse(
+        '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/updates/$updateId',
+      ),
+      headers: _jsonHeaders(token),
     );
     return res.statusCode == 200;
   }
@@ -2096,6 +2151,7 @@ class MobileApiService {
     String? platform,
     String? deviceName,
     bool? notificationsEnabled,
+    String? apnsEnvironment,
   }) async {
     final Map<String, dynamic> result = await registerDeviceTokenWithResult(
       token,
@@ -2103,6 +2159,7 @@ class MobileApiService {
       platform: platform,
       deviceName: deviceName,
       notificationsEnabled: notificationsEnabled,
+      apnsEnvironment: apnsEnvironment,
     );
     return result['ok'] == true;
   }
@@ -2113,6 +2170,7 @@ class MobileApiService {
     String? platform,
     String? deviceName,
     bool? notificationsEnabled,
+    String? apnsEnvironment,
   }) async {
     final http.Response res = await http.post(
       Uri.parse('${AppEnv.apiBaseUrl}/device-tokens'),
@@ -2123,6 +2181,7 @@ class MobileApiService {
         if (deviceName != null) 'device_name': deviceName,
         if (notificationsEnabled != null)
           'notifications_enabled': notificationsEnabled,
+        if (apnsEnvironment != null) 'apns_environment': apnsEnvironment,
       }),
     );
     Map<String, dynamic> body = <String, dynamic>{};

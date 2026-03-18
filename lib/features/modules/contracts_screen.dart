@@ -15,6 +15,8 @@ class ContractsScreen extends StatefulWidget {
     required this.canManage,
     required this.canDelete,
     required this.canApprove,
+    required this.currentUserRole,
+    required this.currentUserId,
   });
 
   final String token;
@@ -22,6 +24,8 @@ class ContractsScreen extends StatefulWidget {
   final bool canManage;
   final bool canDelete;
   final bool canApprove;
+  final String currentUserRole;
+  final int? currentUserId;
 
   @override
   State<ContractsScreen> createState() => _ContractsScreenState();
@@ -49,9 +53,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
   List<Map<String, dynamic>> contracts = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> clients = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> products = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> collectors = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> payments = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> costs = <Map<String, dynamic>>[];
+  int? collectorUserId;
 
   @override
   void initState() {
@@ -79,6 +85,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
         await widget.apiService.getClients(widget.token);
     final List<Map<String, dynamic>> productRows =
         await widget.apiService.getProducts(widget.token);
+    final List<Map<String, dynamic>> collectorRows =
+        await widget.apiService.getUsersLookup(widget.token);
     final List<Map<String, dynamic>> contractRows =
         await widget.apiService.getContracts(
       widget.token,
@@ -93,6 +101,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
       loading = false;
       clients = clientRows;
       products = productRows;
+      collectors = collectorRows;
       contracts = contractRows;
     });
   }
@@ -255,7 +264,24 @@ class _ContractsScreenState extends State<ContractsScreen> {
     return int.tryParse(raw?.toString() ?? '');
   }
 
-  Future<bool> _save() async {
+  bool get _isEmployee => widget.currentUserRole == 'nhan_vien';
+
+  bool get _canChooseCollector =>
+      <String>['admin', 'quan_ly', 'ke_toan'].contains(widget.currentUserRole);
+
+  String _approvalLabel(String value) {
+    switch (value) {
+      case 'approved':
+        return 'Đã duyệt';
+      case 'rejected':
+        return 'Từ chối';
+      case 'pending':
+      default:
+        return 'Chờ duyệt';
+    }
+  }
+
+  Future<bool> _save({bool createAndApprove = false}) async {
     if (!widget.canManage) {
       setState(() => message = 'Bạn không có quyền quản lý hợp đồng.');
       return false;
@@ -292,9 +318,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
             code: codeCtrl.text.trim().isEmpty ? null : codeCtrl.text.trim(),
             title: titleCtrl.text.trim(),
             clientId: formClientId!,
+            collectorUserId: collectorUserId,
             value: value,
             paymentTimes: paymentTimes,
             status: status,
+            createAndApprove: createAndApprove,
             signedAt: signedCtrl.text.trim().isEmpty
                 ? null
                 : signedCtrl.text.trim(),
@@ -311,6 +339,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
             code: codeCtrl.text.trim().isEmpty ? null : codeCtrl.text.trim(),
             title: titleCtrl.text.trim(),
             clientId: formClientId!,
+            collectorUserId: collectorUserId,
             value: value,
             paymentTimes: paymentTimes,
             status: status,
@@ -329,7 +358,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
     setState(() {
       message = ok
           ? (editingId == null
-              ? 'Tạo hợp đồng thành công.'
+              ? (createAndApprove
+                  ? 'Đã tạo và duyệt hợp đồng.'
+                  : 'Tạo hợp đồng thành công.')
               : 'Cập nhật hợp đồng thành công.')
           : 'Lưu hợp đồng thất bại.';
     });
@@ -371,6 +402,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
         notesCtrl.text = (contract['notes'] ?? '').toString();
         status = (contract['status'] ?? 'draft').toString();
         formClientId = _readInt(contract['client_id']);
+        collectorUserId = _readInt(contract['collector_user_id']);
         items = ((contract['items'] ?? <dynamic>[]) as List<dynamic>)
             .map((dynamic e) {
           final Map<String, dynamic> item = e as Map<String, dynamic>;
@@ -460,6 +492,65 @@ class _ContractsScreenState extends State<ContractsScreen> {
                         setSheetState(() => formClientId = value);
                       },
                       decoration: const InputDecoration(labelText: 'Khách hàng'),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: StitchTheme.surfaceAlt,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: StitchTheme.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          const Text(
+                            'Nhân viên thu theo hợp đồng',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isEmployee
+                                ? 'Bạn tạo hợp đồng nào thì hợp đồng đó tự đứng tên bạn và không đổi sang người khác.'
+                                : widget.currentUserRole == 'quan_ly'
+                                    ? 'Trưởng phòng có thể giữ chính mình hoặc chọn nhân sự trong phòng để đứng tên thu hợp đồng.'
+                                    : widget.canApprove
+                                        ? 'Admin/Kế toán có thể chọn mọi nhân sự và có thêm nút tạo & duyệt.'
+                                        : 'Chọn nhân sự phụ trách thu hợp đồng.',
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<int?>(
+                            value: collectorUserId,
+                            items: <DropdownMenuItem<int?>>[
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('Chọn nhân viên thu'),
+                              ),
+                              ...collectors.map(
+                                (Map<String, dynamic> user) =>
+                                    DropdownMenuItem<int?>(
+                                  value: _readInt(user['id']),
+                                  child: Text(
+                                    (user['name'] ?? 'Nhân sự').toString(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: _canChooseCollector
+                                ? (int? value) {
+                                    setSheetState(() => collectorUserId = value);
+                                  }
+                                : null,
+                            decoration: const InputDecoration(
+                              labelText: 'Nhân viên thu',
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 10),
                     TextField(
@@ -601,7 +692,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                     ),
                                   ],
                                   onChanged: (int? value) {
-                                    final Map<String, dynamic>? selected =
+                                    final Map<String, dynamic> selected =
                                         products.firstWhere(
                                       (Map<String, dynamic> p) =>
                                           p['id'] == value,
@@ -611,9 +702,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                       index,
                                       <String, dynamic>{
                                         'product_id': value,
-                                        'product_name': selected?['name'] ?? '',
-                                        'unit': selected?['unit'] ?? '',
-                                        'unit_price': selected?['unit_price'] ?? '',
+                                        'product_name': selected['name'] ?? '',
+                                        'unit': selected['unit'] ?? '',
+                                        'unit_price': selected['unit_price'] ?? '',
                                       },
                                       setSheetState,
                                     );
@@ -835,10 +926,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
                         Expanded(
                           child: ElevatedButton(
                             onPressed: () async {
+                              final NavigatorState navigator = Navigator.of(context);
                               final bool ok = await _save();
                               if (!mounted) return;
                               if (ok) {
-                                Navigator.of(context).pop();
+                                navigator.pop();
                               } else {
                                 setSheetState(() {});
                               }
@@ -848,6 +940,26 @@ class _ContractsScreenState extends State<ContractsScreen> {
                         ),
                       ],
                     ),
+                    if (editingId == null && widget.canApprove) ...<Widget>[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonal(
+                          onPressed: () async {
+                            final NavigatorState navigator = Navigator.of(context);
+                            final bool ok =
+                                await _save(createAndApprove: true);
+                            if (!mounted) return;
+                            if (ok) {
+                              navigator.pop();
+                            } else {
+                              setSheetState(() {});
+                            }
+                          },
+                          child: const Text('Tạo và duyệt'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -936,6 +1048,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () async {
+                          final NavigatorState navigator = Navigator.of(context);
                           final double? amount =
                               double.tryParse(amountCtrl.text.trim());
                           if (amount == null) {
@@ -986,7 +1099,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                             setState(() {
                               payments = paymentRows;
                             });
-                            Navigator.of(context).pop();
+                            navigator.pop();
                           }
                         },
                         child: const Text('Lưu'),
@@ -1103,6 +1216,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () async {
+                          final NavigatorState navigator = Navigator.of(context);
                           final double? amount =
                               double.tryParse(amountCtrl.text.trim());
                           if (amount == null) {
@@ -1153,7 +1267,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                             setState(() {
                               costs = costRows;
                             });
-                            Navigator.of(context).pop();
+                            navigator.pop();
                           }
                         },
                         child: const Text('Lưu'),
@@ -1197,6 +1311,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
   void _resetForm() {
     editingId = null;
     formClientId = null;
+    collectorUserId = widget.currentUserId;
     status = 'draft';
     codeCtrl.clear();
     titleCtrl.clear();
@@ -1430,7 +1545,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                (c['approval_status'] ?? 'pending').toString(),
+                                _approvalLabel(
+                                  (c['approval_status'] ?? 'pending').toString(),
+                                ),
                                 style: TextStyle(
                                   color: c['approval_status'] == 'approved'
                                       ? StitchTheme.success
@@ -1485,6 +1602,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
                       const SizedBox(height: 6),
                       Text(
                         '${c['code'] ?? ''} • ${(client?['name'] ?? 'Khách hàng').toString()}',
+                        style: const TextStyle(color: StitchTheme.textMuted),
+                      ),
+                      Text(
+                        'Nhân viên thu: ${((c['collector'] as Map<String, dynamic>?)?['name'] ?? '—').toString()}',
                         style: const TextStyle(color: StitchTheme.textMuted),
                       ),
                       const SizedBox(height: 8),

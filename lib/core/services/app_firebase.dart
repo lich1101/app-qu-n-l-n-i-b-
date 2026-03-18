@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,12 +19,16 @@ class AppFirebase {
   static FirebaseAuth? _auth;
   static String? _lastPushToken;
   static DateTime? _lastPushTokenAt;
+  static String? _lastApnsEnvironment;
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   static final StreamController<RemoteMessage> _foregroundController =
       StreamController<RemoteMessage>.broadcast();
   static String? _lastForegroundMessageKey;
   static DateTime? _lastForegroundMessageAt;
+  static const MethodChannel _pushEnvironmentChannel = MethodChannel(
+    'vn.clickon.jobnew/push_environment',
+  );
 
   static Stream<RemoteMessage> get foregroundMessages =>
       _foregroundController.stream;
@@ -243,13 +248,18 @@ class AppFirebase {
   }
 
   static Future<String?> registerPushToken({
-    required FutureOr<void> Function(String token, bool notificationsEnabled)
+    required FutureOr<void> Function(
+      String token,
+      bool notificationsEnabled,
+      String? apnsEnvironment,
+    )
     onToken,
   }) async {
     if (!isConfigured) return null;
     await ensureInitialized();
     final FirebaseMessaging messaging = FirebaseMessaging.instance;
     bool notificationsEnabled = false;
+    String? apnsEnvironment;
     try {
       final NotificationSettings settings = await messaging.requestPermission(
         alert: true,
@@ -274,12 +284,21 @@ class AppFirebase {
           debugPrint('[Push][TokenRefresh] suffix=$suffix');
         }
         notificationPermissionGranted().then(
-          (bool permission) => onToken(newToken, permission),
+          (bool permission) async {
+            final String? environment =
+                Platform.isIOS
+                    ? (_lastApnsEnvironment ?? await _resolveApnsEnvironment())
+                    : null;
+            _lastApnsEnvironment = environment;
+            return onToken(newToken, permission, environment);
+          },
         );
       }
     });
 
     if (Platform.isIOS) {
+      apnsEnvironment = await _resolveApnsEnvironment();
+      _lastApnsEnvironment = apnsEnvironment;
       final String? apnsToken = await _waitForApnsToken(messaging);
       if (kDebugMode) {
         final String suffix =
@@ -288,7 +307,9 @@ class AppFirebase {
                     ? apnsToken.substring(apnsToken.length - 12)
                     : apnsToken)
                 : 'missing';
-        debugPrint('[Push][APNS] token_suffix=$suffix');
+        debugPrint(
+          '[Push][APNS] token_suffix=$suffix environment=${apnsEnvironment ?? 'unknown'}',
+        );
       }
     }
 
@@ -300,12 +321,31 @@ class AppFirebase {
         final String suffix =
             token.length > 12 ? token.substring(token.length - 12) : token;
         debugPrint(
-          '[Push][TokenInit] suffix=$suffix permission=$notificationsEnabled',
+          '[Push][TokenInit] suffix=$suffix permission=$notificationsEnabled apns_environment=${apnsEnvironment ?? 'n/a'}',
         );
       }
-      await onToken(token, notificationsEnabled);
+      await onToken(token, notificationsEnabled, apnsEnvironment);
     }
     return token;
+  }
+
+  static Future<String?> _resolveApnsEnvironment() async {
+    if (!Platform.isIOS) return null;
+    try {
+      final String? environment = await _pushEnvironmentChannel.invokeMethod<
+        String
+      >('getApnsEnvironment');
+      if (environment == null) return null;
+      final String normalized = environment.trim().toLowerCase();
+      if (normalized == 'development' || normalized == 'production') {
+        return normalized;
+      }
+    } on PlatformException catch (_) {
+      return null;
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   static Future<String?> _waitForApnsToken(FirebaseMessaging messaging) async {
