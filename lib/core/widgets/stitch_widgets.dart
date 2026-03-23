@@ -275,6 +275,126 @@ class StitchProgressCard extends StatelessWidget {
   }
 }
 
+class StitchFilterCard extends StatelessWidget {
+  const StitchFilterCard({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final Widget child;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0D0F172A),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: StitchTheme.textMain,
+                      ),
+                    ),
+                    if (subtitle != null && subtitle!.trim().isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(
+                          color: StitchTheme.textMuted,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...<Widget>[
+                const SizedBox(width: 12),
+                trailing!,
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class StitchFilterField extends StatelessWidget {
+  const StitchFilterField({
+    super.key,
+    required this.label,
+    required this.child,
+    this.hint,
+  });
+
+  final String label;
+  final Widget child;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
+            color: StitchTheme.textSubtle,
+          ),
+        ),
+        const SizedBox(height: 8),
+        child,
+        if (hint != null && hint!.trim().isNotEmpty) ...<Widget>[
+          const SizedBox(height: 6),
+          Text(
+            hint!,
+            style: const TextStyle(
+              fontSize: 12,
+              color: StitchTheme.textMuted,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class StitchTimelineItem extends StatelessWidget {
   const StitchTimelineItem({
     super.key,

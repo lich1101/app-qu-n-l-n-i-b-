@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
@@ -157,8 +158,10 @@ class _TasksScreenState extends State<TasksScreen> {
     final TextEditingController titleCtrl = TextEditingController();
     final TextEditingController descCtrl = TextEditingController();
     final TextEditingController deadlineCtrl = TextEditingController();
-    final TextEditingController progressCtrl =
-        TextEditingController(text: '0');
+    final TextEditingController weightCtrl =
+        TextEditingController(text: '100');
+    List<Map<String, dynamic>> projectTasks = <Map<String, dynamic>>[];
+    bool loadingProjectWeights = false;
     int? projectId;
     int? departmentId;
     int? assigneeId;
@@ -184,6 +187,30 @@ class _TasksScreenState extends State<TasksScreen> {
       });
     }
 
+    Future<void> loadProjectTasks(
+      int? nextProjectId,
+      StateSetter setSheetState,
+    ) async {
+      if (nextProjectId == null) {
+        setSheetState(() {
+          projectTasks = <Map<String, dynamic>>[];
+          loadingProjectWeights = false;
+        });
+        return;
+      }
+      setSheetState(() => loadingProjectWeights = true);
+      final List<Map<String, dynamic>> rows = await widget.apiService.getTasks(
+        token,
+        projectId: nextProjectId,
+        perPage: 200,
+      );
+      if (!mounted) return;
+      setSheetState(() {
+        projectTasks = rows;
+        loadingProjectWeights = false;
+      });
+    }
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -200,6 +227,18 @@ class _TasksScreenState extends State<TasksScreen> {
                   );
             final bool hasContract =
                 selectedProject != null && selectedProject['contract_id'] != null;
+            final List<Map<String, dynamic>> siblingTasks = projectTasks;
+            final int siblingWeightTotal = siblingTasks.fold<int>(
+              0,
+              (int sum, Map<String, dynamic> task) =>
+                  sum + (int.tryParse((task['weight_percent'] ?? 0).toString()) ?? 0),
+            );
+            final int currentWeight =
+                int.tryParse(weightCtrl.text.trim()) ?? 0;
+            final int projectedWeightTotal =
+                siblingWeightTotal + currentWeight;
+            final int remainingWeight =
+                math.max(0, 100 - siblingWeightTotal);
 
             List<Map<String, dynamic>> staffOptions = <Map<String, dynamic>>[];
             if (departmentId != null) {
@@ -238,12 +277,12 @@ class _TasksScreenState extends State<TasksScreen> {
                     'Vui lòng chọn nhân sự phụ trách.');
                 return;
               }
-              final int? progress = progressCtrl.text.trim().isEmpty
+              final int? weight = weightCtrl.text.trim().isEmpty
                   ? null
-                  : int.tryParse(progressCtrl.text.trim());
-              if (progress != null && (progress < 0 || progress > 100)) {
+                  : int.tryParse(weightCtrl.text.trim());
+              if (weight != null && (weight < 1 || weight > 100)) {
                 setSheetState(
-                    () => localMessage = 'Tiến độ phải từ 0 đến 100.');
+                    () => localMessage = 'Tỷ trọng phải từ 1 đến 100.');
                 return;
               }
               setSheetState(() {
@@ -261,7 +300,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 status: status,
                 deadline:
                     deadlineCtrl.text.trim().isEmpty ? null : deadlineCtrl.text,
-                progressPercent: progress,
+                weightPercent: weight,
               );
               if (!mounted) return;
               if (ok) {
@@ -319,8 +358,12 @@ class _TasksScreenState extends State<TasksScreen> {
                             ),
                           )
                           .toList(),
-                      onChanged: (int? v) =>
-                          setSheetState(() => projectId = v),
+                      onChanged: (int? v) async {
+                        setSheetState(() {
+                          projectId = v;
+                        });
+                        await loadProjectTasks(v, setSheetState);
+                      },
                       decoration: const InputDecoration(
                         labelText: 'Dự án',
                       ),
@@ -443,14 +486,82 @@ class _TasksScreenState extends State<TasksScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: TextField(
-                            controller: progressCtrl,
+                            controller: weightCtrl,
                             keyboardType: TextInputType.number,
+                            onChanged: (_) => setSheetState(() {}),
                             decoration: const InputDecoration(
-                              labelText: 'Tiến độ (%)',
+                              labelText: 'Tỷ trọng trong dự án (%)',
                             ),
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        OutlinedButton(
+                          onPressed: projectId == null || remainingWeight <= 0
+                              ? null
+                              : () {
+                                  setSheetState(() {
+                                    weightCtrl.text =
+                                        math.max(1, remainingWeight).toString();
+                                  });
+                                },
+                          child: Text('Điền phần còn lại ($remainingWeight%)'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: projectedWeightTotal == 100
+                            ? const Color(0xFFECFDF3)
+                            : projectedWeightTotal > 100
+                                ? const Color(0xFFFEF2F2)
+                                : const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: projectedWeightTotal == 100
+                              ? const Color(0xFFA7F3D0)
+                              : projectedWeightTotal > 100
+                                  ? const Color(0xFFFECACA)
+                                  : const Color(0xFFFDE68A),
+                        ),
+                      ),
+                      child: Text(
+                        loadingProjectWeights
+                            ? 'Đang kiểm tra tổng tỷ trọng công việc trong dự án...'
+                            : 'Tổng tỷ trọng công việc của dự án sau khi lưu sẽ là $projectedWeightTotal%. Mốc hợp lý là 100%.',
+                        style: TextStyle(
+                          color: projectedWeightTotal == 100
+                              ? const Color(0xFF047857)
+                              : projectedWeightTotal > 100
+                                  ? Colors.redAccent
+                                  : const Color(0xFFB45309),
+                          fontSize: 12,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: StitchTheme.surfaceAlt,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: StitchTheme.border),
+                      ),
+                      child: const Text(
+                        'Tiến độ công việc sẽ được hệ thống tự tính từ các đầu việc và tỷ trọng của từng đầu việc. Bạn chỉ cần nhập tỷ trọng công việc trong dự án.',
+                        style: TextStyle(
+                          color: StitchTheme.textMuted,
+                          fontSize: 12,
+                          height: 1.45,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -496,7 +607,7 @@ class _TasksScreenState extends State<TasksScreen> {
     titleCtrl.dispose();
     descCtrl.dispose();
     deadlineCtrl.dispose();
-    progressCtrl.dispose();
+    weightCtrl.dispose();
   }
 
   String _shortDate(String? raw) {
@@ -610,6 +721,304 @@ class _TasksScreenState extends State<TasksScreen> {
           '${local.minute.toString().padLeft(2, '0')} '
           '${local.day.toString().padLeft(2, '0')}/'
           '${local.month.toString().padLeft(2, '0')}/${local.year}';
+    }
+
+    Future<void> openItemInsightModal(
+      StateSetter setSheetState,
+      Map<String, dynamic> item,
+    ) async {
+      final int itemId = (item['id'] ?? 0) as int;
+      if (itemId <= 0) return;
+
+      Map<String, dynamic>? insight;
+      bool insightLoading = true;
+      String insightMessage = '';
+
+      Future<void> fetchInsight(StateSetter setModalState) async {
+        setModalState(() {
+          insightLoading = true;
+          insightMessage = '';
+        });
+        final Map<String, dynamic>? data =
+            await widget.apiService.getTaskItemProgressInsight(
+          token,
+          taskId,
+          itemId,
+        );
+        setModalState(() {
+          insight = data;
+          insightLoading = false;
+          if (data == null) {
+            insightMessage = 'Không tải được biểu đồ tiến độ đầu việc.';
+          }
+        });
+      }
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (BuildContext ctx) {
+          final double bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+          return StatefulBuilder(
+            builder: (BuildContext ctx, StateSetter setModalState) {
+              if (insightLoading && insight == null && insightMessage.isEmpty) {
+                fetchInsight(setModalState);
+              }
+
+              final Map<String, dynamic> summary =
+                  (insight?['summary'] as Map<String, dynamic>?) ??
+                  <String, dynamic>{};
+              final List<Map<String, dynamic>> chartPoints =
+                  ((insight?['chart'] ?? <dynamic>[]) as List<dynamic>)
+                      .map((dynamic e) => e as Map<String, dynamic>)
+                      .toList();
+              final List<Map<String, dynamic>> approvedUpdates =
+                  ((insight?['approved_updates'] ?? <dynamic>[]) as List<dynamic>)
+                      .map((dynamic e) => e as Map<String, dynamic>)
+                      .toList();
+              final int lagPercent = _toInsightPercent(summary['lag_percent']);
+              final bool isLate = summary['is_late'] == true;
+
+              return Container(
+                padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + bottomInset),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Biểu đồ tiến độ: ${(item['title'] ?? 'Đầu việc').toString()}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'So sánh tiến độ kỳ vọng và tiến độ thực tế theo từng ngày để biết đầu việc đang vượt hay chậm tiến độ.',
+                          style: TextStyle(
+                            color: StitchTheme.textMuted,
+                            fontSize: 12,
+                            height: 1.45,
+                          ),
+                        ),
+                        if (insightMessage.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 10),
+                          Text(
+                            insightMessage,
+                            style: TextStyle(color: StitchTheme.danger),
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+                        if (insightLoading)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else ...<Widget>[
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: <Widget>[
+                              _InsightMetric(
+                                label: 'Nhân sự phụ trách',
+                                value:
+                                    (summary['assignee_name'] ?? '—').toString(),
+                              ),
+                              _InsightMetric(
+                                label: 'Tiến độ kỳ vọng hôm nay',
+                                value:
+                                    '${_toInsightPercent(summary['expected_progress_today'])}%',
+                                tone: StitchTheme.primary,
+                              ),
+                              _InsightMetric(
+                                label: 'Tiến độ thực tế',
+                                value:
+                                    '${_toInsightPercent(summary['actual_progress_today'])}%',
+                                tone: StitchTheme.success,
+                              ),
+                              _InsightMetric(
+                                label: isLate ? 'Đang chậm' : 'Đang bám tiến độ',
+                                value: '${lagPercent}%',
+                                tone: isLate
+                                    ? StitchTheme.danger
+                                    : StitchTheme.warning,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Row(
+                                  children: const <Widget>[
+                                    _LegendDot(
+                                      color: Color(0xFF2563EB),
+                                      label: 'Tiến độ kỳ vọng',
+                                    ),
+                                    SizedBox(width: 14),
+                                    _LegendDot(
+                                      color: Color(0xFF16A34A),
+                                      label: 'Tiến độ thực tế',
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                SizedBox(
+                                  height: 220,
+                                  child: _TaskItemInsightChart(
+                                    points: chartPoints,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                _ReviewInfoRow(
+                                  label: 'Ngày bắt đầu',
+                                  value: (summary['start_date'] ?? '—').toString(),
+                                ),
+                                const SizedBox(height: 8),
+                                _ReviewInfoRow(
+                                  label: 'Deadline',
+                                  value: (summary['deadline'] ?? '—').toString(),
+                                ),
+                                const SizedBox(height: 8),
+                                _ReviewInfoRow(
+                                  label: 'Phòng ban',
+                                  value:
+                                      (summary['department_name'] ?? '—').toString(),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                const Text(
+                                  'Phiếu duyệt đã được chấp thuận',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                if (approvedUpdates.isEmpty)
+                                  const Text(
+                                    'Chưa có phiếu duyệt nào được chấp thuận.',
+                                    style: TextStyle(
+                                      color: StitchTheme.textMuted,
+                                    ),
+                                  )
+                                else
+                                  ...approvedUpdates.map((Map<String, dynamic> update) {
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: StitchTheme.surfaceAlt,
+                                        borderRadius: BorderRadius.circular(14),
+                                        border:
+                                            Border.all(color: StitchTheme.border),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Text(
+                                            'Phiếu #${update['id'] ?? ''} • ${(update['submitter'] as Map?)?['name'] ?? 'Nhân sự'}',
+                                            style: const TextStyle(
+                                              color: StitchTheme.textMuted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${_toInsightPercent(update['progress_percent'])}% • ${_prettyStatus((update['status'] ?? '').toString())}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          if ((update['note'] ?? '')
+                                              .toString()
+                                              .trim()
+                                              .isNotEmpty) ...<Widget>[
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              (update['note'] ?? '').toString(),
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'Lúc duyệt: ${formatDateTime((update['reviewed_at'] ?? '').toString())}',
+                                            style: const TextStyle(
+                                              color: StitchTheme.textMuted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text('Đóng'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
     }
 
     Future<void> pickFile(
@@ -1191,6 +1600,10 @@ class _TasksScreenState extends State<TasksScreen> {
       final TextEditingController deadlineCtrl = TextEditingController();
       final TextEditingController progressCtrl =
           TextEditingController(text: '0');
+      final TextEditingController weightCtrl =
+          TextEditingController(text: '100');
+      final List<Map<String, dynamic>> existingItems =
+          await widget.apiService.getTaskItems(token, taskId, perPage: 200);
       int? assigneeId;
       String priority = 'medium';
       String status = widget.statuses.isNotEmpty
@@ -1243,6 +1656,17 @@ class _TasksScreenState extends State<TasksScreen> {
                     .map((dynamic e) => e as Map<String, dynamic>)
                     .toList();
               }
+              final int siblingWeightTotal = existingItems.fold<int>(
+                0,
+                (int sum, Map<String, dynamic> item) =>
+                    sum + (int.tryParse((item['weight_percent'] ?? 0).toString()) ?? 0),
+              );
+              final int currentWeight =
+                  int.tryParse(weightCtrl.text.trim()) ?? 0;
+              final int projectedWeightTotal =
+                  siblingWeightTotal + currentWeight;
+              final int remainingWeight =
+                  math.max(0, 100 - siblingWeightTotal);
 
               Future<void> submit() async {
                 if (submitting) return;
@@ -1258,9 +1682,17 @@ class _TasksScreenState extends State<TasksScreen> {
                 final int? progress = progressCtrl.text.trim().isEmpty
                     ? null
                     : int.tryParse(progressCtrl.text.trim());
+                final int? weight = weightCtrl.text.trim().isEmpty
+                    ? null
+                    : int.tryParse(weightCtrl.text.trim());
                 if (progress != null && (progress < 0 || progress > 100)) {
                   setModalState(() =>
                       localMsg = 'Tiến độ phải từ 0 đến 100.');
+                  return;
+                }
+                if (weight != null && (weight < 1 || weight > 100)) {
+                  setModalState(() =>
+                      localMsg = 'Tỷ trọng phải từ 1 đến 100.');
                   return;
                 }
                 setModalState(() {
@@ -1275,6 +1707,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   priority: priority,
                   status: status,
                   progressPercent: progress,
+                  weightPercent: weight,
                   deadline:
                       deadlineCtrl.text.trim().isEmpty ? null : deadlineCtrl.text,
                   assigneeId: assigneeId,
@@ -1439,14 +1872,89 @@ class _TasksScreenState extends State<TasksScreen> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: TextField(
-                              controller: progressCtrl,
+                              controller: weightCtrl,
                               keyboardType: TextInputType.number,
+                              onChanged: (_) => setModalState(() {}),
                               decoration: const InputDecoration(
-                                labelText: 'Tiến độ (%)',
+                                labelText: 'Tỷ trọng trong công việc (%)',
                               ),
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: <Widget>[
+                          OutlinedButton(
+                            onPressed: remainingWeight <= 0
+                                ? null
+                                : () {
+                                    setModalState(() {
+                                      weightCtrl.text =
+                                          math.max(1, remainingWeight).toString();
+                                    });
+                                  },
+                            child: Text('Điền phần còn lại ($remainingWeight%)'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: projectedWeightTotal == 100
+                              ? const Color(0xFFECFDF3)
+                              : projectedWeightTotal > 100
+                                  ? const Color(0xFFFEF2F2)
+                                  : const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: projectedWeightTotal == 100
+                                ? const Color(0xFFA7F3D0)
+                                : projectedWeightTotal > 100
+                                    ? const Color(0xFFFECACA)
+                                    : const Color(0xFFFDE68A),
+                          ),
+                        ),
+                        child: Text(
+                          'Tổng tỷ trọng đầu việc của công việc sau khi lưu sẽ là $projectedWeightTotal%. Mốc hợp lý là 100%.',
+                          style: TextStyle(
+                            color: projectedWeightTotal == 100
+                                ? const Color(0xFF047857)
+                                : projectedWeightTotal > 100
+                                    ? Colors.redAccent
+                                    : const Color(0xFFB45309),
+                            fontSize: 12,
+                            height: 1.45,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: progressCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Tiến độ ban đầu (%)',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: StitchTheme.surfaceAlt,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: StitchTheme.border),
+                        ),
+                        child: const Text(
+                          'Đầu việc sẽ đóng góp vào tiến độ công việc theo tỷ trọng này. Việc chia đều theo ngày chỉ dùng cho nhắc chậm tiến độ.',
+                          style: TextStyle(
+                            color: StitchTheme.textMuted,
+                            fontSize: 12,
+                            height: 1.45,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 14),
                       Row(
@@ -1811,6 +2319,19 @@ class _TasksScreenState extends State<TasksScreen> {
                                                           openItemReviewModal(setSheetState, item),
                                                       child:
                                                           const Text('Duyệt báo cáo'),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    TextButton.icon(
+                                                      onPressed: () =>
+                                                          openItemInsightModal(
+                                                            setSheetState,
+                                                            item,
+                                                          ),
+                                                      icon: const Icon(
+                                                        Icons.show_chart,
+                                                        size: 16,
+                                                      ),
+                                                      label: const Text('Biểu đồ'),
                                                     ),
                                                   ],
                                                 ],
@@ -2432,7 +2953,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final double bottomInset = MediaQuery.of(context).padding.bottom + 80;
+    final double bottomInset = MediaQuery.of(context).padding.bottom + 16;
     final List<String> statuses = <String>['', ...widget.statuses];
     final List<Map<String, dynamic>> timelineTasks =
         List<Map<String, dynamic>>.from(widget.tasks);
@@ -2448,6 +2969,7 @@ class _TasksScreenState extends State<TasksScreen> {
     });
 
     return SafeArea(
+      bottom: false,
       child: Column(
         children: <Widget>[
           Padding(
@@ -2474,22 +2996,48 @@ class _TasksScreenState extends State<TasksScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                _SegmentedControl(
-                  value: _viewMode,
-                  options: const <String, String>{
-                    'board': 'Bảng',
-                    'timeline': 'Dòng thời gian',
-                    'gantt': 'Biểu đồ Gantt',
-                  },
-                  onChanged: (String value) => setState(() => _viewMode = value),
-                ),
-                if ((_canImportTasks || _canCreateTask) && widget.isAuthenticated)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Wrap(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: StitchTheme.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'Chế độ hiển thị',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: StitchTheme.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _SegmentedControl(
+                    value: _viewMode,
+                    options: const <String, String>{
+                      'board': 'Bảng',
+                      'timeline': 'Dòng thời gian',
+                      'gantt': 'Biểu đồ Gantt',
+                    },
+                    onChanged: (String value) => setState(() => _viewMode = value),
+                  ),
+                  if ((_canImportTasks || _canCreateTask) &&
+                      widget.isAuthenticated) ...<Widget>[
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Thao tác nhanh',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: StitchTheme.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
                       spacing: 10,
                       runSpacing: 10,
                       children: <Widget>[
@@ -2506,11 +3054,11 @@ class _TasksScreenState extends State<TasksScreen> {
                             ),
                           ),
                         if (_canCreateTask)
-                          OutlinedButton.icon(
+                          FilledButton.icon(
                             onPressed: _openCreateTaskModal,
                             icon: const Icon(Icons.add_circle_outline),
                             label: const Text('Thêm công việc'),
-                            style: OutlinedButton.styleFrom(
+                            style: FilledButton.styleFrom(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 14,
                                 vertical: 12,
@@ -2519,8 +3067,9 @@ class _TasksScreenState extends State<TasksScreen> {
                           ),
                       ],
                     ),
-                  ),
-              ],
+                  ],
+                ],
+              ),
             ),
           ),
           SizedBox(
@@ -3448,6 +3997,275 @@ class _CommentBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+int _toInsightPercent(dynamic value) {
+  if (value is int) return math.max(0, math.min(100, value));
+  final int parsed = int.tryParse('${value ?? 0}') ?? 0;
+  return math.max(0, math.min(100, parsed));
+}
+
+class _ReviewInfoRow extends StatelessWidget {
+  const _ReviewInfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: 110,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: StitchTheme.textMuted,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InsightMetric extends StatelessWidget {
+  const _InsightMetric({
+    required this.label,
+    required this.value,
+    this.tone = StitchTheme.textMain,
+  });
+
+  final String label;
+  final String value;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 150),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(
+              color: StitchTheme.textMuted,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              color: tone,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  const _LegendDot({
+    required this.color,
+    required this.label,
+  });
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: StitchTheme.textMuted,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TaskItemInsightChart extends StatelessWidget {
+  const _TaskItemInsightChart({
+    required this.points,
+  });
+
+  final List<Map<String, dynamic>> points;
+
+  @override
+  Widget build(BuildContext context) {
+    if (points.isEmpty) {
+      return const Center(
+        child: Text(
+          'Chưa có dữ liệu tiến độ để hiển thị.',
+          style: TextStyle(
+            color: StitchTheme.textMuted,
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        return Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _TaskItemInsightPainter(points: points),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: points.map((Map<String, dynamic> point) {
+                  return Expanded(
+                    child: Text(
+                      (point['label'] ?? '').toString(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: StitchTheme.textMuted,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TaskItemInsightPainter extends CustomPainter {
+  const _TaskItemInsightPainter({
+    required this.points,
+  });
+
+  final List<Map<String, dynamic>> points;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty) return;
+
+    const double leftPadding = 20;
+    const double rightPadding = 14;
+    const double topPadding = 16;
+    const double bottomPadding = 28;
+    final double chartWidth = math.max(
+      1,
+      size.width - leftPadding - rightPadding,
+    );
+    final double chartHeight = math.max(
+      1,
+      size.height - topPadding - bottomPadding,
+    );
+
+    final Paint gridPaint =
+        Paint()
+          ..color = StitchTheme.border
+          ..strokeWidth = 1;
+    final Paint expectedPaint =
+        Paint()
+          ..color = const Color(0xFF2563EB)
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke;
+    final Paint actualPaint =
+        Paint()
+          ..color = const Color(0xFF16A34A)
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke;
+    final Paint actualDotPaint =
+        Paint()
+          ..color = const Color(0xFF16A34A)
+          ..style = PaintingStyle.fill;
+
+    for (int tick = 0; tick <= 4; tick++) {
+      final double y = topPadding + (chartHeight / 4) * tick;
+      canvas.drawLine(
+        Offset(leftPadding, y),
+        Offset(size.width - rightPadding, y),
+        gridPaint,
+      );
+    }
+
+    final Path expectedPath = Path();
+    final Path actualPath = Path();
+
+    for (int index = 0; index < points.length; index++) {
+      final Map<String, dynamic> point = points[index];
+      final double x = points.length == 1
+          ? leftPadding + (chartWidth / 2)
+          : leftPadding + (chartWidth * index / (points.length - 1));
+      final double expectedY = topPadding +
+          chartHeight *
+              (1 - (_toInsightPercent(point['expected_progress']) / 100));
+      final double actualY = topPadding +
+          chartHeight *
+              (1 - (_toInsightPercent(point['actual_progress']) / 100));
+
+      if (index == 0) {
+        expectedPath.moveTo(x, expectedY);
+        actualPath.moveTo(x, actualY);
+      } else {
+        expectedPath.lineTo(x, expectedY);
+        actualPath.lineTo(x, actualY);
+      }
+
+      canvas.drawCircle(Offset(x, actualY), 4, actualDotPaint);
+    }
+
+    canvas.drawPath(expectedPath, expectedPaint);
+    canvas.drawPath(actualPath, actualPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TaskItemInsightPainter oldDelegate) {
+    return oldDelegate.points != points;
   }
 }
 

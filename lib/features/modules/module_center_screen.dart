@@ -6,7 +6,6 @@ class ModuleCenterScreen extends StatelessWidget {
   const ModuleCenterScreen({
     super.key,
     this.onOpenNotifications,
-    this.onOpenDeadline,
     this.onOpenHandover,
     this.onOpenChat,
     this.onOpenActivityLogs,
@@ -16,7 +15,6 @@ class ModuleCenterScreen extends StatelessWidget {
     this.onOpenOpportunities,
     this.onOpenProducts,
     this.onOpenDepartments,
-    this.onOpenDepartmentAssignments,
     this.onOpenRevenueReport,
     this.onOpenLeadForms,
     this.onOpenLeadTypes,
@@ -25,10 +23,10 @@ class ModuleCenterScreen extends StatelessWidget {
     this.onOpenServices,
     this.onOpenProjects,
     this.onOpenCreateProject,
+    this.onOpenChatbot,
   });
 
   final VoidCallback? onOpenNotifications;
-  final VoidCallback? onOpenDeadline;
   final VoidCallback? onOpenHandover;
   final VoidCallback? onOpenChat;
   final VoidCallback? onOpenActivityLogs;
@@ -38,7 +36,6 @@ class ModuleCenterScreen extends StatelessWidget {
   final VoidCallback? onOpenOpportunities;
   final VoidCallback? onOpenProducts;
   final VoidCallback? onOpenDepartments;
-  final VoidCallback? onOpenDepartmentAssignments;
   final VoidCallback? onOpenRevenueReport;
   final VoidCallback? onOpenLeadForms;
   final VoidCallback? onOpenLeadTypes;
@@ -47,6 +44,7 @@ class ModuleCenterScreen extends StatelessWidget {
   final VoidCallback? onOpenServices;
   final VoidCallback? onOpenProjects;
   final VoidCallback? onOpenCreateProject;
+  final VoidCallback? onOpenChatbot;
 
   @override
   Widget build(BuildContext context) {
@@ -68,21 +66,10 @@ class ModuleCenterScreen extends StatelessWidget {
         icon: Icons.assignment_turned_in_outlined,
       ),
       _ModuleItem(
-        title: 'Nhắc nhở hạn chót',
-        subtitle: 'Trong ứng dụng, email, webhook',
-        icon: Icons.alarm_on_outlined,
-        onTap: onOpenDeadline,
-      ),
-      _ModuleItem(
-        title: 'Nộp liên kết/video tài liệu',
-        subtitle: 'Phiên bản bàn giao theo công việc',
-        icon: Icons.video_collection_outlined,
+        title: 'Bàn giao dự án',
+        subtitle: 'Gửi duyệt bàn giao và phản hồi phiếu bàn giao dự án',
+        icon: Icons.assignment_turned_in_outlined,
         onTap: onOpenHandover,
-      ),
-      _ModuleItem(
-        title: 'Phân luồng quản lý',
-        subtitle: 'Phân quyền theo phòng ban',
-        icon: Icons.route_outlined,
       ),
       _ModuleItem(
         title: 'Báo cáo & KPI',
@@ -109,8 +96,14 @@ class ModuleCenterScreen extends StatelessWidget {
         onTap: onOpenChat,
       ),
       _ModuleItem(
+        title: 'Trợ lý AI',
+        subtitle: 'Chatbot Gemini theo ngữ cảnh riêng từng tài khoản',
+        icon: Icons.smart_toy_outlined,
+        onTap: onOpenChatbot,
+      ),
+      _ModuleItem(
         title: 'Thông báo nội bộ',
-        subtitle: 'Nhắc hạn & thông báo hệ thống',
+        subtitle: 'Thông báo hệ thống và cập nhật nghiệp vụ',
         icon: Icons.notifications_outlined,
         onTap: onOpenNotifications,
       ),
@@ -149,12 +142,6 @@ class ModuleCenterScreen extends StatelessWidget {
         subtitle: 'Quản lý phòng ban & quản lý',
         icon: Icons.account_tree_outlined,
         onTap: onOpenDepartments,
-      ),
-      _ModuleItem(
-        title: 'Điều phối phòng ban',
-        subtitle: 'Giao việc và theo dõi tiến độ giữa các phòng ban',
-        icon: Icons.assignment_ind_outlined,
-        onTap: onOpenDepartmentAssignments,
       ),
       _ModuleItem(
         title: 'Báo cáo doanh thu công ty',

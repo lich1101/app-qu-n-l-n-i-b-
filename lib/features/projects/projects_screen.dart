@@ -10,10 +10,12 @@ class ProjectsScreen extends StatefulWidget {
     super.key,
     required this.token,
     required this.apiService,
+    this.canCreate = false,
   });
 
   final String token;
   final MobileApiService apiService;
+  final bool canCreate;
 
   @override
   State<ProjectsScreen> createState() => _ProjectsScreenState();
@@ -138,10 +140,11 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _fetch,
           ),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            onPressed: _openCreate,
-          ),
+          if (widget.canCreate)
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: _openCreate,
+            ),
         ],
       ),
       body: SafeArea(

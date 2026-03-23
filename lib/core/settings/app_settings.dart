@@ -15,7 +15,7 @@ class AppSettingsData {
 
   factory AppSettingsData.defaults() {
     return const AppSettingsData(
-      brandName: 'Job ClickOn',
+      brandName: 'Jobs ClickOn',
       primaryColor: '#04BC5C',
       logoUrl: null,
     );
@@ -23,7 +23,7 @@ class AppSettingsData {
 
   factory AppSettingsData.fromJson(Map<String, dynamic> json) {
     return AppSettingsData(
-      brandName: (json['brand_name'] ?? 'Job ClickOn').toString(),
+      brandName: (json['brand_name'] ?? 'Jobs ClickOn').toString(),
       primaryColor: (json['primary_color'] ?? '#04BC5C').toString(),
       logoUrl:
           (json['logo_url'] ?? '').toString().isEmpty

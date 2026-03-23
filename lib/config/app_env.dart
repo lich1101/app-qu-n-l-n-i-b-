@@ -4,7 +4,7 @@ class AppEnv {
   static String get appName =>
       dotenv.env['APP_NAME']?.trim().isNotEmpty == true
           ? dotenv.env['APP_NAME']!
-          : 'Job ClickOn';
+          : 'Jobs ClickOn';
 
   static String get apiBaseUrl =>
       dotenv.env['API_BASE_URL'] ?? 'http://127.0.0.1:8000/api/v1';
@@ -26,7 +26,9 @@ class AppEnv {
       return '$scheme:$raw';
     }
 
-    final String origin = _originFrom(webBaseUrl.isNotEmpty ? webBaseUrl : apiBaseUrl);
+    final String origin = _originFrom(
+      webBaseUrl.isNotEmpty ? webBaseUrl : apiBaseUrl,
+    );
     if (origin.isEmpty) {
       return raw;
     }
@@ -39,7 +41,8 @@ class AppEnv {
 
   static String get firebaseApiKey => dotenv.env['FIREBASE_API_KEY'] ?? '';
 
-  static String get firebaseProjectId => dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
+  static String get firebaseProjectId =>
+      dotenv.env['FIREBASE_PROJECT_ID'] ?? '';
 
   static String get firebaseMessagingSenderId =>
       dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? '';
@@ -50,8 +53,7 @@ class AppEnv {
   static String get firebaseAppIdAndroid =>
       dotenv.env['FIREBASE_APP_ID_ANDROID'] ?? '';
 
-  static String get firebaseAppIdIos =>
-      dotenv.env['FIREBASE_APP_ID_IOS'] ?? '';
+  static String get firebaseAppIdIos => dotenv.env['FIREBASE_APP_ID_IOS'] ?? '';
 
   static String _originFrom(String value) {
     final Uri? parsed = Uri.tryParse(value);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class MeetingsScreen extends StatefulWidget {
@@ -649,48 +650,67 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: <Widget>[
-                    TextField(
+            StitchFilterCard(
+              title: 'Bộ lọc lịch họp',
+              subtitle:
+                  'Lọc nhanh theo từ khóa, khoảng ngày và thành viên tham gia để lịch nhìn gọn hơn.',
+              trailing: OutlinedButton.icon(
+                onPressed: _fetch,
+                icon: const Icon(Icons.filter_alt_outlined, size: 18),
+                label: const Text('Lọc'),
+              ),
+              child: Column(
+                children: <Widget>[
+                  StitchFilterField(
+                    label: 'Tìm kiếm',
+                    child: TextField(
                       controller: searchCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Tìm kiếm tiêu đề/ghi chú',
+                        hintText: 'Tiêu đề hoặc ghi chú cuộc họp',
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: StitchFilterField(
+                          label: 'Từ ngày',
                           child: TextField(
                             controller: dateFromCtrl,
                             readOnly: true,
                             decoration: const InputDecoration(
-                              labelText: 'Từ ngày (YYYY-MM-DD)',
+                              hintText: 'YYYY-MM-DD',
+                              suffixIcon: Icon(Icons.event),
                             ),
                             onTap: () => _pickDate(dateFromCtrl),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: StitchFilterField(
+                          label: 'Đến ngày',
                           child: TextField(
                             controller: dateToCtrl,
                             readOnly: true,
                             decoration: const InputDecoration(
-                              labelText: 'Đến ngày (YYYY-MM-DD)',
+                              hintText: 'YYYY-MM-DD',
+                              suffixIcon: Icon(Icons.event),
                             ),
                             onTap: () => _pickDate(dateToCtrl),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int?>(
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  StitchFilterField(
+                    label: 'Thành viên',
+                    child: DropdownButtonFormField<int?>(
                       value: attendeeFilterId,
                       decoration: const InputDecoration(
-                        labelText: 'Lọc theo thành viên',
+                        hintText: 'Tất cả thành viên',
                       ),
                       items: <DropdownMenuItem<int?>>[
                         const DropdownMenuItem<int?>(
@@ -709,17 +729,8 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                         setState(() => attendeeFilterId = value);
                       },
                     ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: OutlinedButton.icon(
-                        onPressed: _fetch,
-                        icon: const Icon(Icons.filter_alt_outlined, size: 18),
-                        label: const Text('Lọc dữ liệu'),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 8),

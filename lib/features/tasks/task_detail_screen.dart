@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -146,6 +147,212 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         : int.tryParse('${item['assignee_id'] ?? ''}');
     return _canApproveItemUpdates() ||
         (currentUserId != null && currentUserId == assigneeId);
+  }
+
+  Future<void> _openItemInsightSheet(Map<String, dynamic> item) async {
+    final Map<String, dynamic>? insight = await widget.apiService
+        .getTaskItemProgressInsight(
+      widget.token,
+      widget.taskId,
+      (item['id'] ?? 0) as int,
+    );
+    if (!mounted) return;
+    if (insight == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không tải được biểu đồ tiến độ đầu việc.'),
+        ),
+      );
+      return;
+    }
+
+    final Map<String, dynamic> summary =
+        (insight['summary'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final List<Map<String, dynamic>> chart = ((insight['chart'] ?? <dynamic>[])
+            as List<dynamic>)
+        .map((dynamic row) => row as Map<String, dynamic>)
+        .toList();
+    final List<Map<String, dynamic>> approvedUpdates =
+        ((insight['approved_updates'] ?? <dynamic>[]) as List<dynamic>)
+            .map((dynamic row) => row as Map<String, dynamic>)
+            .toList();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) {
+        return Container(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    (summary['task_item_title'] ?? item['title'] ?? 'Biểu đồ tiến độ')
+                        .toString(),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Công việc: ${(summary['task_title'] ?? task?['title'] ?? '—').toString()}',
+                    style: const TextStyle(color: StitchTheme.textMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: <Widget>[
+                      _InsightMetric(
+                        label: 'Nhân sự',
+                        value: (summary['assignee_name'] ?? '—').toString(),
+                      ),
+                      _InsightMetric(
+                        label: 'Dự kiến hôm nay',
+                        value:
+                            '${summary['expected_progress_today'] ?? 0}%',
+                        tone: const Color(0xFF2563EB),
+                      ),
+                      _InsightMetric(
+                        label: 'Thực tế hôm nay',
+                        value: '${summary['actual_progress_today'] ?? 0}%',
+                        tone: StitchTheme.success,
+                      ),
+                      _InsightMetric(
+                        label: 'Đang chậm',
+                        value: '${summary['lag_percent'] ?? 0}%',
+                        tone: (summary['is_late'] == true)
+                            ? StitchTheme.danger
+                            : StitchTheme.success,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: StitchTheme.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: const <Widget>[
+                            _LegendDot(
+                              color: Color(0xFF2563EB),
+                              label: 'Tiến độ kỳ vọng',
+                            ),
+                            SizedBox(width: 16),
+                            _LegendDot(
+                              color: Color(0xFF16A34A),
+                              label: 'Tiến độ thực tế',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          height: 220,
+                          child: _TaskItemInsightChart(points: chart),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _ReviewInfoRow(
+                    label: 'Bắt đầu',
+                    value: _formatDate((summary['start_date'] ?? '').toString()),
+                  ),
+                  const SizedBox(height: 8),
+                  _ReviewInfoRow(
+                    label: 'Deadline',
+                    value: _formatDate((summary['deadline'] ?? '').toString()),
+                  ),
+                  const SizedBox(height: 8),
+                  _ReviewInfoRow(
+                    label: 'Phòng ban',
+                    value: (summary['department_name'] ?? '—').toString(),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Phiếu duyệt đã được chấp thuận',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (approvedUpdates.isEmpty)
+                    const Text(
+                      'Chưa có phiếu duyệt nào được chấp thuận.',
+                      style: TextStyle(
+                        color: StitchTheme.textMuted,
+                        fontSize: 12,
+                      ),
+                    )
+                  else
+                    ...approvedUpdates.map((Map<String, dynamic> update) {
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: StitchTheme.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              'Phiếu #${update['id'] ?? ''} • ${update['progress_percent'] ?? '—'}%',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Người gửi: ${(update['submitter']?['name'] ?? '—').toString()} • ${_formatDateTime((update['created_at'] ?? '').toString())}',
+                              style: const TextStyle(
+                                color: StitchTheme.textMuted,
+                                fontSize: 12,
+                              ),
+                            ),
+                            if ((update['note'] ?? '').toString().trim().isNotEmpty) ...<Widget>[
+                              const SizedBox(height: 6),
+                              Text(
+                                (update['note'] ?? '').toString(),
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('Đóng'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   bool _canEditPendingReport(
@@ -942,13 +1149,30 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              'Chạm để xem danh sách phiếu duyệt',
-              style: TextStyle(
-                color: StitchTheme.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'Chạm để xem danh sách phiếu duyệt',
+                    style: TextStyle(
+                      color: StitchTheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (_canApproveItemUpdates())
+                  TextButton.icon(
+                    onPressed: () => _openItemInsightSheet(item),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: const Icon(Icons.show_chart, size: 16),
+                    label: const Text('Biểu đồ'),
+                  ),
+              ],
             ),
           ],
         ),
@@ -1124,4 +1348,258 @@ class _TaskItemGroup {
 
   final String assignee;
   final List<Map<String, dynamic>> items;
+}
+
+class _ReviewInfoRow extends StatelessWidget {
+  const _ReviewInfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: 110,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: StitchTheme.textMuted,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InsightMetric extends StatelessWidget {
+  const _InsightMetric({
+    required this.label,
+    required this.value,
+    this.tone = StitchTheme.textMain,
+  });
+
+  final String label;
+  final String value;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 150),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(
+              color: StitchTheme.textMuted,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              color: tone,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  const _LegendDot({
+    required this.color,
+    required this.label,
+  });
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: StitchTheme.textMuted,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TaskItemInsightChart extends StatelessWidget {
+  const _TaskItemInsightChart({
+    required this.points,
+  });
+
+  final List<Map<String, dynamic>> points;
+
+  @override
+  Widget build(BuildContext context) {
+    if (points.isEmpty) {
+      return const Center(
+        child: Text(
+          'Chưa có dữ liệu tiến độ để hiển thị.',
+          style: TextStyle(
+            color: StitchTheme.textMuted,
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        return Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _TaskItemInsightPainter(points: points),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: points.map((Map<String, dynamic> point) {
+                  return Expanded(
+                    child: Text(
+                      (point['label'] ?? '').toString(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: StitchTheme.textMuted,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TaskItemInsightPainter extends CustomPainter {
+  const _TaskItemInsightPainter({
+    required this.points,
+  });
+
+  final List<Map<String, dynamic>> points;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double chartHeight = math.max(40, size.height - 28);
+    final Paint gridPaint = Paint()
+      ..color = StitchTheme.border
+      ..strokeWidth = 1;
+    final Paint expectedPaint = Paint()
+      ..color = const Color(0xFF2563EB)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+    final Paint actualPaint = Paint()
+      ..color = const Color(0xFF16A34A)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+    final Paint pointPaint = Paint()
+      ..color = const Color(0xFF16A34A)
+      ..style = PaintingStyle.fill;
+
+    for (int i = 0; i <= 4; i++) {
+      final double y = (chartHeight / 4) * i;
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(size.width, y),
+        gridPaint,
+      );
+    }
+
+    if (points.length < 2) {
+      return;
+    }
+
+    final Path expectedPath = Path();
+    final Path actualPath = Path();
+
+    for (int i = 0; i < points.length; i++) {
+      final Map<String, dynamic> point = points[i];
+      final double x = points.length == 1
+          ? size.width / 2
+          : (size.width / (points.length - 1)) * i;
+      final double expected = _clampPercent(point['expected_progress']);
+      final double actual = _clampPercent(point['actual_progress']);
+      final double expectedY = chartHeight - (chartHeight * expected / 100);
+      final double actualY = chartHeight - (chartHeight * actual / 100);
+
+      if (i == 0) {
+        expectedPath.moveTo(x, expectedY);
+        actualPath.moveTo(x, actualY);
+      } else {
+        expectedPath.lineTo(x, expectedY);
+        actualPath.lineTo(x, actualY);
+      }
+
+      canvas.drawCircle(Offset(x, actualY), 3.5, pointPaint);
+    }
+
+    canvas.drawPath(expectedPath, expectedPaint);
+    canvas.drawPath(actualPath, actualPaint);
+  }
+
+  double _clampPercent(dynamic value) {
+    final double parsed = value is num
+        ? value.toDouble()
+        : double.tryParse('${value ?? 0}') ?? 0;
+    return parsed.clamp(0, 100);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TaskItemInsightPainter oldDelegate) {
+    return oldDelegate.points != points;
+  }
 }

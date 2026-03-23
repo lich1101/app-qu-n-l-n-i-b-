@@ -17,9 +17,9 @@ import '../dashboard/overview_screen.dart';
 import '../modules/crm_hub_screen.dart';
 import '../modules/crm_screen.dart';
 import '../modules/contracts_screen.dart';
-import '../modules/deadline_screen.dart';
 import '../modules/handover_screen.dart';
 import '../modules/chat_screen.dart';
+import '../modules/chatbot_bot_list_screen.dart';
 import '../modules/activity_log_screen.dart';
 import '../modules/meetings_screen.dart';
 import '../modules/module_center_screen.dart';
@@ -28,7 +28,6 @@ import '../modules/reports_screen.dart';
 import '../modules/services_screen.dart';
 import '../modules/opportunities_screen.dart';
 import '../modules/products_screen.dart';
-import '../modules/department_assignments_screen.dart';
 import '../modules/revenue_report_screen.dart';
 import '../modules/lead_forms_screen.dart';
 import '../modules/lead_types_screen.dart';
@@ -482,6 +481,24 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
+  Future<String> forgotPasswordMobile({required String email}) async {
+    final Map<String, dynamic> response = await _api.forgotPassword(email: email);
+    final int statusCode = (response['statusCode'] ?? 500) as int;
+    final Map<String, dynamic> body =
+        (response['body'] as Map<String, dynamic>? ?? <String, dynamic>{});
+    final String message = (body['message'] ?? '').toString().trim();
+
+    if (message.isNotEmpty) {
+      return message;
+    }
+
+    if (statusCode == 200) {
+      return 'Nếu email hợp lệ, hệ thống đã gửi mật khẩu mới về hộp thư của bạn.';
+    }
+
+    return 'Không thể xử lý yêu cầu quên mật khẩu.';
+  }
+
   Future<void> logoutMobile() async {
     if (authToken != null && authToken!.isNotEmpty) {
       await _api.logout(authToken!);
@@ -617,6 +634,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         authMessage: authMessage,
         isLoading: _isLoggingIn,
         onLogin: loginMobile,
+        onForgotPassword: forgotPasswordMobile,
         savedAccounts: savedAccounts,
         rememberMe: rememberAccount,
         onToggleRemember: _toggleRemember,
@@ -641,23 +659,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     ]);
     final bool canDeleteContracts = _hasRole(<String>['admin']);
     final bool canCreateProject = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewProjects = _hasRole(<String>['admin', 'quan_ly']);
+    final bool canViewProjects = _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']);
     final bool canViewReports = _hasRole(<String>['admin', 'quan_ly']);
     final bool canViewDepartments = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewDeptAssignments = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-    ]);
     final bool canViewRevenue = _hasRole(<String>['admin']);
-    final bool canViewDeadlines = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-    ]);
     final bool canViewHandover = _hasRole(<String>[
       'admin',
-      'quan_ly',
       'nhan_vien',
     ]);
     final bool canViewChat = _hasRole(<String>[
@@ -688,10 +695,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final int? resolvedUserId =
         rawUserId is int ? rawUserId : int.tryParse('${rawUserId ?? ''}');
 
-    void openProjects() =>
-        openScreen(() => ProjectsScreen(token: authToken!, apiService: _api));
-    void openDeadline() => openScreen(
-      () => DeadlineRemindersScreen(token: authToken!, apiService: _api),
+    void openProjects() => openScreen(
+      () => ProjectsScreen(
+        token: authToken!,
+        apiService: _api,
+        canCreate: canCreateProject,
+      ),
     );
     void openHandover() => openScreen(
       () => HandoverCenterScreen(token: authToken!, apiService: _api),
@@ -706,6 +715,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         currentUserId: currentUserId,
       );
     });
+    void openChatbot() => openScreen(
+      () => ChatbotBotListScreen(token: authToken!, apiService: _api),
+    );
     void openActivityLogs() => openScreen(
       () => ActivityLogScreen(token: authToken!, apiService: _api),
     );
@@ -770,14 +782,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         canManage: _hasRole(<String>['admin']),
       ),
     );
-    void openDepartmentAssignments() => openScreen(
-      () => DepartmentAssignmentsScreen(
-        token: authToken!,
-        apiService: _api,
-        canCreate: _hasRole(<String>['admin']),
-        canUpdate: _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']),
-      ),
-    );
     void openRevenueReport() => openScreen(
       () => RevenueReportScreen(
         token: authToken!,
@@ -808,7 +812,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
     Widget buildModuleCenter() => ModuleCenterScreen(
       onOpenProjects: canViewProjects ? openProjects : null,
-      onOpenDeadline: canViewDeadlines ? openDeadline : null,
       onOpenHandover: canViewHandover ? openHandover : null,
       onOpenChat: canViewChat ? openChat : null,
       onOpenActivityLogs: canViewLogs ? openActivityLogs : null,
@@ -820,14 +823,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenContracts: canManageContracts ? openContracts : null,
       onOpenProducts: canManageContracts ? openProducts : null,
       onOpenDepartments: canViewDepartments ? openDepartments : null,
-      onOpenDepartmentAssignments:
-          canViewDeptAssignments ? openDepartmentAssignments : null,
       onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
       onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
       onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
       onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
       onOpenReports: canViewReports ? openReports : null,
       onOpenServices: canViewProjects ? openServices : null,
+      onOpenChatbot: openChatbot,
     );
 
     final List<OverviewQuickAction> quickActions = <OverviewQuickAction>[
@@ -845,17 +847,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           onTap: openReports,
           color: const Color(0xFF0EA5A6),
         ),
-      if (canViewDeadlines)
-        OverviewQuickAction(
-          label: 'Deadline',
-          icon: Icons.alarm_on_outlined,
-          onTap: openDeadline,
-          color: const Color(0xFFF59E0B),
-        ),
       if (canViewHandover)
         OverviewQuickAction(
-          label: 'Bàn giao',
-          icon: Icons.video_collection_outlined,
+          label: 'Bàn giao dự án',
+          icon: Icons.assignment_turned_in_outlined,
           onTap: openHandover,
           color: const Color(0xFF8B5CF6),
         ),
@@ -873,6 +868,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           onTap: openActivityLogs,
           color: const Color(0xFF64748B),
         ),
+      OverviewQuickAction(
+        label: 'Trợ lý AI',
+        icon: Icons.smart_toy_outlined,
+        onTap: openChatbot,
+        color: const Color(0xFF6366F1),
+      ),
     ];
 
     final List<OverviewQuickAction> adminActions = <OverviewQuickAction>[
@@ -882,13 +883,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           icon: Icons.account_tree_outlined,
           onTap: openDepartments,
           color: const Color(0xFF0EA5E9),
-        ),
-      if (canViewDeptAssignments)
-        OverviewQuickAction(
-          label: 'Điều phối',
-          icon: Icons.assignment_ind_outlined,
-          onTap: openDepartmentAssignments,
-          color: const Color(0xFF22C55E),
         ),
       if (canViewRevenue)
         OverviewQuickAction(
@@ -951,8 +945,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     ];
 
     return Scaffold(
-      extendBody: true,
-      body: tabs[_tabIndex],
+      extendBody: false,
+      body: MediaQuery.removePadding(
+        context: context,
+        removeBottom: true,
+        child: tabs[_tabIndex],
+      ),
       floatingActionButton:
           canCreateProject
               ? FloatingActionButton(
@@ -988,69 +986,67 @@ class _BottomNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final MediaQueryData media = MediaQuery.of(context);
     final bool compact = media.size.height < 720 || media.size.width < 380;
-    return ColoredBox(
-      color: StitchTheme.bg,
+    return BottomAppBar(
+      shape: hasCenterButton ? const CircularNotchedRectangle() : null,
+      notchMargin: hasCenterButton ? 8 : 0,
+      elevation: 12,
+      surfaceTintColor: Colors.transparent,
+      color: StitchTheme.surface,
+      padding: EdgeInsets.zero,
       child: SafeArea(
         top: false,
-        minimum: EdgeInsets.only(bottom: compact ? 2 : 4),
-        child: BottomAppBar(
-          shape: hasCenterButton ? const CircularNotchedRectangle() : null,
-          notchMargin: hasCenterButton ? 8 : 0,
-          elevation: 12,
-          surfaceTintColor: Colors.transparent,
-          color: StitchTheme.surface,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              12,
-              compact ? 4 : 6,
-              12,
-              compact ? 4 : 6,
-            ),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: _NavItem(
-                    label: 'Tổng quan',
-                    icon: Icons.home_outlined,
-                    activeIcon: Icons.home,
-                    isActive: currentIndex == 0,
-                    onTap: () => onTap(0),
-                    compact: compact,
-                  ),
+        minimum: EdgeInsets.only(bottom: media.padding.bottom == 0 ? 4 : 0),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            12,
+            compact ? 6 : 8,
+            12,
+            compact ? 8 : 10,
+          ),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: _NavItem(
+                  label: 'Tổng quan',
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home,
+                  isActive: currentIndex == 0,
+                  onTap: () => onTap(0),
+                  compact: compact,
                 ),
-                Expanded(
-                  child: _NavItem(
-                    label: 'Công việc',
-                    icon: Icons.event_note_outlined,
-                    activeIcon: Icons.event_note,
-                    isActive: currentIndex == 1,
-                    onTap: () => onTap(1),
-                    compact: compact,
-                  ),
+              ),
+              Expanded(
+                child: _NavItem(
+                  label: 'Công việc',
+                  icon: Icons.event_note_outlined,
+                  activeIcon: Icons.event_note,
+                  isActive: currentIndex == 1,
+                  onTap: () => onTap(1),
+                  compact: compact,
                 ),
-                if (hasCenterButton) SizedBox(width: compact ? 60 : 72),
-                Expanded(
-                  child: _NavItem(
-                    label: 'CRM',
-                    icon: Icons.groups_outlined,
-                    activeIcon: Icons.groups,
-                    isActive: currentIndex == 2,
-                    onTap: () => onTap(2),
-                    compact: compact,
-                  ),
+              ),
+              if (hasCenterButton) SizedBox(width: compact ? 60 : 72),
+              Expanded(
+                child: _NavItem(
+                  label: 'CRM',
+                  icon: Icons.groups_outlined,
+                  activeIcon: Icons.groups,
+                  isActive: currentIndex == 2,
+                  onTap: () => onTap(2),
+                  compact: compact,
                 ),
-                Expanded(
-                  child: _NavItem(
-                    label: 'Tài khoản',
-                    icon: Icons.person_outline,
-                    activeIcon: Icons.person,
-                    isActive: currentIndex == 3,
-                    onTap: () => onTap(3),
-                    compact: compact,
-                  ),
+              ),
+              Expanded(
+                child: _NavItem(
+                  label: 'Tài khoản',
+                  icon: Icons.person_outline,
+                  activeIcon: Icons.person,
+                  isActive: currentIndex == 3,
+                  onTap: () => onTap(3),
+                  compact: compact,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

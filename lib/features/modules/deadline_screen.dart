@@ -168,6 +168,15 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
                     },
                   ),
                   const SizedBox(height: 12),
+                  const Text(
+                    'Thời gian gửi nhắc',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: StitchTheme.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   OutlinedButton.icon(
                     onPressed: pickSchedule,
                     icon: const Icon(Icons.schedule),

@@ -14,6 +14,7 @@ class LoginScreen extends StatefulWidget {
     required this.authMessage,
     required this.isLoading,
     required this.onLogin,
+    required this.onForgotPassword,
     required this.savedAccounts,
     required this.rememberMe,
     required this.onToggleRemember,
@@ -27,6 +28,7 @@ class LoginScreen extends StatefulWidget {
   final bool isLoading;
   final Future<void> Function({required String email, required String password})
   onLogin;
+  final Future<String> Function({required String email}) onForgotPassword;
   final List<String> savedAccounts;
   final bool rememberMe;
   final ValueChanged<bool> onToggleRemember;
@@ -39,6 +41,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
+  bool _isSendingForgotPassword = false;
 
   @override
   Widget build(BuildContext context) {
@@ -64,33 +67,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 64,
                           fit: BoxFit.cover,
                           errorBuilder:
-                              (_, __, ___) => Container(
+                              (_, __, ___) => Image.asset(
+                                'icon.png',
                                 width: 64,
                                 height: 64,
-                                decoration: BoxDecoration(
-                                  color: StitchTheme.primary,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Icon(
-                                  Icons.workspaces_filled,
-                                  color: Colors.white,
-                                  size: 32,
-                                ),
+                                fit: BoxFit.cover,
                               ),
                         ),
                       );
                     }
-                    return Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: StitchTheme.primary,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Icon(
-                        Icons.workspaces_filled,
-                        color: Colors.white,
-                        size: 32,
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Image.asset(
+                        'icon.png',
+                        width: 64,
+                        height: 64,
+                        fit: BoxFit.cover,
                       ),
                     );
                   },
@@ -111,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Hệ thống quản lý nội bộ Job ClickOn',
+                  'Hệ thống quản lý nội bộ Jobs ClickOn',
                   style: TextStyle(color: StitchTheme.textMuted),
                 ),
               ],
@@ -262,7 +254,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Text('Ghi nhớ'),
                       const Spacer(),
                       TextButton(
-                        onPressed: () {},
+                        onPressed:
+                            _isSendingForgotPassword
+                                ? null
+                                : () => _showForgotPasswordDialog(context),
                         child: const Text('Quên mật khẩu?'),
                       ),
                     ],
@@ -310,5 +305,97 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
     widget.onLogin(email: email, password: password);
+  }
+
+  Future<void> _showForgotPasswordDialog(BuildContext context) async {
+    final TextEditingController emailController = TextEditingController(
+      text: widget.emailController.text.trim(),
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            Future<void> submitForgotPassword() async {
+              final String email = emailController.text.trim();
+              if (email.isEmpty || _isSendingForgotPassword) {
+                return;
+              }
+
+              setDialogState(() => _isSendingForgotPassword = true);
+
+              try {
+                final String message = await widget.onForgotPassword(
+                  email: email,
+                );
+                if (!mounted || !dialogContext.mounted) return;
+                setState(() => _isSendingForgotPassword = false);
+                Navigator.of(dialogContext).pop();
+                ScaffoldMessenger.of(
+                  this.context,
+                ).showSnackBar(SnackBar(content: Text(message)));
+              } catch (_) {
+                if (!mounted || !dialogContext.mounted) return;
+                setDialogState(() => _isSendingForgotPassword = false);
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Không thể gửi mật khẩu mới. Vui lòng thử lại.',
+                    ),
+                  ),
+                );
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Quên mật khẩu'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'Nhập email đăng nhập. Hệ thống sẽ tạo mật khẩu mới và gửi về email đó.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: StitchTheme.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email đăng nhập',
+                      hintText: 'name@example.com',
+                      prefixIcon: Icon(Icons.mail_outline),
+                    ),
+                    onSubmitted: (_) => submitForgotPassword(),
+                  ),
+                ],
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed:
+                      _isSendingForgotPassword
+                          ? null
+                          : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton(
+                  onPressed:
+                      _isSendingForgotPassword ? null : submitForgotPassword,
+                  child: Text(
+                    _isSendingForgotPassword
+                        ? 'Đang gửi...'
+                        : 'Gửi mật khẩu mới',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }

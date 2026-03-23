@@ -86,6 +86,18 @@ class StitchTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
+        contentPadding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        labelStyle: const TextStyle(
+          color: textMuted,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        floatingLabelStyle: const TextStyle(
+          color: textMuted,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: border),

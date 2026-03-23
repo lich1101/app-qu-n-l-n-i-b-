@@ -115,6 +115,25 @@ class MobileApiService {
     };
   }
 
+  Future<Map<String, dynamic>> forgotPassword({required String email}) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/forgot-password'),
+      headers: _jsonHeaders(),
+      body: jsonEncode(<String, dynamic>{'email': email}),
+    );
+
+    Map<String, dynamic> body = <String, dynamic>{};
+    if (res.body.isNotEmpty) {
+      try {
+        body = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {
+        body = <String, dynamic>{'message': res.body};
+      }
+    }
+
+    return <String, dynamic>{'statusCode': res.statusCode, 'body': body};
+  }
+
   Future<Map<String, dynamic>> me(String token) async {
     final http.Response res = await http.get(
       Uri.parse('${AppEnv.apiBaseUrl}/me'),
@@ -155,6 +174,126 @@ class MobileApiService {
     );
     if (res.statusCode != 200) {
       return <String, dynamic>{'error': true, 'status': res.statusCode};
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getChatbotMessages(
+    String token, {
+    int limit = 220,
+    int? botId,
+  }) async {
+    final Uri uri = Uri.parse('${AppEnv.apiBaseUrl}/chatbot/messages').replace(
+      queryParameters: <String, String>{
+        'limit': '$limit',
+        if (botId != null && botId > 0) 'bot_id': '$botId',
+      },
+    );
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) {
+      return <String, dynamic>{'error': true, 'statusCode': res.statusCode};
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getChatbotBots(String token) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/chatbot/bots'),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) {
+      return <String, dynamic>{'error': true, 'statusCode': res.statusCode};
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> sendChatbotMessage(
+    String token, {
+    required String content,
+    File? attachment,
+    int? botId,
+  }) async {
+    final String trimmed = content.trim();
+    if (attachment != null && _fileExists(attachment.path)) {
+      final http.MultipartRequest request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${AppEnv.apiBaseUrl}/chatbot/messages'),
+      );
+      request.headers.addAll(_authHeaders(token));
+      if (trimmed.isNotEmpty) {
+        request.fields['content'] = trimmed;
+      }
+      if (botId != null && botId > 0) {
+        request.fields['bot_id'] = '$botId';
+      }
+      request.files.add(
+        await http.MultipartFile.fromPath('attachment', attachment.path),
+      );
+      final http.StreamedResponse streamed = await request.send();
+      final String body = await streamed.stream.bytesToString();
+      if (streamed.statusCode != 200) {
+        return <String, dynamic>{
+          'error': true,
+          'statusCode': streamed.statusCode,
+        };
+      }
+      return jsonDecode(body) as Map<String, dynamic>;
+    }
+
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/chatbot/messages'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'content': trimmed,
+        if (botId != null && botId > 0) 'bot_id': botId,
+      }),
+    );
+    if (res.statusCode != 200) {
+      return <String, dynamic>{'error': true, 'statusCode': res.statusCode};
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> stopChatbot(String token, {int? botId}) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/chatbot/stop'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        if (botId != null && botId > 0) 'bot_id': botId,
+      }),
+    );
+    if (res.statusCode != 200) {
+      return <String, dynamic>{'error': true, 'statusCode': res.statusCode};
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateQueuedChatbotMessage(
+    String token,
+    int messageId, {
+    required String content,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/chatbot/messages/$messageId'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{'content': content}),
+    );
+    if (res.statusCode != 200) {
+      return <String, dynamic>{'error': true, 'statusCode': res.statusCode};
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> deleteQueuedChatbotMessage(
+    String token,
+    int messageId,
+  ) async {
+    final http.Response res = await http.delete(
+      Uri.parse('${AppEnv.apiBaseUrl}/chatbot/messages/$messageId'),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) {
+      return <String, dynamic>{'error': true, 'statusCode': res.statusCode};
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -260,6 +399,7 @@ class MobileApiService {
     String token, {
     String search = '',
     String role = '',
+    String purpose = '',
   }) async {
     final Map<String, String> params = <String, String>{};
     if (search.trim().isNotEmpty) {
@@ -267,6 +407,9 @@ class MobileApiService {
     }
     if (role.trim().isNotEmpty) {
       params['role'] = role.trim();
+    }
+    if (purpose.trim().isNotEmpty) {
+      params['purpose'] = purpose.trim();
     }
     final Uri uri = Uri.parse(
       '${AppEnv.apiBaseUrl}/users/lookup',
@@ -1132,6 +1275,130 @@ class MobileApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> getProjectSearchConsole(
+    String token,
+    int projectId, {
+    bool refresh = true,
+    bool force = false,
+    int days = 21,
+  }) async {
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/projects/$projectId/search-console',
+    ).replace(
+      queryParameters: <String, String>{
+        'refresh': refresh ? '1' : '0',
+        'force': force ? '1' : '0',
+        'days': '$days',
+      },
+    );
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+
+    Map<String, dynamic> body = <String, dynamic>{};
+    if (res.body.isNotEmpty) {
+      try {
+        body = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {
+        body = <String, dynamic>{};
+      }
+    }
+
+    if (res.statusCode != 200) {
+      final String message =
+          (body['message'] ?? 'Không tải được dữ liệu Google Search Console.')
+              .toString();
+      return <String, dynamic>{
+        'error': true,
+        'statusCode': res.statusCode,
+        'message': message,
+        'body': body,
+      };
+    }
+
+    return <String, dynamic>{
+      'error': false,
+      'statusCode': res.statusCode,
+      'body': body,
+    };
+  }
+
+  Future<Map<String, dynamic>> syncProjectSearchConsole(
+    String token,
+    int projectId,
+  ) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/projects/$projectId/search-console/sync'),
+      headers: _jsonHeaders(token),
+    );
+
+    Map<String, dynamic> body = <String, dynamic>{};
+    if (res.body.isNotEmpty) {
+      try {
+        body = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {
+        body = <String, dynamic>{};
+      }
+    }
+
+    if (res.statusCode != 200) {
+      final String message =
+          (body['message'] ??
+                  'Không đồng bộ được dữ liệu Google Search Console.')
+              .toString();
+      return <String, dynamic>{
+        'error': true,
+        'statusCode': res.statusCode,
+        'message': message,
+        'body': body,
+      };
+    }
+
+    return <String, dynamic>{
+      'error': false,
+      'statusCode': res.statusCode,
+      'body': body,
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> getProjectHandovers(
+    String token, {
+    int perPage = 50,
+  }) async {
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/project-handovers',
+    ).replace(queryParameters: <String, String>{'per_page': '$perPage'});
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <Map<String, dynamic>>[];
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
+    final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
+    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<bool> submitProjectHandover(String token, int projectId) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/projects/$projectId/handover-submit'),
+      headers: _jsonHeaders(token),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<bool> reviewProjectHandover(
+    String token,
+    int projectId, {
+    required String decision,
+    String? reason,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/projects/$projectId/handover-review'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'decision': decision,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      }),
+    );
+    return res.statusCode == 200;
+  }
+
   Future<Map<String, dynamic>?> getTaskDetail(String token, int taskId) async {
     final http.Response res = await http.get(
       Uri.parse('${AppEnv.apiBaseUrl}/tasks/$taskId'),
@@ -1151,7 +1418,7 @@ class MobileApiService {
     String priority = 'medium',
     String status = 'todo',
     String? deadline,
-    int? progressPercent,
+    int? weightPercent,
   }) async {
     final http.Response res = await http.post(
       Uri.parse('${AppEnv.apiBaseUrl}/tasks'),
@@ -1166,7 +1433,7 @@ class MobileApiService {
         'priority': priority,
         'status': status,
         if (deadline != null && deadline.isNotEmpty) 'deadline': deadline,
-        if (progressPercent != null) 'progress_percent': progressPercent,
+        if (weightPercent != null) 'weight_percent': weightPercent,
       }),
     );
     return res.statusCode == 201;
@@ -1196,6 +1463,7 @@ class MobileApiService {
     String priority = 'medium',
     String status = 'todo',
     int? progressPercent,
+    int? weightPercent,
     String? deadline,
     int? assigneeId,
   }) async {
@@ -1209,6 +1477,7 @@ class MobileApiService {
         'priority': priority,
         'status': status,
         if (progressPercent != null) 'progress_percent': progressPercent,
+        if (weightPercent != null) 'weight_percent': weightPercent,
         if (deadline != null && deadline.isNotEmpty) 'deadline': deadline,
         if (assigneeId != null) 'assignee_id': assigneeId,
       }),
@@ -1225,6 +1494,7 @@ class MobileApiService {
     String? priority,
     String? status,
     int? progressPercent,
+    int? weightPercent,
     String? deadline,
     int? assigneeId,
   }) async {
@@ -1237,6 +1507,7 @@ class MobileApiService {
         if (priority != null) 'priority': priority,
         if (status != null) 'status': status,
         if (progressPercent != null) 'progress_percent': progressPercent,
+        if (weightPercent != null) 'weight_percent': weightPercent,
         if (deadline != null) 'deadline': deadline,
         if (assigneeId != null) 'assignee_id': assigneeId,
       }),
@@ -1267,6 +1538,21 @@ class MobileApiService {
         jsonDecode(res.body) as Map<String, dynamic>;
     final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<Map<String, dynamic>?> getTaskItemProgressInsight(
+    String token,
+    int taskId,
+    int itemId,
+  ) async {
+    final http.Response res = await http.get(
+      Uri.parse(
+        '${AppEnv.apiBaseUrl}/tasks/$taskId/items/$itemId/progress-insight',
+      ),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) return null;
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<bool> createTaskItemUpdate(
@@ -1416,6 +1702,7 @@ class MobileApiService {
       'deadline': task['deadline'],
       'completed_at': task['completed_at'],
       'progress_percent': task['progress_percent'],
+      'weight_percent': task['weight_percent'],
       'assigned_by': task['assigned_by'],
       'assignee_id': task['assignee_id'],
       'reviewer_id': task['reviewer_id'],
@@ -1450,6 +1737,7 @@ class MobileApiService {
       'deadline': task['deadline'],
       'completed_at': task['completed_at'],
       'progress_percent': task['progress_percent'],
+      'weight_percent': task['weight_percent'],
       'assigned_by': task['assigned_by'],
       'assignee_id': task['assignee_id'],
       'reviewer_id': task['reviewer_id'],

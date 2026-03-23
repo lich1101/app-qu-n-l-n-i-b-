@@ -76,18 +76,22 @@ class _CrmScreenState extends State<CrmScreen> {
   Future<void> _fetch() async {
     setState(() => loading = true);
     final bool isAdmin = widget.currentUserRole == 'admin';
-    final List<Map<String, dynamic>> types =
-        await widget.apiService.getLeadTypes(widget.token);
-    final List<Map<String, dynamic>> deptData = isAdmin
-        ? await widget.apiService.getDepartments(widget.token)
-        : <Map<String, dynamic>>[];
-    final List<Map<String, dynamic>> staffData = isAdmin
-        ? await widget.apiService.getUsersAccounts(widget.token)
-        : <Map<String, dynamic>>[];
-    final List<Map<String, dynamic>> c =
-        await widget.apiService.getClients(widget.token);
-    final List<Map<String, dynamic>> p =
-        await widget.apiService.getPayments(widget.token);
+    final List<Map<String, dynamic>> types = await widget.apiService
+        .getLeadTypes(widget.token);
+    final List<Map<String, dynamic>> deptData =
+        isAdmin
+            ? await widget.apiService.getDepartments(widget.token)
+            : <Map<String, dynamic>>[];
+    final List<Map<String, dynamic>> staffData =
+        isAdmin
+            ? await widget.apiService.getUsersAccounts(widget.token)
+            : <Map<String, dynamic>>[];
+    final List<Map<String, dynamic>> c = await widget.apiService.getClients(
+      widget.token,
+    );
+    final List<Map<String, dynamic>> p = await widget.apiService.getPayments(
+      widget.token,
+    );
     setState(() {
       loading = false;
       leadTypes = types;
@@ -112,13 +116,16 @@ class _CrmScreenState extends State<CrmScreen> {
     );
     if (result == null || result.files.single.path == null) return;
     final File file = File(result.files.single.path!);
-    final Map<String, dynamic> report =
-        await widget.apiService.importClients(widget.token, file);
+    final Map<String, dynamic> report = await widget.apiService.importClients(
+      widget.token,
+      file,
+    );
     if (!mounted) return;
     setState(() {
-      message = report['error'] != null
-          ? 'Import thất bại.'
-          : 'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới, ${(report['updated'] ?? 0)} cập nhật.';
+      message =
+          report['error'] != null
+              ? 'Import thất bại.'
+              : 'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới, ${(report['updated'] ?? 0)} cập nhật.';
     });
     await _fetch();
   }
@@ -132,65 +139,79 @@ class _CrmScreenState extends State<CrmScreen> {
       setState(() => message = 'Vui lòng nhập tên khách hàng.');
       return false;
     }
-    final bool ok = editingClientId == null
-        ? await widget.apiService.createClient(
-            widget.token,
-            name: clientNameCtrl.text.trim(),
-            company: clientCompanyCtrl.text.trim().isEmpty
-                ? null
-                : clientCompanyCtrl.text.trim(),
-            email: clientEmailCtrl.text.trim().isEmpty
-                ? null
-                : clientEmailCtrl.text.trim(),
-            phone: clientPhoneCtrl.text.trim().isEmpty
-                ? null
-                : clientPhoneCtrl.text.trim(),
-            assignedDepartmentId: assignedDepartmentId,
-            assignedStaffId: assignedStaffId,
-            leadTypeId: leadTypeId,
-            leadSource: leadSourceCtrl.text.trim().isEmpty
-                ? null
-                : leadSourceCtrl.text.trim(),
-            leadChannel: leadChannelCtrl.text.trim().isEmpty
-                ? null
-                : leadChannelCtrl.text.trim(),
-            leadMessage: leadMessageCtrl.text.trim().isEmpty
-                ? null
-                : leadMessageCtrl.text.trim(),
-          )
-        : await widget.apiService.updateClient(
-            widget.token,
-            editingClientId!,
-            name: clientNameCtrl.text.trim(),
-            company: clientCompanyCtrl.text.trim().isEmpty
-                ? null
-                : clientCompanyCtrl.text.trim(),
-            email: clientEmailCtrl.text.trim().isEmpty
-                ? null
-                : clientEmailCtrl.text.trim(),
-            phone: clientPhoneCtrl.text.trim().isEmpty
-                ? null
-                : clientPhoneCtrl.text.trim(),
-            assignedDepartmentId: assignedDepartmentId,
-            assignedStaffId: assignedStaffId,
-            leadTypeId: leadTypeId,
-            leadSource: leadSourceCtrl.text.trim().isEmpty
-                ? null
-                : leadSourceCtrl.text.trim(),
-            leadChannel: leadChannelCtrl.text.trim().isEmpty
-                ? null
-                : leadChannelCtrl.text.trim(),
-            leadMessage: leadMessageCtrl.text.trim().isEmpty
-                ? null
-                : leadMessageCtrl.text.trim(),
-          );
+    final bool ok =
+        editingClientId == null
+            ? await widget.apiService.createClient(
+              widget.token,
+              name: clientNameCtrl.text.trim(),
+              company:
+                  clientCompanyCtrl.text.trim().isEmpty
+                      ? null
+                      : clientCompanyCtrl.text.trim(),
+              email:
+                  clientEmailCtrl.text.trim().isEmpty
+                      ? null
+                      : clientEmailCtrl.text.trim(),
+              phone:
+                  clientPhoneCtrl.text.trim().isEmpty
+                      ? null
+                      : clientPhoneCtrl.text.trim(),
+              assignedDepartmentId: assignedDepartmentId,
+              assignedStaffId: assignedStaffId,
+              leadTypeId: leadTypeId,
+              leadSource:
+                  leadSourceCtrl.text.trim().isEmpty
+                      ? null
+                      : leadSourceCtrl.text.trim(),
+              leadChannel:
+                  leadChannelCtrl.text.trim().isEmpty
+                      ? null
+                      : leadChannelCtrl.text.trim(),
+              leadMessage:
+                  leadMessageCtrl.text.trim().isEmpty
+                      ? null
+                      : leadMessageCtrl.text.trim(),
+            )
+            : await widget.apiService.updateClient(
+              widget.token,
+              editingClientId!,
+              name: clientNameCtrl.text.trim(),
+              company:
+                  clientCompanyCtrl.text.trim().isEmpty
+                      ? null
+                      : clientCompanyCtrl.text.trim(),
+              email:
+                  clientEmailCtrl.text.trim().isEmpty
+                      ? null
+                      : clientEmailCtrl.text.trim(),
+              phone:
+                  clientPhoneCtrl.text.trim().isEmpty
+                      ? null
+                      : clientPhoneCtrl.text.trim(),
+              assignedDepartmentId: assignedDepartmentId,
+              assignedStaffId: assignedStaffId,
+              leadTypeId: leadTypeId,
+              leadSource:
+                  leadSourceCtrl.text.trim().isEmpty
+                      ? null
+                      : leadSourceCtrl.text.trim(),
+              leadChannel:
+                  leadChannelCtrl.text.trim().isEmpty
+                      ? null
+                      : leadChannelCtrl.text.trim(),
+              leadMessage:
+                  leadMessageCtrl.text.trim().isEmpty
+                      ? null
+                      : leadMessageCtrl.text.trim(),
+            );
     if (!mounted) return false;
     setState(() {
-      message = ok
-          ? (editingClientId == null
-                ? 'Tạo khách hàng thành công.'
-                : 'Cập nhật khách hàng thành công.')
-          : 'Lưu khách hàng thất bại.';
+      message =
+          ok
+              ? (editingClientId == null
+                  ? 'Tạo khách hàng thành công.'
+                  : 'Cập nhật khách hàng thành công.')
+              : 'Lưu khách hàng thất bại.';
       if (ok) {
         editingClientId = null;
         clientNameCtrl.clear();
@@ -200,7 +221,8 @@ class _CrmScreenState extends State<CrmScreen> {
         leadSourceCtrl.clear();
         leadChannelCtrl.clear();
         leadMessageCtrl.clear();
-        leadTypeId = leadTypes.isNotEmpty ? leadTypes.first['id'] as int? : null;
+        leadTypeId =
+            leadTypes.isNotEmpty ? leadTypes.first['id'] as int? : null;
         assignedDepartmentId = null;
         assignedStaffId = null;
       }
@@ -229,30 +251,34 @@ class _CrmScreenState extends State<CrmScreen> {
     }
     final double? amount = double.tryParse(paymentAmountCtrl.text.trim());
     if (paymentClientId == null || amount == null) {
-      setState(() => message = 'Vui lòng chọn khách hàng và nhập số tiền hợp lệ.');
+      setState(
+        () => message = 'Vui lòng chọn khách hàng và nhập số tiền hợp lệ.',
+      );
       return false;
     }
-    final bool ok = editingPaymentId == null
-        ? await widget.apiService.createPayment(
-            widget.token,
-            clientId: paymentClientId!,
-            amount: amount,
-            status: paymentStatus,
-          )
-        : await widget.apiService.updatePayment(
-            widget.token,
-            editingPaymentId!,
-            clientId: paymentClientId!,
-            amount: amount,
-            status: paymentStatus,
-          );
+    final bool ok =
+        editingPaymentId == null
+            ? await widget.apiService.createPayment(
+              widget.token,
+              clientId: paymentClientId!,
+              amount: amount,
+              status: paymentStatus,
+            )
+            : await widget.apiService.updatePayment(
+              widget.token,
+              editingPaymentId!,
+              clientId: paymentClientId!,
+              amount: amount,
+              status: paymentStatus,
+            );
     if (!mounted) return false;
     setState(() {
-      message = ok
-          ? (editingPaymentId == null
-                ? 'Tạo thanh toán thành công.'
-                : 'Cập nhật thanh toán thành công.')
-          : 'Lưu thanh toán thất bại.';
+      message =
+          ok
+              ? (editingPaymentId == null
+                  ? 'Tạo thanh toán thành công.'
+                  : 'Cập nhật thanh toán thành công.')
+              : 'Lưu thanh toán thất bại.';
       if (ok) {
         editingPaymentId = null;
         paymentAmountCtrl.clear();
@@ -341,13 +367,17 @@ class _CrmScreenState extends State<CrmScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      editingClientId == null ? 'Tạo khách hàng' : 'Sửa khách hàng',
+                      editingClientId == null
+                          ? 'Tạo khách hàng'
+                          : 'Sửa khách hàng',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: clientNameCtrl,
-                      decoration: const InputDecoration(labelText: 'Tên khách hàng'),
+                      decoration: const InputDecoration(
+                        labelText: 'Tên khách hàng',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -362,70 +392,86 @@ class _CrmScreenState extends State<CrmScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: clientPhoneCtrl,
-                      decoration: const InputDecoration(labelText: 'Số điện thoại'),
+                      decoration: const InputDecoration(
+                        labelText: 'Số điện thoại',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
                       value: leadTypeId,
-                      decoration:
-                          const InputDecoration(
-                              labelText: 'Trạng thái khách hàng tiềm năng'),
-                      items: leadTypes
-                          .map(
-                            (Map<String, dynamic> t) => DropdownMenuItem<int>(
-                              value: t['id'] as int,
-                              child: Text((t['name'] ?? '').toString()),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: widget.canManageClients
-                          ? (int? value) =>
-                              setSheetState(() => leadTypeId = value)
-                          : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Trạng thái khách hàng tiềm năng',
+                      ),
+                      items:
+                          leadTypes
+                              .map(
+                                (Map<String, dynamic> t) =>
+                                    DropdownMenuItem<int>(
+                                      value: t['id'] as int,
+                                      child: Text((t['name'] ?? '').toString()),
+                                    ),
+                              )
+                              .toList(),
+                      onChanged:
+                          widget.canManageClients
+                              ? (int? value) =>
+                                  setSheetState(() => leadTypeId = value)
+                              : null,
                     ),
                     if (widget.currentUserRole == 'admin') ...<Widget>[
                       const SizedBox(height: 8),
                       DropdownButtonFormField<int>(
                         value: assignedDepartmentId,
-                        decoration:
-                            const InputDecoration(labelText: 'Phòng ban phụ trách'),
-                        items: departments
-                            .map(
-                              (Map<String, dynamic> d) =>
-                                  DropdownMenuItem<int>(
-                                value: d['id'] as int,
-                                child: Text((d['name'] ?? '').toString()),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (int? value) =>
-                            setSheetState(() => assignedDepartmentId = value),
+                        decoration: const InputDecoration(
+                          labelText: 'Phòng ban phụ trách',
+                        ),
+                        items:
+                            departments
+                                .map(
+                                  (Map<String, dynamic> d) =>
+                                      DropdownMenuItem<int>(
+                                        value: d['id'] as int,
+                                        child: Text(
+                                          (d['name'] ?? '').toString(),
+                                        ),
+                                      ),
+                                )
+                                .toList(),
+                        onChanged:
+                            (int? value) => setSheetState(
+                              () => assignedDepartmentId = value,
+                            ),
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<int>(
                         value: assignedStaffId,
-                        decoration:
-                            const InputDecoration(labelText: 'Nhân sự phụ trách'),
-                        items: staffUsers
-                            .map(
-                              (Map<String, dynamic> u) =>
-                                  DropdownMenuItem<int>(
-                                value: u['id'] as int,
-                                child: Text(
-                                  '${(u['name'] ?? '').toString()} • ${(u['role'] ?? '').toString()}',
-                                ),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (int? value) =>
-                            setSheetState(() => assignedStaffId = value),
+                        decoration: const InputDecoration(
+                          labelText: 'Nhân sự phụ trách',
+                        ),
+                        items:
+                            staffUsers
+                                .map(
+                                  (
+                                    Map<String, dynamic> u,
+                                  ) => DropdownMenuItem<int>(
+                                    value: u['id'] as int,
+                                    child: Text(
+                                      '${(u['name'] ?? '').toString()} • ${(u['role'] ?? '').toString()}',
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged:
+                            (int? value) =>
+                                setSheetState(() => assignedStaffId = value),
                       ),
                     ],
                     const SizedBox(height: 8),
                     TextField(
                       controller: leadSourceCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Nguồn khách hàng tiềm năng'),
+                      decoration: const InputDecoration(
+                        labelText: 'Nguồn khách hàng tiềm năng',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -435,8 +481,9 @@ class _CrmScreenState extends State<CrmScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: leadMessageCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Tin nhắn/ghi chú'),
+                      decoration: const InputDecoration(
+                        labelText: 'Tin nhắn/ghi chú',
+                      ),
                       maxLines: 2,
                     ),
                     if (message.isNotEmpty) ...<Widget>[
@@ -455,17 +502,18 @@ class _CrmScreenState extends State<CrmScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: widget.canManageClients
-                                ? () async {
-                                    final bool ok = await _saveClient();
-                                    if (!mounted) return;
-                                    if (ok) {
-                                      Navigator.of(context).pop();
-                                    } else {
-                                      setSheetState(() {});
+                            onPressed:
+                                widget.canManageClients
+                                    ? () async {
+                                      final bool ok = await _saveClient();
+                                      if (!context.mounted) return;
+                                      if (ok) {
+                                        Navigator.of(context).pop();
+                                      } else {
+                                        setSheetState(() {});
+                                      }
                                     }
-                                  }
-                                : null,
+                                    : null,
                             child: Text(
                               editingClientId == null
                                   ? 'Lưu khách hàng'
@@ -523,28 +571,37 @@ class _CrmScreenState extends State<CrmScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      editingPaymentId == null ? 'Tạo thanh toán' : 'Sửa thanh toán',
+                      editingPaymentId == null
+                          ? 'Tạo thanh toán'
+                          : 'Sửa thanh toán',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
                       value: paymentClientId,
-                      decoration: const InputDecoration(labelText: 'Khách hàng'),
-                      items: clients
-                          .map(
-                            (Map<String, dynamic> c) => DropdownMenuItem<int>(
-                              value: (c['id'] ?? 0) as int,
-                              child: Text(
-                                ((c['company'] ?? c['name'] ?? 'Khách hàng'))
-                                    .toString(),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: widget.canManagePayments
-                          ? (int? value) =>
-                              setSheetState(() => paymentClientId = value)
-                          : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Khách hàng',
+                      ),
+                      items:
+                          clients
+                              .map(
+                                (Map<String, dynamic> c) =>
+                                    DropdownMenuItem<int>(
+                                      value: (c['id'] ?? 0) as int,
+                                      child: Text(
+                                        ((c['company'] ??
+                                                c['name'] ??
+                                                'Khách hàng'))
+                                            .toString(),
+                                      ),
+                                    ),
+                              )
+                              .toList(),
+                      onChanged:
+                          widget.canManagePayments
+                              ? (int? value) =>
+                                  setSheetState(() => paymentClientId = value)
+                              : null,
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -555,7 +612,9 @@ class _CrmScreenState extends State<CrmScreen> {
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       value: paymentStatus,
-                      decoration: const InputDecoration(labelText: 'Trạng thái'),
+                      decoration: const InputDecoration(
+                        labelText: 'Trạng thái',
+                      ),
                       items: const <DropdownMenuItem<String>>[
                         DropdownMenuItem<String>(
                           value: 'pending',
@@ -570,12 +629,13 @@ class _CrmScreenState extends State<CrmScreen> {
                           child: Text('Quá hạn'),
                         ),
                       ],
-                      onChanged: widget.canManagePayments
-                          ? (String? value) {
-                              if (value == null) return;
-                              setSheetState(() => paymentStatus = value);
-                            }
-                          : null,
+                      onChanged:
+                          widget.canManagePayments
+                              ? (String? value) {
+                                if (value == null) return;
+                                setSheetState(() => paymentStatus = value);
+                              }
+                              : null,
                     ),
                     if (message.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 8),
@@ -593,17 +653,18 @@ class _CrmScreenState extends State<CrmScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: widget.canManagePayments
-                                ? () async {
-                                    final bool ok = await _savePayment();
-                                    if (!mounted) return;
-                                    if (ok) {
-                                      Navigator.of(context).pop();
-                                    } else {
-                                      setSheetState(() {});
+                            onPressed:
+                                widget.canManagePayments
+                                    ? () async {
+                                      final bool ok = await _savePayment();
+                                      if (!context.mounted) return;
+                                      if (ok) {
+                                        Navigator.of(context).pop();
+                                      } else {
+                                        setSheetState(() {});
+                                      }
                                     }
-                                  }
-                                : null,
+                                    : null,
                             child: Text(
                               editingPaymentId == null
                                   ? 'Lưu thanh toán'
@@ -629,30 +690,32 @@ class _CrmScreenState extends State<CrmScreen> {
   Widget build(BuildContext context) {
     final int totalClients = clients.length;
     final int totalPayments = payments.length;
-    final int pendingPayments = payments.where((Map<String, dynamic> payment) {
-      final String status = (payment['status'] ?? '').toString().toLowerCase();
-      return status.contains('pending') || status.contains('cho');
-    }).length;
+    final int pendingPayments =
+        payments.where((Map<String, dynamic> payment) {
+          final String status =
+              (payment['status'] ?? '').toString().toLowerCase();
+          return status.contains('pending') || status.contains('cho');
+        }).length;
 
-    final List<Map<String, dynamic>> filteredClients = clients.where((
-      Map<String, dynamic> client,
-    ) {
-      if (search.isEmpty) return true;
-      final String hay = '${client['company'] ?? ''} ${client['name'] ?? ''} ${client['email'] ?? ''}'
-          .toLowerCase();
-      return hay.contains(search.toLowerCase());
-    }).toList();
+    final List<Map<String, dynamic>> filteredClients =
+        clients.where((Map<String, dynamic> client) {
+          if (search.isEmpty) return true;
+          final String hay =
+              '${client['company'] ?? ''} ${client['name'] ?? ''} ${client['email'] ?? ''}'
+                  .toLowerCase();
+          return hay.contains(search.toLowerCase());
+        }).toList();
 
-    final List<Map<String, dynamic>> filteredPayments = payments.where((
-      Map<String, dynamic> payment,
-    ) {
-      if (search.isEmpty) return true;
-      final Map<String, dynamic>? client =
-          payment['client'] as Map<String, dynamic>?;
-      final String hay = '${client?['company'] ?? ''} ${client?['name'] ?? ''} ${payment['status'] ?? ''}'
-          .toLowerCase();
-      return hay.contains(search.toLowerCase());
-    }).toList();
+    final List<Map<String, dynamic>> filteredPayments =
+        payments.where((Map<String, dynamic> payment) {
+          if (search.isEmpty) return true;
+          final Map<String, dynamic>? client =
+              payment['client'] as Map<String, dynamic>?;
+          final String hay =
+              '${client?['company'] ?? ''} ${client?['name'] ?? ''} ${payment['status'] ?? ''}'
+                  .toLowerCase();
+          return hay.contains(search.toLowerCase());
+        }).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -663,10 +726,7 @@ class _CrmScreenState extends State<CrmScreen> {
               icon: const Icon(Icons.file_upload_outlined),
               onPressed: _importClients,
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetch,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetch),
         ],
       ),
       body: RefreshIndicator(
@@ -709,140 +769,185 @@ class _CrmScreenState extends State<CrmScreen> {
                 StitchMetricCard(
                   icon: Icons.query_stats,
                   label: 'Theo dõi',
-                  value: (filteredClients.length + filteredPayments.length).toString(),
+                  value:
+                      (filteredClients.length + filteredPayments.length)
+                          .toString(),
                   accent: StitchTheme.textMuted,
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            TextField(
-              decoration: const InputDecoration(
-                labelText: 'Tìm kiếm khách hàng / trạng thái thanh toán',
-                prefixIcon: Icon(Icons.search),
+            StitchFilterCard(
+              title: 'Bộ lọc khách hàng',
+              subtitle:
+                  'Tìm theo khách hàng, email hoặc trạng thái thanh toán để thu hẹp danh sách đang theo dõi.',
+              trailing: OutlinedButton.icon(
+                onPressed: _fetch,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Tải lại'),
               ),
-              onChanged: (String value) {
-                setState(() => search = value.trim());
-              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  StitchFilterField(
+                    label: 'Tìm kiếm',
+                    hint:
+                        'Nhập tên khách hàng, email hoặc từ khóa liên quan đến giao dịch.',
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: 'Tìm kiếm khách hàng / trạng thái thanh toán',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (String value) {
+                        setState(() => search = value.trim());
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: StitchTheme.surfaceAlt,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      'Đang hiển thị ${filteredClients.length} khách hàng và ${filteredPayments.length} giao dịch phù hợp.',
+                      style: const TextStyle(
+                        color: StitchTheme.textMuted,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
-            StitchInfoCard(
-              title: 'Tổng quan khách hàng',
-              content:
-                  'Khách hàng: ${filteredClients.length}\nGiao dịch: ${filteredPayments.length}',
-              icon: Icons.query_stats,
-            ),
-            const SizedBox(height: 12),
-          if (message.isNotEmpty) ...<Widget>[
-            Text(message),
-            const SizedBox(height: 8),
-          ],
-          if (loading) const Center(child: CircularProgressIndicator()),
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Text('Khách hàng', style: TextStyle(fontWeight: FontWeight.w700)),
-              ),
-              if (widget.canManageClients)
-                ElevatedButton.icon(
-                  onPressed: () => _openClientForm(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Thêm'),
-                ),
+            if (message.isNotEmpty) ...<Widget>[
+              Text(message),
+              const SizedBox(height: 8),
             ],
-          ),
-          const SizedBox(height: 6),
-          ...filteredClients.map(
-            (Map<String, dynamic> client) => Card(
-              child: ListTile(
-                title: Text(
-                  ((client['company'] ?? client['name'] ?? 'Khách hàng'))
-                      .toString(),
+            if (loading) const Center(child: CircularProgressIndicator()),
+            Row(
+              children: <Widget>[
+                const Expanded(
+                  child: Text(
+                    'Khách hàng',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
-                subtitle: Builder(
-                  builder: (BuildContext context) {
-                    final Map<String, dynamic>? leadType =
-                        client['lead_type'] as Map<String, dynamic>?;
-                    final Map<String, dynamic>? tier =
-                        client['revenue_tier'] as Map<String, dynamic>?;
-                    final Map<String, dynamic>? dept =
-                        client['assigned_department'] as Map<String, dynamic>?;
-                    final Map<String, dynamic>? staff =
-                        client['assigned_staff'] as Map<String, dynamic>? ??
-                            client['sales_owner'] as Map<String, dynamic>?;
-                    final List<String> meta = <String>[
-                      (client['email'] ?? 'Chưa có email').toString(),
-                      if (leadType != null)
-                        (leadType['name'] ?? '').toString(),
-                      if (tier != null) (tier['label'] ?? '').toString(),
-                      if (dept != null) (dept['name'] ?? '').toString(),
-                      if (staff != null) (staff['name'] ?? '').toString(),
-                    ];
-                    return Text(meta.join(' • '));
-                  },
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    if (widget.canManageClients)
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        onPressed: () => _openClientForm(client: client),
-                      ),
-                    if (widget.canDelete)
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
-                        onPressed: () => _deleteClient((client['id'] ?? 0) as int),
-                      ),
-                  ],
+                if (widget.canManageClients)
+                  ElevatedButton.icon(
+                    onPressed: () => _openClientForm(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Thêm'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ...filteredClients.map(
+              (Map<String, dynamic> client) => Card(
+                child: ListTile(
+                  title: Text(
+                    ((client['company'] ?? client['name'] ?? 'Khách hàng'))
+                        .toString(),
+                  ),
+                  subtitle: Builder(
+                    builder: (BuildContext context) {
+                      final Map<String, dynamic>? leadType =
+                          client['lead_type'] as Map<String, dynamic>?;
+                      final Map<String, dynamic>? tier =
+                          client['revenue_tier'] as Map<String, dynamic>?;
+                      final Map<String, dynamic>? dept =
+                          client['assigned_department']
+                              as Map<String, dynamic>?;
+                      final Map<String, dynamic>? staff =
+                          client['assigned_staff'] as Map<String, dynamic>? ??
+                          client['sales_owner'] as Map<String, dynamic>?;
+                      final List<String> meta = <String>[
+                        (client['email'] ?? 'Chưa có email').toString(),
+                        if (leadType != null)
+                          (leadType['name'] ?? '').toString(),
+                        if (tier != null) (tier['label'] ?? '').toString(),
+                        if (dept != null) (dept['name'] ?? '').toString(),
+                        if (staff != null) (staff['name'] ?? '').toString(),
+                      ];
+                      return Text(meta.join(' • '));
+                    },
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      if (widget.canManageClients)
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: () => _openClientForm(client: client),
+                        ),
+                      if (widget.canDelete)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
+                          onPressed:
+                              () => _deleteClient((client['id'] ?? 0) as int),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Text('Thanh toán', style: TextStyle(fontWeight: FontWeight.w700)),
-              ),
-              if (widget.canManagePayments)
-                ElevatedButton.icon(
-                  onPressed: () => _openPaymentForm(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Thêm'),
+            const SizedBox(height: 10),
+            Row(
+              children: <Widget>[
+                const Expanded(
+                  child: Text(
+                    'Thanh toán',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ...filteredPayments.map(
-            (Map<String, dynamic> payment) => Card(
-              child: ListTile(
-                title: Text(
-                  ((payment['client'] as Map<String, dynamic>?)?['company'] ??
-                          (payment['client'] as Map<String, dynamic>?)?['name'] ??
-                          'Khách hàng')
-                      .toString(),
-                ),
-                subtitle: Text(
-                  '${payment['status']} • ${payment['amount']}',
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    if (widget.canManagePayments)
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        onPressed: () => _openPaymentForm(payment: payment),
-                      ),
-                    if (widget.canDelete)
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
-                        onPressed: () => _deletePayment((payment['id'] ?? 0) as int),
-                      ),
-                  ],
+                if (widget.canManagePayments)
+                  ElevatedButton.icon(
+                    onPressed: () => _openPaymentForm(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Thêm'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ...filteredPayments.map(
+              (Map<String, dynamic> payment) => Card(
+                child: ListTile(
+                  title: Text(
+                    ((payment['client'] as Map<String, dynamic>?)?['company'] ??
+                            (payment['client']
+                                as Map<String, dynamic>?)?['name'] ??
+                            'Khách hàng')
+                        .toString(),
+                  ),
+                  subtitle: Text('${payment['status']} • ${payment['amount']}'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      if (widget.canManagePayments)
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: () => _openPaymentForm(payment: payment),
+                        ),
+                      if (widget.canDelete)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
+                          onPressed:
+                              () => _deletePayment((payment['id'] ?? 0) as int),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           ],
         ),
       ),

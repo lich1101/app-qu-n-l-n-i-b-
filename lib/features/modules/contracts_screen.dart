@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -86,7 +87,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
     final List<Map<String, dynamic>> productRows =
         await widget.apiService.getProducts(widget.token);
     final List<Map<String, dynamic>> collectorRows =
-        await widget.apiService.getUsersLookup(widget.token);
+        await widget.apiService.getUsersLookup(
+      widget.token,
+      purpose: 'contract_collector',
+    );
     final List<Map<String, dynamic>> contractRows =
         await widget.apiService.getContracts(
       widget.token,
@@ -154,19 +158,67 @@ class _ContractsScreenState extends State<ContractsScreen> {
     return value.length >= 10 ? value.substring(0, 10) : value;
   }
 
+  double _parseNumberInput(dynamic raw) {
+    if (raw == null) return 0;
+    if (raw is num) return raw.toDouble();
+
+    String value = raw.toString().trim();
+    if (value.isEmpty) return 0;
+
+    value = value
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(RegExp(r'₫|đ|VNĐ|VND', caseSensitive: false), '');
+
+    final bool hasComma = value.contains(',');
+    final bool hasDot = value.contains('.');
+
+    if (hasComma && hasDot) {
+      value = value.replaceAll('.', '').replaceAll(',', '.');
+    } else if (hasComma) {
+      final List<String> parts = value.split(',');
+      value = parts.length > 2 || (parts.length == 2 && parts[1].length == 3)
+          ? value.replaceAll(',', '')
+          : value.replaceFirst(',', '.');
+    } else if (hasDot) {
+      final List<String> parts = value.split('.');
+      if (parts.length > 2 || (parts.length == 2 && parts[1].length == 3)) {
+        value = value.replaceAll('.', '');
+      }
+    }
+
+    value = value.replaceAll(RegExp(r'[^0-9.\-]'), '');
+    return double.tryParse(value) ?? 0;
+  }
+
+  double _itemTotal(Map<String, dynamic> item) {
+    final double price = _parseNumberInput(item['unit_price']);
+    final double qty = math.max(1, _parseNumberInput(item['quantity']));
+    return price * qty;
+  }
+
+  void _syncValueController([List<Map<String, dynamic>>? sourceItems]) {
+    final List<Map<String, dynamic>> rows = sourceItems ?? items;
+    if (rows.isEmpty) {
+      valueCtrl.text = '';
+      return;
+    }
+    valueCtrl.text = _itemsTotalFromRows(rows).toStringAsFixed(0);
+  }
+
+  double _itemsTotalFromRows(List<Map<String, dynamic>> rows) {
+    return rows.fold<double>(
+      0,
+      (double acc, Map<String, dynamic> item) => acc + _itemTotal(item),
+    );
+  }
+
   double _itemsTotal() {
-    return items.fold<double>(0, (double acc, Map<String, dynamic> item) {
-      final double price =
-          double.tryParse((item['unit_price'] ?? 0).toString()) ?? 0;
-      final double qty =
-          double.tryParse((item['quantity'] ?? 1).toString()) ?? 1;
-      return acc + price * qty;
-    });
+    return _itemsTotalFromRows(items);
   }
 
   void _addItem([StateSetter? setSheetState]) {
     void apply() {
-      items = <Map<String, dynamic>>[
+      final List<Map<String, dynamic>> nextItems = <Map<String, dynamic>>[
         ...items,
         <String, dynamic>{
           'product_id': null,
@@ -177,6 +229,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
           'note': '',
         }
       ];
+      items = nextItems;
+      _syncValueController(nextItems);
     }
 
     if (setSheetState != null) {
@@ -192,6 +246,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
       final List<Map<String, dynamic>> nextItems = List<Map<String, dynamic>>.from(items);
       nextItems.removeAt(index);
       items = nextItems;
+      _syncValueController(nextItems);
     }
 
     if (setSheetState != null) {
@@ -203,10 +258,12 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
   void _updateItem(int index, Map<String, dynamic> changes, [StateSetter? setSheetState]) {
     void apply() {
-      items = items.asMap().entries.map((entry) {
+      final List<Map<String, dynamic>> nextItems = items.asMap().entries.map((entry) {
         if (entry.key != index) return entry.value;
         return <String, dynamic>{...entry.value, ...changes};
       }).toList();
+      items = nextItems;
+      _syncValueController(nextItems);
     }
 
     if (setSheetState != null) {
@@ -254,8 +311,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
   String _money(dynamic raw) {
     if (raw == null) return '—';
-    final double? value = raw is num ? raw.toDouble() : double.tryParse('$raw');
-    if (value == null) return '—';
+    final double value = _parseNumberInput(raw);
     return '${value.toStringAsFixed(0)} đ';
   }
 
@@ -268,6 +324,13 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
   bool get _canChooseCollector =>
       <String>['admin', 'quan_ly', 'ke_toan'].contains(widget.currentUserRole);
+
+  int? get _defaultCollectorUserId {
+    if (<String>['nhan_vien', 'quan_ly'].contains(widget.currentUserRole)) {
+      return widget.currentUserId;
+    }
+    return null;
+  }
 
   String _approvalLabel(String value) {
     switch (value) {
@@ -291,13 +354,12 @@ class _ContractsScreenState extends State<ContractsScreen> {
       return false;
     }
     final String rawValue = valueCtrl.text.trim();
-    final double? valueInput =
-        rawValue.isEmpty ? null : double.tryParse(rawValue);
-    if (rawValue.isNotEmpty && valueInput == null) {
+    final double valueInput = rawValue.isEmpty ? 0 : _parseNumberInput(rawValue);
+    if (rawValue.isNotEmpty && valueInput <= 0) {
       setState(() => message = 'Giá trị hợp đồng không hợp lệ.');
       return false;
     }
-    final double value = items.isNotEmpty ? _itemsTotal() : (valueInput ?? 0);
+    final double value = items.isNotEmpty ? _itemsTotal() : valueInput;
     final int? paymentTimes = int.tryParse(paymentTimesCtrl.text.trim());
     final List<Map<String, dynamic>> payloadItems = items
         .map(
@@ -415,6 +477,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
             'note': item['note'] ?? '',
           };
         }).toList();
+        _syncValueController(items.isEmpty ? null : items);
       }
     });
 
@@ -515,7 +578,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                 : widget.currentUserRole == 'quan_ly'
                                     ? 'Trưởng phòng có thể giữ chính mình hoặc chọn nhân sự trong phòng để đứng tên thu hợp đồng.'
                                     : widget.canApprove
-                                        ? 'Admin/Kế toán có thể chọn mọi nhân sự và có thêm nút tạo & duyệt.'
+                                        ? 'Admin/Kế toán có thể chọn mọi nhân viên và có thêm nút tạo & duyệt.'
                                         : 'Chọn nhân sự phụ trách thu hợp đồng.',
                             style: const TextStyle(
                               color: StitchTheme.textMuted,
@@ -767,6 +830,46 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 14,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: StitchTheme.surfaceAlt,
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: StitchTheme.border,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            const Text(
+                                              'Giá trị',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: StitchTheme.textMuted,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _money(_itemTotal(item)),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: <Widget>[
+                                    Expanded(
                                       child: TextFormField(
                                         initialValue:
                                             (item['note'] ?? '').toString(),
@@ -993,130 +1096,209 @@ class _ContractsScreenState extends State<ContractsScreen> {
     final TextEditingController noteCtrl = TextEditingController(
       text: payment != null ? (payment['note'] ?? '').toString() : '',
     );
+    String localMessage = '';
+
+    double contractTotal() {
+      return items.isNotEmpty
+          ? _itemsTotal()
+          : _parseNumberInput(valueCtrl.text.trim());
+    }
+
+    double currentPaymentBaseTotal() {
+      return payments.fold<double>(0, (double sum, Map<String, dynamic> row) {
+        final int rowId = _readInt(row['id']) ?? 0;
+        final int editingPaymentId = _readInt(payment?['id']) ?? 0;
+        if (editingPaymentId > 0 && rowId == editingPaymentId) {
+          return sum;
+        }
+        return sum + _parseNumberInput(row['amount']);
+      });
+    }
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: StitchTheme.bg,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  payment == null ? 'Thêm thanh toán' : 'Sửa thanh toán',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            final double total = contractTotal();
+            final double basePaid = currentPaymentBaseTotal();
+            final double currentAmount = _parseNumberInput(amountCtrl.text.trim());
+            final double remaining = math.max(0, total - basePaid);
+            final double projected = basePaid + currentAmount;
+
+            return Padding(
+              padding:
+                  EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  color: StitchTheme.bg,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Số tiền (VNĐ)'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: dateCtrl,
-                  readOnly: true,
-                  onTap: () => _pickDate(dateCtrl),
-                  decoration: const InputDecoration(
-                    labelText: 'Ngày thu',
-                    suffixIcon: Icon(Icons.event),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: methodCtrl,
-                  decoration: const InputDecoration(labelText: 'Phương thức'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: noteCtrl,
-                  maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Ghi chú'),
-                ),
-                const SizedBox(height: 14),
-                Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          final NavigatorState navigator = Navigator.of(context);
-                          final double? amount =
-                              double.tryParse(amountCtrl.text.trim());
-                          if (amount == null) {
-                            setState(() => message = 'Số tiền không hợp lệ.');
-                            return;
-                          }
-                          final bool ok = payment == null
-                              ? await widget.apiService.createContractPayment(
-                                  widget.token,
-                                  editingId!,
-                                  amount: amount,
-                                  paidAt: dateCtrl.text.trim().isEmpty
-                                      ? null
-                                      : dateCtrl.text.trim(),
-                                  method: methodCtrl.text.trim().isEmpty
-                                      ? null
-                                      : methodCtrl.text.trim(),
-                                  note: noteCtrl.text.trim().isEmpty
-                                      ? null
-                                      : noteCtrl.text.trim(),
-                                )
-                              : await widget.apiService.updateContractPayment(
-                                  widget.token,
-                                  editingId!,
-                                  _readInt(payment['id']) ?? 0,
-                                  amount: amount,
-                                  paidAt: dateCtrl.text.trim().isEmpty
-                                      ? null
-                                      : dateCtrl.text.trim(),
-                                  method: methodCtrl.text.trim().isEmpty
-                                      ? null
-                                      : methodCtrl.text.trim(),
-                                  note: noteCtrl.text.trim().isEmpty
-                                      ? null
-                                      : noteCtrl.text.trim(),
-                                );
-                          if (!mounted) return;
-                          setState(() {
-                            message = ok
-                                ? 'Đã lưu thanh toán.'
-                                : 'Lưu thanh toán thất bại.';
-                          });
-                          if (ok) {
-                            final List<Map<String, dynamic>> paymentRows =
-                                await widget.apiService.getContractPayments(
-                                    widget.token, editingId!);
-                            if (!mounted) return;
-                            setState(() {
-                              payments = paymentRows;
-                            });
-                            navigator.pop();
-                          }
-                        },
-                        child: const Text('Lưu'),
+                    Text(
+                      payment == null ? 'Thêm thanh toán' : 'Sửa thanh toán',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: StitchTheme.surfaceAlt,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: StitchTheme.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('Giá trị hợp đồng: ${_money(total)}'),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Còn có thể thu: ${_money(remaining)}',
+                            style: TextStyle(
+                              color: remaining > 0
+                                  ? Colors.green.shade700
+                                  : Colors.redAccent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (projected > total + 0.0001)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 6),
+                              child: Text(
+                                'Số tiền đang nhập vượt tổng giá trị hợp đồng.',
+                                style: TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Hủy'),
+                    if (localMessage.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(
+                        localMessage,
+                        style: const TextStyle(color: Colors.redAccent),
                       ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: amountCtrl,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setModalState(() {}),
+                      decoration: const InputDecoration(labelText: 'Số tiền (VNĐ)'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: dateCtrl,
+                      readOnly: true,
+                      onTap: () => _pickDate(dateCtrl),
+                      decoration: const InputDecoration(
+                        labelText: 'Ngày thu',
+                        suffixIcon: Icon(Icons.event),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: methodCtrl,
+                      decoration: const InputDecoration(labelText: 'Phương thức'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: noteCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(labelText: 'Ghi chú'),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final NavigatorState navigator = Navigator.of(context);
+                              final double amount =
+                                  _parseNumberInput(amountCtrl.text.trim());
+                              if (amount <= 0) {
+                                setModalState(() => localMessage = 'Số tiền không hợp lệ.');
+                                return;
+                              }
+                              if (amount > remaining + 0.0001) {
+                                setModalState(() => localMessage =
+                                    'Số tiền thanh toán vượt giá trị hợp đồng.');
+                                return;
+                              }
+                              final bool ok = payment == null
+                                  ? await widget.apiService.createContractPayment(
+                                      widget.token,
+                                      editingId!,
+                                      amount: amount,
+                                      paidAt: dateCtrl.text.trim().isEmpty
+                                          ? null
+                                          : dateCtrl.text.trim(),
+                                      method: methodCtrl.text.trim().isEmpty
+                                          ? null
+                                          : methodCtrl.text.trim(),
+                                      note: noteCtrl.text.trim().isEmpty
+                                          ? null
+                                          : noteCtrl.text.trim(),
+                                    )
+                                  : await widget.apiService.updateContractPayment(
+                                      widget.token,
+                                      editingId!,
+                                      _readInt(payment['id']) ?? 0,
+                                      amount: amount,
+                                      paidAt: dateCtrl.text.trim().isEmpty
+                                          ? null
+                                          : dateCtrl.text.trim(),
+                                      method: methodCtrl.text.trim().isEmpty
+                                          ? null
+                                          : methodCtrl.text.trim(),
+                                      note: noteCtrl.text.trim().isEmpty
+                                          ? null
+                                          : noteCtrl.text.trim(),
+                                    );
+                              if (!mounted) return;
+                              setState(() {
+                                message = ok
+                                    ? 'Đã lưu thanh toán.'
+                                    : 'Lưu thanh toán thất bại.';
+                              });
+                              if (ok) {
+                                final List<Map<String, dynamic>> paymentRows =
+                                    await widget.apiService.getContractPayments(
+                                        widget.token, editingId!);
+                                if (!mounted) return;
+                                setState(() {
+                                  payments = paymentRows;
+                                });
+                                navigator.pop();
+                              }
+                            },
+                            child: const Text('Lưu'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Hủy'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -1311,7 +1493,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
   void _resetForm() {
     editingId = null;
     formClientId = null;
-    collectorUserId = widget.currentUserId;
+    collectorUserId = _defaultCollectorUserId;
     status = 'draft';
     codeCtrl.clear();
     titleCtrl.clear();
@@ -1406,26 +1588,31 @@ class _ContractsScreenState extends State<ContractsScreen> {
             ),
           ],
           const SizedBox(height: 18),
-          StitchSectionHeader(
+          StitchFilterCard(
             title: 'Bộ lọc hợp đồng',
-            actionLabel: 'Lọc',
-            onAction: _fetch,
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: <Widget>[
-                  TextField(
+            subtitle:
+                'Lọc theo mã, khách hàng và trạng thái để thao tác hợp đồng nhanh hơn.',
+            trailing: OutlinedButton.icon(
+              onPressed: _fetch,
+              icon: const Icon(Icons.filter_alt_outlined, size: 18),
+              label: const Text('Lọc'),
+            ),
+            child: Column(
+              children: <Widget>[
+                StitchFilterField(
+                  label: 'Tìm kiếm',
+                  child: TextField(
                     controller: searchCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Tìm theo mã / tiêu đề / khách hàng',
+                      hintText: 'Mã hợp đồng, tiêu đề hoặc khách hàng',
                       prefixIcon: Icon(Icons.search),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
+                ),
+                const SizedBox(height: 12),
+                StitchFilterField(
+                  label: 'Trạng thái',
+                  child: DropdownButtonFormField<String>(
                     value: filterStatus,
                     items: <DropdownMenuItem<String>>[
                       const DropdownMenuItem<String>(
@@ -1443,10 +1630,15 @@ class _ContractsScreenState extends State<ContractsScreen> {
                     onChanged: (String? value) {
                       setState(() => filterStatus = value ?? '');
                     },
-                    decoration: const InputDecoration(labelText: 'Trạng thái'),
+                    decoration: const InputDecoration(
+                      hintText: 'Tất cả trạng thái',
+                    ),
                   ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<int?>(
+                ),
+                const SizedBox(height: 12),
+                StitchFilterField(
+                  label: 'Khách hàng',
+                  child: DropdownButtonFormField<int?>(
                     value: filterClientId,
                     items: <DropdownMenuItem<int?>>[
                       const DropdownMenuItem<int?>(
@@ -1465,10 +1657,12 @@ class _ContractsScreenState extends State<ContractsScreen> {
                     onChanged: (int? value) {
                       setState(() => filterClientId = value);
                     },
-                    decoration: const InputDecoration(labelText: 'Khách hàng'),
+                    decoration: const InputDecoration(
+                      hintText: 'Tất cả khách hàng',
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 18),

@@ -35,7 +35,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   StreamSubscription<RemoteMessage>? _foregroundSub;
 
   int get _unreadCount =>
-      notifications.where((Map<String, dynamic> item) => item['is_read'] != true).length;
+      notifications
+          .where((Map<String, dynamic> item) => item['is_read'] != true)
+          .length;
+  int get _readCount =>
+      notifications
+          .where((Map<String, dynamic> item) => item['is_read'] == true)
+          .length;
 
   @override
   void initState() {
@@ -95,7 +101,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final bool ok = await widget.apiService.markAllNotificationsRead(
       widget.token,
-      sourceType: 'all',
     );
     if (!mounted) return;
     await _fetch();
@@ -356,40 +361,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: const Text('Thông báo'),
         actions: <Widget>[
           if (_unreadCount > 0)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: TextButton.icon(
-                onPressed: _markAllRead,
-                style: TextButton.styleFrom(
-                  foregroundColor: StitchTheme.primary,
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
+            TextButton.icon(
+              onPressed: _markAllRead,
+              style: TextButton.styleFrom(
+                foregroundColor: StitchTheme.primary,
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                 ),
-                icon: const Icon(Icons.done_all_rounded, size: 18),
-                label: const Text('Đọc tất cả'),
               ),
+              icon: const Icon(Icons.done_all_rounded, size: 18),
+              label: const Text('Đọc tất cả'),
             ),
-          PopupMenuButton<String>(
-            tooltip: 'Tùy chọn thông báo',
-            onSelected: (String value) {
-              if (value == 'clear_read') {
-                _clearRead();
-              }
-            },
-            itemBuilder:
-                (BuildContext context) => const <PopupMenuEntry<String>>[
-                  PopupMenuItem<String>(
-                    value: 'clear_read',
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.delete_outline),
-                      title: Text('Xóa thông báo đã xem'),
-                    ),
-                  ),
-                ],
+          IconButton(
+            tooltip:
+                _readCount > 0
+                    ? 'Xóa toàn bộ thông báo đã đọc'
+                    : 'Chưa có thông báo đã đọc để xóa',
+            onPressed: _readCount > 0 ? _clearRead : null,
+            icon: const Icon(Icons.delete_outline),
           ),
         ],
       ),
@@ -424,20 +414,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         ),
                       ),
                     ),
-                    if (_unreadCount > 0)
-                      TextButton(
-                        onPressed: _markAllRead,
-                        style: TextButton.styleFrom(
-                          foregroundColor: StitchTheme.primary,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: const Text('Đọc tất cả'),
-                      ),
                   ],
                 ),
               ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class ProductsScreen extends StatefulWidget {
@@ -542,42 +543,36 @@ class _ProductsScreenState extends State<ProductsScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: <Widget>[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          const Expanded(
-                            child: Text(
-                              'Bộ lọc sản phẩm',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: _fetchProducts,
-                            icon: const Icon(Icons.filter_alt_outlined, size: 16),
-                            label: const Text('Lọc'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
+              StitchFilterCard(
+                title: 'Bộ lọc sản phẩm',
+                subtitle:
+                    'Lọc theo từ khóa, trạng thái và danh mục để thu gọn danh sách sản phẩm nhanh hơn.',
+                trailing: OutlinedButton.icon(
+                  onPressed: _fetchProducts,
+                  icon: const Icon(Icons.filter_alt_outlined, size: 16),
+                  label: const Text('Lọc'),
+                ),
+                child: Column(
+                  children: <Widget>[
+                    StitchFilterField(
+                      label: 'Tìm kiếm',
+                      child: TextField(
                         controller: searchCtrl,
                         decoration: const InputDecoration(
-                          labelText: 'Tìm theo mã hoặc tên',
+                          hintText: 'Mã sản phẩm hoặc tên sản phẩm',
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: StitchFilterField(
+                            label: 'Trạng thái',
                             child: DropdownButtonFormField<String>(
                               value: activeFilter,
                               decoration: const InputDecoration(
-                                labelText: 'Trạng thái',
+                                hintText: 'Tất cả',
                               ),
                               items: const <DropdownMenuItem<String>>[
                                 DropdownMenuItem<String>(
@@ -598,12 +593,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               },
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: StitchFilterField(
+                            label: 'Danh mục',
                             child: DropdownButtonFormField<int?>(
                               value: categoryFilterId,
                               decoration: const InputDecoration(
-                                labelText: 'Danh mục',
+                                hintText: 'Tất cả',
                               ),
                               items: <DropdownMenuItem<int?>>[
                                 const DropdownMenuItem<int?>(
@@ -625,10 +623,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               },
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 10),
