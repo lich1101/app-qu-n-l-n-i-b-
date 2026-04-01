@@ -15,30 +15,83 @@ class StitchHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: const LinearGradient(
-          colors: <Color>[Color(0xFF1F2937), Color(0xFF4B5563)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        borderRadius: BorderRadius.circular(28),
+        color: Colors.white,
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 26,
+            offset: Offset(0, 14),
+          ),
+        ],
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: StitchTheme.primarySoft,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: StitchTheme.primaryStrong.withValues(alpha: 0.12),
+                    ),
+                  ),
+                  child: Text(
+                    'ATTENDANCE CENTER',
+                    style: TextStyle(
+                      color: StitchTheme.primaryStrong,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: StitchTheme.textMain,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: StitchTheme.textMuted,
+                    height: 1.45,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: const TextStyle(color: Color(0xFFE2E8F0), height: 1.35),
+          const SizedBox(width: 16),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              color: Colors.white,
+              border: Border.all(color: StitchTheme.border),
+            ),
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              color: StitchTheme.primaryStrong.withValues(alpha: 0.88),
+              size: 22,
+            ),
           ),
         ],
       ),
@@ -75,11 +128,7 @@ class StitchInfoCard extends StatelessWidget {
                     color: StitchTheme.primarySoft,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    icon,
-                    color: StitchTheme.primaryStrong,
-                    size: 20,
-                  ),
+                  child: Icon(icon, color: StitchTheme.primaryStrong, size: 20),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -159,13 +208,13 @@ class StitchMetricCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x0D0F172A),
-            blurRadius: 16,
-            offset: Offset(0, 6),
+            color: Color(0x120F172A),
+            blurRadius: 24,
+            offset: Offset(0, 12),
           ),
         ],
       ),
@@ -230,13 +279,13 @@ class StitchProgressCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x0D0F172A),
-            blurRadius: 18,
-            offset: Offset(0, 6),
+            color: Color(0x120F172A),
+            blurRadius: 28,
+            offset: Offset(0, 14),
           ),
         ],
       ),
@@ -256,7 +305,10 @@ class StitchProgressCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: <Widget>[
-              Text('$clamped%', style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(
+                '$clamped%',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -297,13 +349,13 @@ class StitchFilterCard extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x0D0F172A),
-            blurRadius: 18,
-            offset: Offset(0, 6),
+            color: Color(0x120F172A),
+            blurRadius: 28,
+            offset: Offset(0, 14),
           ),
         ],
       ),
@@ -325,7 +377,8 @@ class StitchFilterCard extends StatelessWidget {
                         color: StitchTheme.textMain,
                       ),
                     ),
-                    if (subtitle != null && subtitle!.trim().isNotEmpty) ...<Widget>[
+                    if (subtitle != null &&
+                        subtitle!.trim().isNotEmpty) ...<Widget>[
                       const SizedBox(height: 6),
                       Text(
                         subtitle!,
@@ -384,10 +437,7 @@ class StitchFilterField extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             hint!,
-            style: const TextStyle(
-              fontSize: 12,
-              color: StitchTheme.textMuted,
-            ),
+            style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
           ),
         ],
       ],
@@ -442,10 +492,7 @@ class StitchTimelineItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 14, height: 1.4),
-                ),
+                Text(title, style: const TextStyle(fontSize: 14, height: 1.4)),
                 const SizedBox(height: 4),
                 Text(
                   time,

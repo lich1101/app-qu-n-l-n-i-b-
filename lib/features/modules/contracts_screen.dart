@@ -14,6 +14,7 @@ class ContractsScreen extends StatefulWidget {
     required this.token,
     required this.apiService,
     required this.canManage,
+    this.canCreate = false,
     required this.canDelete,
     required this.canApprove,
     required this.currentUserRole,
@@ -22,7 +23,10 @@ class ContractsScreen extends StatefulWidget {
 
   final String token;
   final MobileApiService apiService;
+  /// Edit existing contracts (admin, quan_ly, ke_toan)
   final bool canManage;
+  /// Create new contracts (admin, quan_ly, nhan_vien, ke_toan)
+  final bool canCreate;
   final bool canDelete;
   final bool canApprove;
   final String currentUserRole;
@@ -34,7 +38,6 @@ class ContractsScreen extends StatefulWidget {
 
 class _ContractsScreenState extends State<ContractsScreen> {
   final TextEditingController searchCtrl = TextEditingController();
-  final TextEditingController codeCtrl = TextEditingController();
   final TextEditingController titleCtrl = TextEditingController();
   final TextEditingController valueCtrl = TextEditingController();
   final TextEditingController paymentTimesCtrl = TextEditingController(text: '1');
@@ -42,6 +45,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
   final TextEditingController startCtrl = TextEditingController();
   final TextEditingController endCtrl = TextEditingController();
   final TextEditingController notesCtrl = TextEditingController();
+  final TextEditingController careNoteTitleCtrl = TextEditingController();
+  final TextEditingController careNoteDetailCtrl = TextEditingController();
 
   bool loading = false;
   String message = '';
@@ -55,10 +60,13 @@ class _ContractsScreenState extends State<ContractsScreen> {
   List<Map<String, dynamic>> clients = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> products = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> collectors = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> careStaffUsers = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> payments = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> costs = <Map<String, dynamic>>[];
   int? collectorUserId;
+  List<int> careStaffIds = <int>[];
+  bool editingCanManage = true;
 
   @override
   void initState() {
@@ -69,7 +77,6 @@ class _ContractsScreenState extends State<ContractsScreen> {
   @override
   void dispose() {
     searchCtrl.dispose();
-    codeCtrl.dispose();
     titleCtrl.dispose();
     valueCtrl.dispose();
     paymentTimesCtrl.dispose();
@@ -77,6 +84,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
     startCtrl.dispose();
     endCtrl.dispose();
     notesCtrl.dispose();
+    careNoteTitleCtrl.dispose();
+    careNoteDetailCtrl.dispose();
     super.dispose();
   }
 
@@ -90,6 +99,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
         await widget.apiService.getUsersLookup(
       widget.token,
       purpose: 'contract_collector',
+    );
+    final List<Map<String, dynamic>> careStaffRows =
+        await widget.apiService.getUsersLookup(
+      widget.token,
+      purpose: 'contract_care_staff',
     );
     final List<Map<String, dynamic>> contractRows =
         await widget.apiService.getContracts(
@@ -106,12 +120,13 @@ class _ContractsScreenState extends State<ContractsScreen> {
       clients = clientRows;
       products = productRows;
       collectors = collectorRows;
+      careStaffUsers = careStaffRows;
       contracts = contractRows;
     });
   }
 
   Future<void> _importContracts() async {
-    if (!widget.canManage) {
+    if (!widget.canCreate && !widget.canManage) {
       setState(() => message = 'Bạn không có quyền import hợp đồng.');
       return;
     }
@@ -320,6 +335,78 @@ class _ContractsScreenState extends State<ContractsScreen> {
     return int.tryParse(raw?.toString() ?? '');
   }
 
+  bool? _readBool(dynamic raw) {
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    final String value = (raw ?? '').toString().trim().toLowerCase();
+    if (value.isEmpty) return null;
+    if (value == '1' || value == 'true' || value == 'yes') return true;
+    if (value == '0' || value == 'false' || value == 'no') return false;
+    return null;
+  }
+
+  bool _canManageContract(Map<String, dynamic>? contract) {
+    if (!widget.canManage) return false;
+    if (contract == null) return widget.canManage;
+
+    final bool? apiPermission = _readBool(contract['can_manage']);
+    if (apiPermission != null) {
+      return apiPermission;
+    }
+
+    if (widget.currentUserRole != 'nhan_vien') {
+      return true;
+    }
+
+    final int uid = widget.currentUserId ?? 0;
+    if (uid <= 0) return false;
+
+    final Map<String, dynamic>? client =
+        contract['client'] as Map<String, dynamic>?;
+
+    return _readInt(contract['created_by']) == uid ||
+        _readInt(contract['collector_user_id']) == uid ||
+        _readInt(client?['assigned_staff_id']) == uid ||
+        _readInt(client?['sales_owner_id']) == uid;
+  }
+
+  bool _canDeleteContract(Map<String, dynamic>? contract) {
+    if (!widget.canDelete) return false;
+    if (contract == null) return widget.canDelete;
+
+    final bool? apiPermission = _readBool(contract['can_delete']);
+    if (apiPermission != null) {
+      return apiPermission;
+    }
+
+    return _canManageContract(contract);
+  }
+
+  List<int> _normalizeCareStaffIds(dynamic rawValues) {
+    if (rawValues is! List<dynamic>) return <int>[];
+
+    final Set<int> ids = <int>{};
+    for (final dynamic raw in rawValues) {
+      final int? value =
+          raw is Map<String, dynamic> ? _readInt(raw['id']) : _readInt(raw);
+      if (value != null && value > 0) {
+        ids.add(value);
+      }
+    }
+
+    final List<int> normalized = ids.toList()..sort();
+    return normalized;
+  }
+
+  String _safeDateTime(dynamic raw) {
+    if (raw == null) return '—';
+    final DateTime? date = DateTime.tryParse(raw.toString());
+    if (date == null) return raw.toString();
+    final String hh = date.hour.toString().padLeft(2, '0');
+    final String mm = date.minute.toString().padLeft(2, '0');
+    return '${_fmtDate(date)} $hh:$mm';
+  }
+
   bool get _isEmployee => widget.currentUserRole == 'nhan_vien';
 
   bool get _canChooseCollector =>
@@ -345,8 +432,17 @@ class _ContractsScreenState extends State<ContractsScreen> {
   }
 
   Future<bool> _save({bool createAndApprove = false}) async {
-    if (!widget.canManage) {
-      setState(() => message = 'Bạn không có quyền quản lý hợp đồng.');
+    final bool isCreating = editingId == null;
+    if (isCreating && !widget.canCreate && !widget.canManage) {
+      setState(() => message = 'Bạn không có quyền tạo hợp đồng.');
+      return false;
+    }
+    if (!isCreating && !widget.canManage) {
+      setState(() => message = 'Bạn không có quyền sửa hợp đồng.');
+      return false;
+    }
+    if (editingId != null && !editingCanManage) {
+      setState(() => message = 'Bạn chỉ có quyền xem hợp đồng này.');
       return false;
     }
     if (titleCtrl.text.trim().isEmpty || formClientId == null) {
@@ -377,10 +473,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
     final bool ok = editingId == null
         ? await widget.apiService.createContract(
             widget.token,
-            code: codeCtrl.text.trim().isEmpty ? null : codeCtrl.text.trim(),
             title: titleCtrl.text.trim(),
             clientId: formClientId!,
             collectorUserId: collectorUserId,
+            careStaffIds: careStaffIds,
             value: value,
             paymentTimes: paymentTimes,
             status: status,
@@ -398,10 +494,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
         : await widget.apiService.updateContract(
             widget.token,
             editingId!,
-            code: codeCtrl.text.trim().isEmpty ? null : codeCtrl.text.trim(),
             title: titleCtrl.text.trim(),
             clientId: formClientId!,
             collectorUserId: collectorUserId,
+            careStaffIds: careStaffIds,
             value: value,
             paymentTimes: paymentTimes,
             status: status,
@@ -447,25 +543,44 @@ class _ContractsScreenState extends State<ContractsScreen> {
   }
 
   Future<void> _openForm({Map<String, dynamic>? contract}) async {
+    if (contract != null && !_canManageContract(contract)) {
+      setState(() => message = 'Bạn chỉ có quyền xem hợp đồng này.');
+      return;
+    }
+
+    Map<String, dynamic>? detail = contract;
+    if (contract != null) {
+      final int id = _readInt(contract['id']) ?? 0;
+      if (id > 0) {
+        final Map<String, dynamic> fetched =
+            await widget.apiService.getContractDetail(widget.token, id);
+        if (fetched.isNotEmpty) {
+          detail = fetched;
+        }
+      }
+    }
+    if (!mounted) return;
+
     setState(() {
       message = '';
-      if (contract == null) {
+      if (detail == null) {
+        editingCanManage = true;
         _resetForm();
       } else {
-        editingId = _readInt(contract['id']) ?? 0;
-        codeCtrl.text = (contract['code'] ?? '').toString();
-        titleCtrl.text = (contract['title'] ?? '').toString();
-        valueCtrl.text = (contract['value'] ?? '').toString();
-        paymentTimesCtrl.text =
-            (contract['payment_times'] ?? 1).toString();
-        signedCtrl.text = _safeDate(contract['signed_at']);
-        startCtrl.text = _safeDate(contract['start_date']);
-        endCtrl.text = _safeDate(contract['end_date']);
-        notesCtrl.text = (contract['notes'] ?? '').toString();
-        status = (contract['status'] ?? 'draft').toString();
-        formClientId = _readInt(contract['client_id']);
-        collectorUserId = _readInt(contract['collector_user_id']);
-        items = ((contract['items'] ?? <dynamic>[]) as List<dynamic>)
+        editingCanManage = _canManageContract(detail);
+        editingId = _readInt(detail['id']) ?? 0;
+        titleCtrl.text = (detail['title'] ?? '').toString();
+        valueCtrl.text = (detail['value'] ?? '').toString();
+        paymentTimesCtrl.text = (detail['payment_times'] ?? 1).toString();
+        signedCtrl.text = _safeDate(detail['signed_at']);
+        startCtrl.text = _safeDate(detail['start_date']);
+        endCtrl.text = _safeDate(detail['end_date']);
+        notesCtrl.text = (detail['notes'] ?? '').toString();
+        status = (detail['status'] ?? 'draft').toString();
+        formClientId = _readInt(detail['client_id']);
+        collectorUserId = _readInt(detail['collector_user_id']);
+        careStaffIds = _normalizeCareStaffIds(detail['care_staff_users']);
+        items = ((detail['items'] ?? <dynamic>[]) as List<dynamic>)
             .map((dynamic e) {
           final Map<String, dynamic> item = e as Map<String, dynamic>;
           return <String, dynamic>{
@@ -521,10 +636,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: codeCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Mã hợp đồng (tự sinh nếu để trống)',
+                    const Text(
+                      'Mã hợp đồng sẽ tự sinh khi lưu, người dùng không cần nhập thủ công.',
+                      style: TextStyle(
+                        color: StitchTheme.textMuted,
+                        fontSize: 12,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -611,6 +727,105 @@ class _ContractsScreenState extends State<ContractsScreen> {
                             decoration: const InputDecoration(
                               labelText: 'Nhân viên thu',
                             ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Nhân viên chăm sóc hợp đồng',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Nhóm này có quyền xem hợp đồng và thêm nhật ký chăm sóc để cập nhật tiến độ.',
+                            style: TextStyle(
+                              color: StitchTheme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Builder(
+                            builder: (BuildContext context) {
+                              final List<Map<String, dynamic>> selectedCareStaff =
+                                  careStaffUsers.where((Map<String, dynamic> user) {
+                                    final int uid = _readInt(user['id']) ?? 0;
+                                    return uid > 0 && careStaffIds.contains(uid);
+                                  }).toList();
+                              final List<Map<String, dynamic>> availableCareStaff =
+                                  careStaffUsers.where((Map<String, dynamic> user) {
+                                    final int uid = _readInt(user['id']) ?? 0;
+                                    return uid > 0 && !careStaffIds.contains(uid);
+                                  }).toList();
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: StitchTheme.bg,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: StitchTheme.border),
+                                    ),
+                                    child: selectedCareStaff.isEmpty
+                                        ? const Text(
+                                            'Chưa thêm nhân viên chăm sóc hợp đồng nào.',
+                                            style: TextStyle(
+                                              color: StitchTheme.textMuted,
+                                              fontSize: 13,
+                                            ),
+                                          )
+                                        : Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: selectedCareStaff.map((Map<String, dynamic> user) {
+                                              final int uid = _readInt(user['id']) ?? 0;
+                                              return InputChip(
+                                                label: Text((user['name'] ?? 'Nhân sự').toString()),
+                                                onDeleted: () => setSheetState(() {
+                                                  careStaffIds = careStaffIds.where((int id) => id != uid).toList();
+                                                }),
+                                              );
+                                            }).toList(),
+                                          ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: StitchTheme.surfaceAlt,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: StitchTheme.border),
+                                    ),
+                                    child: availableCareStaff.isEmpty
+                                        ? const Text(
+                                            'Đã chọn hết nhân sự khả dụng.',
+                                            style: TextStyle(
+                                              color: StitchTheme.textMuted,
+                                              fontSize: 13,
+                                            ),
+                                          )
+                                        : Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: availableCareStaff.map((Map<String, dynamic> user) {
+                                              final int uid = _readInt(user['id']) ?? 0;
+                                              if (uid <= 0) {
+                                                return const SizedBox.shrink();
+                                              }
+                                              return ActionChip(
+                                                avatar: const Icon(Icons.add, size: 16),
+                                                label: Text((user['name'] ?? 'Nhân sự').toString()),
+                                                onPressed: () => setSheetState(() {
+                                                  careStaffIds = <int>{...careStaffIds, uid}.toList()..sort();
+                                                }),
+                                              );
+                                            }).toList(),
+                                          ),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -1492,10 +1707,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
   void _resetForm() {
     editingId = null;
+    editingCanManage = true;
     formClientId = null;
     collectorUserId = _defaultCollectorUserId;
+    careStaffIds = <int>[];
     status = 'draft';
-    codeCtrl.clear();
     titleCtrl.clear();
     valueCtrl.clear();
     paymentTimesCtrl.text = '1';
@@ -1506,6 +1722,368 @@ class _ContractsScreenState extends State<ContractsScreen> {
     items = <Map<String, dynamic>>[];
     payments = <Map<String, dynamic>>[];
     costs = <Map<String, dynamic>>[];
+  }
+
+  Future<void> _openDetail({required Map<String, dynamic> contract}) async {
+    final int id = _readInt(contract['id']) ?? 0;
+    if (id <= 0) {
+      setState(() => message = 'Không tải được chi tiết hợp đồng.');
+      return;
+    }
+
+    final Map<String, dynamic> detail =
+        await widget.apiService.getContractDetail(widget.token, id);
+    if (!mounted) return;
+    if (detail.isEmpty) {
+      setState(() => message = 'Không tải được chi tiết hợp đồng.');
+      return;
+    }
+
+    careNoteTitleCtrl.clear();
+    careNoteDetailCtrl.clear();
+
+    Map<String, dynamic> detailData = Map<String, dynamic>.from(detail);
+    bool savingCareNote = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setSheetState) {
+            final List<Map<String, dynamic>> careStaffRows =
+                ((detailData['care_staff_users'] ?? <dynamic>[]) as List<dynamic>)
+                    .map(
+                      (dynamic row) =>
+                          Map<String, dynamic>.from(row as Map<String, dynamic>),
+                    )
+                    .toList();
+            final List<Map<String, dynamic>> careNotes =
+                ((detailData['care_notes'] ?? <dynamic>[]) as List<dynamic>)
+                    .map(
+                      (dynamic row) =>
+                          Map<String, dynamic>.from(row as Map<String, dynamic>),
+                    )
+                    .toList();
+            final bool canAddCareNote =
+                _readBool(detailData['can_add_care_note']) ?? false;
+
+            return Container(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              decoration: const BoxDecoration(
+                color: StitchTheme.bg,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      (detailData['title'] ?? 'Chi tiết hợp đồng').toString(),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${(detailData['code'] ?? '').toString()} • ${((detailData['client'] as Map<String, dynamic>?)?['name'] ?? 'Khách hàng').toString()}',
+                      style: const TextStyle(color: StitchTheme.textMuted),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _statusColor(
+                              (detailData['status'] ?? 'draft').toString(),
+                            ).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            _statusLabel(
+                              (detailData['status'] ?? 'draft').toString(),
+                            ),
+                            style: TextStyle(
+                              color: _statusColor(
+                                (detailData['status'] ?? 'draft').toString(),
+                              ),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                              (detailData['approval_status'] == 'approved'
+                                      ? StitchTheme.success
+                                      : StitchTheme.warning)
+                                  .withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            _approvalLabel(
+                              (detailData['approval_status'] ?? 'pending')
+                                  .toString(),
+                            ),
+                            style: TextStyle(
+                              color:
+                              detailData['approval_status'] == 'approved'
+                                  ? StitchTheme.success
+                                  : StitchTheme.warning,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildInfoTile(
+                      'Nhân viên thu',
+                      ((detailData['collector'] as Map<String, dynamic>?)?['name'] ??
+                              '—')
+                          .toString(),
+                    ),
+                    _buildInfoTile('Giá trị', _money(detailData['value'])),
+                    _buildInfoTile('Đã thu', _money(detailData['payments_total'])),
+                    _buildInfoTile(
+                      'Công nợ',
+                      _money(detailData['debt_outstanding']),
+                    ),
+                    _buildInfoTile('Chi phí', _money(detailData['costs_total'])),
+                    _buildInfoTile(
+                      'Hiệu lực',
+                      '${_safeDate(detailData['start_date'])} → ${_safeDate(detailData['end_date'])}',
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Nhân viên chăm sóc',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    if (careStaffRows.isEmpty)
+                      const Text(
+                        'Chưa gắn nhân viên chăm sóc riêng cho hợp đồng này.',
+                        style: TextStyle(color: StitchTheme.textMuted),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: careStaffRows
+                            .map(
+                              (Map<String, dynamic> row) => FilterChip(
+                                selected: true,
+                                onSelected: (_) {},
+                                label: Text(
+                                  (row['name'] ?? 'Nhân sự').toString(),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Nhật ký chăm sóc hợp đồng',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Nhân viên chăm sóc cập nhật tiêu đề và nội dung để người phụ trách nắm tiến độ hợp đồng.',
+                      style: TextStyle(
+                        color: StitchTheme.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (canAddCareNote) ...<Widget>[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: careNoteTitleCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Tiêu đề chăm sóc',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: careNoteDetailCtrl,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: const InputDecoration(
+                          labelText: 'Nội dung chăm sóc',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: savingCareNote
+                              ? null
+                              : () async {
+                                  final String title =
+                                      careNoteTitleCtrl.text.trim();
+                                  final String detailText =
+                                      careNoteDetailCtrl.text.trim();
+                                  if (title.isEmpty || detailText.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Vui lòng nhập tiêu đề và nội dung chăm sóc.',
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  setSheetState(() => savingCareNote = true);
+                                  final Map<String, dynamic>? note =
+                                      await widget.apiService
+                                          .createContractCareNote(
+                                    widget.token,
+                                    id,
+                                    title: title,
+                                    detail: detailText,
+                                  );
+                                  if (!context.mounted) return;
+                                  setSheetState(() => savingCareNote = false);
+
+                                  if (note == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Không thể cập nhật nhật ký chăm sóc.',
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  setSheetState(() {
+                                    final List<dynamic> nextNotes =
+                                        List<dynamic>.from(
+                                      (detailData['care_notes'] ?? <dynamic>[])
+                                          as List<dynamic>,
+                                    );
+                                    nextNotes.insert(0, note);
+                                    detailData['care_notes'] = nextNotes;
+                                  });
+                                  careNoteTitleCtrl.clear();
+                                  careNoteDetailCtrl.clear();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Đã cập nhật nhật ký chăm sóc.',
+                                      ),
+                                    ),
+                                  );
+                                },
+                          child: Text(
+                            savingCareNote
+                                ? 'Đang lưu...'
+                                : 'Thêm nhật ký chăm sóc',
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    if (careNotes.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: StitchTheme.surfaceAlt,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: StitchTheme.border),
+                        ),
+                        child: const Text(
+                          'Chưa có nhật ký chăm sóc nào.',
+                          style: TextStyle(color: StitchTheme.textMuted),
+                        ),
+                      )
+                    else
+                      ...careNotes.map((Map<String, dynamic> note) {
+                        final Map<String, dynamic>? user =
+                            note['user'] as Map<String, dynamic>?;
+                        return Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: StitchTheme.surfaceAlt,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: StitchTheme.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                (note['title'] ?? 'Cập nhật chăm sóc')
+                                    .toString(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${(user?['name'] ?? 'Không rõ người cập nhật').toString()} • ${_safeDateTime(note['created_at'])}',
+                                style: const TextStyle(
+                                  color: StitchTheme.textMuted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text((note['detail'] ?? '').toString()),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildInfoTile(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(color: StitchTheme.textMuted),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1522,12 +2100,12 @@ class _ContractsScreenState extends State<ContractsScreen> {
       appBar: AppBar(
         title: const Text('Hợp đồng'),
         actions: <Widget>[
-          if (widget.canManage)
+          if (widget.canCreate || widget.canManage)
             IconButton(
               icon: const Icon(Icons.file_upload_outlined),
               onPressed: _importContracts,
             ),
-          if (widget.canManage)
+          if (widget.canCreate || widget.canManage)
             IconButton(
               icon: const Icon(Icons.add),
               onPressed: () => _openForm(),
@@ -1674,7 +2252,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              if (widget.canManage)
+              if (widget.canCreate || widget.canManage)
                 ElevatedButton.icon(
                   onPressed: () => _openForm(),
                   icon: const Icon(Icons.add, size: 18),
@@ -1749,13 +2327,18 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                   fontWeight: FontWeight.w600,
                                   fontSize: 12,
                                 ),
-                              ),
                             ),
+                          ),
                           const Spacer(),
                           TextButton(
-                            onPressed: () => _openForm(contract: c),
-                            child: const Text('Sửa'),
+                            onPressed: () => _openDetail(contract: c),
+                            child: const Text('Xem'),
                           ),
+                          if (_canManageContract(c))
+                            TextButton(
+                              onPressed: () => _openForm(contract: c),
+                              child: const Text('Sửa'),
+                            ),
                           if (widget.canApprove &&
                               (c['approval_status'] ?? '') != 'approved')
                             TextButton(
@@ -1775,7 +2358,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                 style: TextStyle(color: StitchTheme.success),
                               ),
                             ),
-                          if (widget.canDelete)
+                          if (_canDeleteContract(c))
                             TextButton(
                               onPressed: () => _delete(_readInt(c['id']) ?? 0),
                               child: Text(
@@ -1802,6 +2385,20 @@ class _ContractsScreenState extends State<ContractsScreen> {
                         'Nhân viên thu: ${((c['collector'] as Map<String, dynamic>?)?['name'] ?? '—').toString()}',
                         style: const TextStyle(color: StitchTheme.textMuted),
                       ),
+                      if (((c['care_staff_users'] ?? <dynamic>[]) as List<dynamic>)
+                          .isNotEmpty)
+                        Text(
+                          'CSKH: ${((c['care_staff_users'] as List<dynamic>)
+                                  .map(
+                                    (dynamic row) =>
+                                        ((row as Map<String, dynamic>)['name'] ??
+                                                'Nhân sự')
+                                            .toString(),
+                                  )
+                                  .toList())
+                              .join(', ')}',
+                          style: const TextStyle(color: StitchTheme.textMuted),
+                        ),
                       const SizedBox(height: 8),
                       Text(
                         'Dự án: ${(project?['name'] ?? 'Chưa liên kết').toString()}',

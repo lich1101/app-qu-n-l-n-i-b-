@@ -14,9 +14,11 @@ class InternalTaskApp extends StatelessWidget {
       animation: appSettingsStore,
       builder: (BuildContext context, Widget? child) {
         return MaterialApp(
+          debugShowCheckedModeBanner: false,
           title: appSettingsStore.settings.brandName.isNotEmpty
               ? appSettingsStore.settings.brandName
               : AppEnv.appName,
+          color: StitchTheme.bg,
           theme: StitchTheme.light(),
           themeMode: ThemeMode.light,
           builder: (BuildContext context, Widget? child) {

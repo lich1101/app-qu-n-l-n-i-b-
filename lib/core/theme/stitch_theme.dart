@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 
 class StitchTheme {
-  static Color primaryStrong = const Color(0xFF4B5563);
-  static Color primary = primaryStrong;
+  static Color primaryStrong = const Color(0xFF0F766E);
+  static Color primary = const Color(0xFF14B8A6);
   static Color primarySoft = primaryStrong.withValues(alpha: 0.12);
-  static const Color bg = Color(0xFFF8FAFC);
+  static const Color bg = Color(0xFFF3F7F9);
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceAlt = Color(0xFFF1F5F9);
-  static const Color border = Color(0xFFE5E7EB);
-  static const Color textMain = Color(0xFF111827);
-  static const Color textMuted = Color(0xFF6B7280);
-  static const Color textSubtle = Color(0xFF9CA3AF);
-  static Color successStrong = const Color(0xFF22C55E);
+  static const Color surfaceAlt = Color(0xFFEAF1F5);
+  static const Color border = Color(0xFFD9E4EA);
+  static const Color textMain = Color(0xFF0F172A);
+  static const Color textMuted = Color(0xFF5F7285);
+  static const Color textSubtle = Color(0xFF90A0B0);
+  static Color successStrong = const Color(0xFF16A34A);
   static Color warningStrong = const Color(0xFFF59E0B);
   static Color dangerStrong = const Color(0xFFEF4444);
   static Color success = successStrong;
@@ -68,8 +68,14 @@ class StitchTheme {
         backgroundColor: surface,
         selectedItemColor: primary,
         unselectedItemColor: textSubtle,
-        selectedLabelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
-        unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w500, fontSize: 11),
+        selectedLabelStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 11,
+        ),
+        unselectedLabelStyle: TextStyle(
+          fontWeight: FontWeight.w500,
+          fontSize: 11,
+        ),
         type: BottomNavigationBarType.fixed,
         showSelectedLabels: true,
         showUnselectedLabels: true,
@@ -78,7 +84,7 @@ class StitchTheme {
         elevation: 0,
         color: surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(22),
           side: const BorderSide(color: border),
         ),
       ),
@@ -86,7 +92,7 @@ class StitchTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
-        contentPadding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+        contentPadding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
         floatingLabelBehavior: FloatingLabelBehavior.always,
         labelStyle: const TextStyle(
           color: textMuted,
@@ -99,15 +105,15 @@ class StitchTheme {
           fontWeight: FontWeight.w700,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: primary),
         ),
       ),
@@ -115,25 +121,24 @@ class StitchTheme {
         backgroundColor: surfaceAlt,
         selectedColor: primarySoft,
         side: const BorderSide(color: border),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+          side: const BorderSide(color: border),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),

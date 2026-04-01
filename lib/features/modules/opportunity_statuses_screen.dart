@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
 
-class RevenueTiersScreen extends StatefulWidget {
-  const RevenueTiersScreen({
+class OpportunityStatusesScreen extends StatefulWidget {
+  const OpportunityStatusesScreen({
     super.key,
     required this.token,
     required this.apiService,
@@ -14,20 +14,19 @@ class RevenueTiersScreen extends StatefulWidget {
   final MobileApiService apiService;
 
   @override
-  State<RevenueTiersScreen> createState() => _RevenueTiersScreenState();
+  State<OpportunityStatusesScreen> createState() =>
+      _OpportunityStatusesScreenState();
 }
 
-class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
+class _OpportunityStatusesScreenState extends State<OpportunityStatusesScreen> {
   bool loading = false;
   String message = '';
-  List<Map<String, dynamic>> tiers = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> statuses = <Map<String, dynamic>>[];
   int? editingId;
   final TextEditingController nameCtrl = TextEditingController();
-  final TextEditingController labelCtrl = TextEditingController();
   final TextEditingController colorCtrl = TextEditingController(
-    text: '#9CA3AF',
+    text: '#0EA5A6',
   );
-  final TextEditingController minCtrl = TextEditingController(text: '0');
   final TextEditingController orderCtrl = TextEditingController(text: '1');
 
   @override
@@ -39,9 +38,7 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
   @override
   void dispose() {
     nameCtrl.dispose();
-    labelCtrl.dispose();
     colorCtrl.dispose();
-    minCtrl.dispose();
     orderCtrl.dispose();
     super.dispose();
   }
@@ -49,51 +46,46 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
   Future<void> _fetch() async {
     setState(() => loading = true);
     final List<Map<String, dynamic>> rows = await widget.apiService
-        .getRevenueTiers(widget.token);
+        .getOpportunityStatuses(widget.token);
     if (!mounted) return;
     setState(() {
       loading = false;
-      tiers = rows;
+      statuses = rows;
     });
   }
 
   void _resetForm() {
     editingId = null;
     nameCtrl.clear();
-    labelCtrl.clear();
-    colorCtrl.text = '#9CA3AF';
-    minCtrl.text = '0';
+    colorCtrl.text = '#0EA5A6';
     orderCtrl.text = '1';
   }
 
   Future<bool> _save() async {
-    if (nameCtrl.text.trim().isEmpty || labelCtrl.text.trim().isEmpty) {
-      setState(() => message = 'Vui lòng nhập tên và nhãn.');
+    if (nameCtrl.text.trim().isEmpty) {
+      setState(() => message = 'Vui lòng nhập tên trạng thái cơ hội.');
       return false;
     }
-    final double? minAmount = double.tryParse(minCtrl.text.trim());
     final int? order = int.tryParse(orderCtrl.text.trim());
     final bool ok =
         editingId == null
-            ? await widget.apiService.createRevenueTier(
+            ? await widget.apiService.createOpportunityStatus(
               widget.token,
               name: nameCtrl.text.trim(),
-              label: labelCtrl.text.trim(),
               colorHex: colorCtrl.text.trim(),
-              minAmount: minAmount,
               sortOrder: order,
             )
-            : await widget.apiService.updateRevenueTier(
+            : await widget.apiService.updateOpportunityStatus(
               widget.token,
               editingId!,
               name: nameCtrl.text.trim(),
-              label: labelCtrl.text.trim(),
               colorHex: colorCtrl.text.trim(),
-              minAmount: minAmount,
               sortOrder: order,
             );
     if (!mounted) return false;
-    setState(() => message = ok ? 'Đã lưu hạng.' : 'Lưu hạng thất bại.');
+    setState(
+      () => message = ok ? 'Đã lưu trạng thái cơ hội.' : 'Lưu thất bại.',
+    );
     if (ok) {
       _resetForm();
       await _fetch();
@@ -102,9 +94,12 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
   }
 
   Future<void> _delete(int id) async {
-    final bool ok = await widget.apiService.deleteRevenueTier(widget.token, id);
+    final bool ok = await widget.apiService.deleteOpportunityStatus(
+      widget.token,
+      id,
+    );
     if (!mounted) return;
-    setState(() => message = ok ? 'Đã xóa hạng.' : 'Xóa hạng thất bại.');
+    setState(() => message = ok ? 'Đã xóa trạng thái cơ hội.' : 'Xóa thất bại.');
     if (ok) await _fetch();
   }
 
@@ -116,9 +111,7 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
       } else {
         editingId = item['id'] as int;
         nameCtrl.text = (item['name'] ?? '').toString();
-        labelCtrl.text = (item['label'] ?? '').toString();
-        colorCtrl.text = (item['color_hex'] ?? '#9CA3AF').toString();
-        minCtrl.text = (item['min_amount'] ?? 0).toString();
+        colorCtrl.text = (item['color_hex'] ?? '#0EA5A6').toString();
         orderCtrl.text = (item['sort_order'] ?? 0).toString();
       }
     });
@@ -146,35 +139,22 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      editingId == null ? 'Tạo hạng' : 'Sửa hạng',
+                      editingId == null
+                          ? 'Tạo trạng thái cơ hội'
+                          : 'Sửa trạng thái cơ hội',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 10),
                     TextField(
                       controller: nameCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Tên hệ thống',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: labelCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Nhãn hiển thị',
+                        labelText: 'Tên trạng thái',
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: colorCtrl,
                       decoration: const InputDecoration(labelText: 'Màu (hex)'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: minCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Mốc doanh thu',
-                      ),
-                      keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -203,7 +183,7 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
                           child: ElevatedButton(
                             onPressed: () async {
                               final bool ok = await _save();
-                              if (!mounted) return;
+                              if (!context.mounted) return;
                               if (ok) {
                                 Navigator.of(context).pop();
                               } else {
@@ -233,7 +213,7 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Hạng doanh thu'),
+        title: const Text('Trạng thái cơ hội'),
         actions: <Widget>[
           IconButton(icon: const Icon(Icons.add), onPressed: () => _openForm()),
         ],
@@ -249,7 +229,7 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
                 children: <Widget>[
                   const Expanded(
                     child: Text(
-                      'Danh sách hạng doanh thu',
+                      'Danh sách trạng thái cơ hội',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -272,12 +252,12 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
               if (loading)
                 const Center(child: CircularProgressIndicator())
               else
-                ...tiers.map((item) {
+                ...statuses.map((item) {
                   return Card(
                     child: ListTile(
-                      title: Text((item['label'] ?? '').toString()),
+                      title: Text((item['name'] ?? '').toString()),
                       subtitle: Text(
-                        '≥ ${(item['min_amount'] ?? 0).toString()}',
+                        'Màu: ${(item['color_hex'] ?? '').toString()}',
                       ),
                       trailing: Wrap(
                         spacing: 8,

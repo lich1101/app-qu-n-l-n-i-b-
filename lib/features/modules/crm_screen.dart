@@ -41,6 +41,7 @@ class _CrmScreenState extends State<CrmScreen> {
   int? leadTypeId;
   int? assignedDepartmentId;
   int? assignedStaffId;
+  List<int> careStaffIds = <int>[];
   int? editingClientId;
   int? editingPaymentId;
   final TextEditingController clientNameCtrl = TextEditingController();
@@ -71,6 +72,27 @@ class _CrmScreenState extends State<CrmScreen> {
     leadMessageCtrl.dispose();
     paymentAmountCtrl.dispose();
     super.dispose();
+  }
+
+  List<int> _normalizeCareStaffIds(dynamic value) {
+    if (value is! List<dynamic>) {
+      return <int>[];
+    }
+
+    final Set<int> ids = <int>{};
+    for (final dynamic item in value) {
+      if (item is Map<String, dynamic>) {
+        final int id =
+            int.tryParse((item['id'] ?? '').toString()) ?? 0;
+        if (id > 0) {
+          ids.add(id);
+        }
+      } else if (item is int && item > 0) {
+        ids.add(item);
+      }
+    }
+
+    return ids.toList()..sort();
   }
 
   Future<void> _fetch() async {
@@ -121,11 +143,33 @@ class _CrmScreenState extends State<CrmScreen> {
       file,
     );
     if (!mounted) return;
+    final List<dynamic> errors =
+        (report['errors'] as List<dynamic>?) ?? <dynamic>[];
+    final List<dynamic> warnings =
+        (report['warnings'] as List<dynamic>?) ?? <dynamic>[];
+
+    final StringBuffer summary = StringBuffer();
+    if (report['error'] != null) {
+      summary.write('Import thất bại.');
+    } else {
+      summary.write(
+        'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới, ${(report['updated'] ?? 0)} cập nhật, ${(report['skipped'] ?? 0)} bỏ qua.',
+      );
+    }
+    if (errors.isNotEmpty) {
+      final dynamic first = errors.first;
+      summary.write(
+        '\nLỗi: dòng ${first is Map<String, dynamic> ? (first['row'] ?? '-') : '-'} - ${first is Map<String, dynamic> ? (first['message'] ?? 'Không xác định') : first.toString()}',
+      );
+    }
+    if (warnings.isNotEmpty) {
+      final dynamic first = warnings.first;
+      summary.write(
+        '\nCảnh báo: dòng ${first is Map<String, dynamic> ? (first['row'] ?? '-') : '-'} - ${first is Map<String, dynamic> ? (first['message'] ?? 'Không xác định') : first.toString()}',
+      );
+    }
     setState(() {
-      message =
-          report['error'] != null
-              ? 'Import thất bại.'
-              : 'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới, ${(report['updated'] ?? 0)} cập nhật.';
+      message = summary.toString();
     });
     await _fetch();
   }
@@ -156,6 +200,7 @@ class _CrmScreenState extends State<CrmScreen> {
                   clientPhoneCtrl.text.trim().isEmpty
                       ? null
                       : clientPhoneCtrl.text.trim(),
+              careStaffIds: careStaffIds,
               assignedDepartmentId: assignedDepartmentId,
               assignedStaffId: assignedStaffId,
               leadTypeId: leadTypeId,
@@ -188,6 +233,7 @@ class _CrmScreenState extends State<CrmScreen> {
                   clientPhoneCtrl.text.trim().isEmpty
                       ? null
                       : clientPhoneCtrl.text.trim(),
+              careStaffIds: careStaffIds,
               assignedDepartmentId: assignedDepartmentId,
               assignedStaffId: assignedStaffId,
               leadTypeId: leadTypeId,
@@ -225,6 +271,7 @@ class _CrmScreenState extends State<CrmScreen> {
             leadTypes.isNotEmpty ? leadTypes.first['id'] as int? : null;
         assignedDepartmentId = null;
         assignedStaffId = null;
+        careStaffIds = <int>[];
       }
     });
     if (ok) await _fetch();
@@ -315,6 +362,7 @@ class _CrmScreenState extends State<CrmScreen> {
     leadTypeId = leadTypes.isNotEmpty ? leadTypes.first['id'] as int? : null;
     assignedDepartmentId = null;
     assignedStaffId = null;
+    careStaffIds = <int>[];
   }
 
   void _resetPaymentForm() {
@@ -341,6 +389,7 @@ class _CrmScreenState extends State<CrmScreen> {
         leadTypeId = client['lead_type_id'] as int?;
         assignedDepartmentId = client['assigned_department_id'] as int?;
         assignedStaffId = client['assigned_staff_id'] as int?;
+        careStaffIds = _normalizeCareStaffIds(client['care_staff_users']);
       }
     });
 
@@ -464,6 +513,149 @@ class _CrmScreenState extends State<CrmScreen> {
                         onChanged:
                             (int? value) =>
                                 setSheetState(() => assignedStaffId = value),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Danh sách nhân viên chăm sóc',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      Builder(
+                        builder: (BuildContext context) {
+                          final List<Map<String, dynamic>> selectedCareStaff =
+                              staffUsers.where((Map<String, dynamic> u) {
+                                final int uid =
+                                    int.tryParse((u['id'] ?? '').toString()) ??
+                                    0;
+                                return uid > 0 && careStaffIds.contains(uid);
+                              }).toList();
+                          final List<Map<String, dynamic>> availableCareStaff =
+                              staffUsers.where((Map<String, dynamic> u) {
+                                final int uid =
+                                    int.tryParse((u['id'] ?? '').toString()) ??
+                                    0;
+                                return uid > 0 && !careStaffIds.contains(uid);
+                              }).toList();
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: StitchTheme.bg,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: StitchTheme.border),
+                                ),
+                                child:
+                                    selectedCareStaff.isEmpty
+                                        ? const Text(
+                                          'Chưa thêm nhân viên chăm sóc nào.',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: StitchTheme.textMuted,
+                                          ),
+                                        )
+                                        : Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children:
+                                              selectedCareStaff.map((
+                                                Map<String, dynamic> u,
+                                              ) {
+                                                final int uid =
+                                                    int.tryParse(
+                                                      (u['id'] ?? '')
+                                                          .toString(),
+                                                    ) ??
+                                                    0;
+                                                return InputChip(
+                                                  label: Text(
+                                                    (u['name'] ?? '')
+                                                        .toString(),
+                                                  ),
+                                                  onDeleted:
+                                                      () => setSheetState(() {
+                                                        careStaffIds =
+                                                            careStaffIds
+                                                                .where(
+                                                                  (
+                                                                    int id,
+                                                                  ) => id != uid,
+                                                                )
+                                                                .toList();
+                                                      }),
+                                                );
+                                              }).toList(),
+                                        ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: StitchTheme.surfaceAlt,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: StitchTheme.border),
+                                ),
+                                child:
+                                    availableCareStaff.isEmpty
+                                        ? const Text(
+                                          'Đã chọn hết nhân sự khả dụng.',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: StitchTheme.textMuted,
+                                          ),
+                                        )
+                                        : Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children:
+                                              availableCareStaff.map((
+                                                Map<String, dynamic> u,
+                                              ) {
+                                                final int uid =
+                                                    int.tryParse(
+                                                      (u['id'] ?? '')
+                                                          .toString(),
+                                                    ) ??
+                                                    0;
+                                                if (uid <= 0) {
+                                                  return const SizedBox.shrink();
+                                                }
+                                                return ActionChip(
+                                                  avatar: const Icon(
+                                                    Icons.add,
+                                                    size: 16,
+                                                  ),
+                                                  label: Text(
+                                                    (u['name'] ?? '')
+                                                        .toString(),
+                                                  ),
+                                                  onPressed:
+                                                      () => setSheetState(() {
+                                                        careStaffIds = <int>{
+                                                          ...careStaffIds,
+                                                          uid,
+                                                        }.toList()
+                                                          ..sort();
+                                                      }),
+                                                );
+                                              }).toList(),
+                                        ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Nhân sự chăm sóc chỉ có quyền xem thông tin khách hàng và thêm ghi chú chăm sóc.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: StitchTheme.textMuted,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 8),
@@ -726,7 +918,6 @@ class _CrmScreenState extends State<CrmScreen> {
               icon: const Icon(Icons.file_upload_outlined),
               onPressed: _importClients,
             ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetch),
         ],
       ),
       body: RefreshIndicator(
@@ -781,11 +972,7 @@ class _CrmScreenState extends State<CrmScreen> {
               title: 'Bộ lọc khách hàng',
               subtitle:
                   'Tìm theo khách hàng, email hoặc trạng thái thanh toán để thu hẹp danh sách đang theo dõi.',
-              trailing: OutlinedButton.icon(
-                onPressed: _fetch,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Tải lại'),
-              ),
+              trailing: null,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -864,6 +1051,19 @@ class _CrmScreenState extends State<CrmScreen> {
                       final Map<String, dynamic>? staff =
                           client['assigned_staff'] as Map<String, dynamic>? ??
                           client['sales_owner'] as Map<String, dynamic>?;
+                      final List<dynamic> careStaffRaw =
+                          (client['care_staff_users'] as List<dynamic>?) ??
+                          <dynamic>[];
+                      final String careStaffLabel = careStaffRaw
+                          .map((dynamic item) {
+                            if (item is Map<String, dynamic>) {
+                              return (item['name'] ?? '').toString();
+                            }
+                            return '';
+                          })
+                          .where((String name) => name.trim().isNotEmpty)
+                          .take(2)
+                          .join(', ');
                       final List<String> meta = <String>[
                         (client['email'] ?? 'Chưa có email').toString(),
                         if (leadType != null)
@@ -871,6 +1071,7 @@ class _CrmScreenState extends State<CrmScreen> {
                         if (tier != null) (tier['label'] ?? '').toString(),
                         if (dept != null) (dept['name'] ?? '').toString(),
                         if (staff != null) (staff['name'] ?? '').toString(),
+                        if (careStaffLabel.isNotEmpty) 'CSKH: $careStaffLabel',
                       ];
                       return Text(meta.join(' • '));
                     },

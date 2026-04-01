@@ -5,11 +5,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../config/app_env.dart';
-import '../../core/theme/stitch_theme.dart';
-import '../../core/settings/app_settings.dart';
 import '../../core/services/app_firebase.dart';
+import '../../core/services/app_permission_bootstrap_service.dart';
+import '../../core/settings/app_settings.dart';
+import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
 import '../auth/login_screen.dart';
 import '../accounts/accounts_screen.dart';
@@ -19,8 +21,8 @@ import '../modules/crm_screen.dart';
 import '../modules/contracts_screen.dart';
 import '../modules/handover_screen.dart';
 import '../modules/chat_screen.dart';
-import '../modules/chatbot_bot_list_screen.dart';
 import '../modules/activity_log_screen.dart';
+import '../modules/attendance_wifi_screen.dart';
 import '../modules/meetings_screen.dart';
 import '../modules/module_center_screen.dart';
 import '../modules/notifications_screen.dart';
@@ -31,6 +33,7 @@ import '../modules/products_screen.dart';
 import '../modules/revenue_report_screen.dart';
 import '../modules/lead_forms_screen.dart';
 import '../modules/lead_types_screen.dart';
+import '../modules/opportunity_statuses_screen.dart';
 import '../modules/revenue_tiers_screen.dart';
 import '../modules/departments_screen.dart';
 import '../projects/create_project_screen.dart';
@@ -76,6 +79,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   StreamSubscription<RemoteMessage>? _foregroundSub;
   Timer? _sessionGuardTimer;
   bool _isCheckingSession = false;
+  bool _permissionPromptQueued = false;
+  bool _permissionPromptVisible = false;
 
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
@@ -109,11 +114,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(_validateActiveSession());
-      if (authToken != null && authToken!.isNotEmpty) {
-        unawaited(_registerDeviceToken());
-      }
+      unawaited(_handleAppResumed());
     }
+  }
+
+  Future<void> _handleAppResumed() async {
+    await _validateActiveSession(silent: true);
+    if (!mounted) return;
+    if (authToken == null || authToken!.isEmpty) return;
+    await _registerDeviceToken(requestPermission: false);
+    _scheduleEssentialPermissionPrompt();
   }
 
   Duration get _bootstrapTimeout =>
@@ -188,7 +198,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _bootstrap() async {
+  Future<void> _loadBootstrapPublicData() async {
     String bootstrapMessage = '';
     Map<String, dynamic> summary = <String, dynamic>{};
     Map<String, dynamic> accountSummary = <String, dynamic>{};
@@ -210,23 +220,63 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       bootstrapMessage =
           'Không thể kết nối máy chủ. Vui lòng kiểm tra API_BASE_URL.';
     }
-    if (mounted) {
-      setState(() {
-        overview = summary;
-        accounts = accountSummary;
-        final List<dynamic> statuses =
-            (meta['task_statuses'] ?? <dynamic>[]) as List<dynamic>;
-        if (statuses.isNotEmpty) {
-          taskStatuses = statuses.map((dynamic e) => e.toString()).toList();
-        }
-        if (bootstrapMessage.isNotEmpty) {
-          authMessage = bootstrapMessage;
-        }
-      });
-    }
+
     if (settings.isNotEmpty) {
       appSettingsStore.apply(AppSettingsData.fromJson(settings));
     }
+    if (!mounted) return;
+    setState(() {
+      if (summary.isNotEmpty) {
+        overview = summary;
+      }
+      if (accountSummary.isNotEmpty) {
+        accounts = accountSummary;
+      }
+      final List<dynamic> statuses =
+          (meta['task_statuses'] ?? <dynamic>[]) as List<dynamic>;
+      if (statuses.isNotEmpty) {
+        taskStatuses = statuses.map((dynamic e) => e.toString()).toList();
+      }
+      if (bootstrapMessage.isNotEmpty && authMessage.isEmpty) {
+        authMessage = bootstrapMessage;
+      }
+    });
+  }
+
+  Future<void> _finishRestoredSessionBootstrap(String token) async {
+    try {
+      final List<Map<String, dynamic>> summaryResults =
+          await Future.wait(<Future<Map<String, dynamic>>>[
+            _safeMap(_api.getPublicSummary(token)),
+            _safeMap(_api.getPublicAccountsSummary(token)),
+          ]);
+      if (mounted) {
+        setState(() {
+          if (summaryResults[0].isNotEmpty) {
+            overview = summaryResults[0];
+          }
+          if (summaryResults[1].isNotEmpty) {
+            accounts = summaryResults[1];
+          }
+        });
+      }
+    } catch (_) {
+      // Keep the shell responsive even if dashboard summaries are slow.
+    }
+
+    await _ensureFirebaseAuth();
+    await _registerDeviceToken(requestPermission: false);
+    try {
+      await fetchTasks(silent: true).timeout(_bootstrapTimeout);
+    } catch (_) {
+      // ignore timeout
+    }
+    await _refreshNotificationBadge();
+    _scheduleEssentialPermissionPrompt();
+  }
+
+  Future<void> _bootstrap() async {
+    unawaited(_loadBootstrapPublicData());
     await _restoreSession();
     if (!mounted) return;
     setState(() => _isBootstrapDone = true);
@@ -265,6 +315,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       unreadChats = 0;
       _tabIndex = 0;
     });
+    _permissionPromptQueued = false;
+    _permissionPromptVisible = false;
   }
 
   Future<void> _handleSessionRevoked() async {
@@ -323,14 +375,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         authMessage = 'Đã khôi phục phiên đăng nhập.';
       });
       _startSessionGuard();
-      await _ensureFirebaseAuth();
-      await _registerDeviceToken();
-      try {
-        await fetchTasks(silent: true).timeout(_bootstrapTimeout);
-      } catch (_) {
-        // ignore timeout
-      }
-      await _refreshNotificationBadge();
+      unawaited(_finishRestoredSessionBootstrap(token));
     } else {
       final int statusCode = (me['statusCode'] ?? 500) as int;
       if (statusCode == 401) {
@@ -455,9 +500,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (!mounted) return;
     if ((me['statusCode'] ?? 500) == 200) {
       await _secureStorage.write(key: _tokenKey, value: token);
-      final Map<String, dynamic> summary = await _api.getPublicSummary();
-      final Map<String, dynamic> accountSummary =
-          await _api.getPublicAccountsSummary();
+      final Map<String, dynamic> summary = await _api.getPublicSummary(token);
+      final Map<String, dynamic> accountSummary = await _api
+          .getPublicAccountsSummary(token);
       if (!mounted) return;
       setState(() {
         authToken = token;
@@ -469,10 +514,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       });
       _startSessionGuard();
       await _ensureFirebaseAuth();
-      await _registerDeviceToken();
+      await _registerDeviceToken(requestPermission: false);
       await _addSavedAccount(email);
       await fetchTasks(silent: true);
       await _refreshNotificationBadge();
+      _scheduleEssentialPermissionPrompt();
     } else {
       setState(() {
         _isLoggingIn = false;
@@ -482,7 +528,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Future<String> forgotPasswordMobile({required String email}) async {
-    final Map<String, dynamic> response = await _api.forgotPassword(email: email);
+    final Map<String, dynamic> response = await _api.forgotPassword(
+      email: email,
+    );
     final int statusCode = (response['statusCode'] ?? 500) as int;
     final Map<String, dynamic> body =
         (response['body'] as Map<String, dynamic>? ?? <String, dynamic>{});
@@ -503,10 +551,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (authToken != null && authToken!.isNotEmpty) {
       await _api.logout(authToken!);
     }
-    await _clearLocalSession(message: 'Đã đăng xuất token.');
+    await _clearLocalSession(message: 'Đã đăng xuất.');
   }
 
-  Future<Map<String, dynamic>> _registerDeviceToken() async {
+  Future<Map<String, dynamic>> _registerDeviceToken({
+    bool requestPermission = false,
+  }) async {
     if (authToken == null || authToken!.isEmpty) {
       return <String, dynamic>{'ok': false, 'reason': 'missing_auth_token'};
     }
@@ -522,6 +572,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     };
     try {
       await AppFirebase.registerPushToken(
+        requestPermission: requestPermission,
         onToken: (
           String token,
           bool notificationsEnabled,
@@ -549,6 +600,112 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         'reason': 'register_device_token_exception',
       };
     }
+  }
+
+  void _scheduleEssentialPermissionPrompt() {
+    if (_permissionPromptQueued || _permissionPromptVisible) return;
+    if (authToken == null || authToken!.isEmpty) return;
+    _permissionPromptQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || authToken == null || authToken!.isEmpty) {
+        _permissionPromptQueued = false;
+        return;
+      }
+
+      final AppPermissionBootstrapState initialState =
+          await AppPermissionBootstrapService.checkStatus();
+      if (!mounted || authToken == null || authToken!.isEmpty) {
+        _permissionPromptQueued = false;
+        return;
+      }
+
+      if (initialState.allGranted) {
+        _permissionPromptQueued = false;
+        await _registerDeviceToken(requestPermission: false);
+        return;
+      }
+
+      _permissionPromptVisible = true;
+      final AppPermissionBootstrapState result =
+          await _showEssentialPermissionSheet(initialState);
+      _permissionPromptVisible = false;
+      _permissionPromptQueued = false;
+
+      if (!mounted) return;
+      if (result.notificationsGranted) {
+        await _registerDeviceToken(requestPermission: false);
+      }
+    });
+  }
+
+  Future<AppPermissionBootstrapState> _showEssentialPermissionSheet(
+    AppPermissionBootstrapState initialState,
+  ) async {
+    AppPermissionBootstrapState currentState = initialState;
+    bool requesting = false;
+    bool shouldOpenSettings = initialState.needsSettingsAttention;
+
+    final AppPermissionBootstrapState?
+    result = await showModalBottomSheet<AppPermissionBootstrapState>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setSheetState) {
+            Future<void> openSettings() async {
+              await openAppSettings();
+            }
+
+            Future<void> refreshStatus() async {
+              final AppPermissionBootstrapState next =
+                  await AppPermissionBootstrapService.checkStatus();
+              if (!context.mounted) return;
+              setSheetState(() {
+                currentState = next;
+                shouldOpenSettings = next.needsSettingsAttention;
+              });
+            }
+
+            Future<void> requestPermissions() async {
+              if (shouldOpenSettings || currentState.needsSettingsAttention) {
+                await openSettings();
+                return;
+              }
+              setSheetState(() => requesting = true);
+              final AppPermissionBootstrapState next =
+                  await AppPermissionBootstrapService.requestEssentialPermissions();
+              if (next.notificationsGranted) {
+                await _registerDeviceToken(requestPermission: false);
+              }
+              if (!context.mounted) return;
+              setSheetState(() {
+                requesting = false;
+                currentState = next;
+                shouldOpenSettings =
+                    next.needsSettingsAttention ||
+                    (Platform.isIOS && !next.wifiGranted);
+              });
+              if (next.allGranted && context.mounted) {
+                Navigator.of(context).pop(next);
+              }
+            }
+
+            return _EssentialPermissionSheet(
+              state: currentState,
+              requesting: requesting,
+              onGrantNow: requestPermissions,
+              onCheckAgain: refreshStatus,
+              onLater: () => Navigator.of(context).pop(currentState),
+              onOpenSettings: openSettings,
+              preferOpenSettings: shouldOpenSettings,
+            );
+          },
+        );
+      },
+    );
+
+    return result ?? currentState;
   }
 
   Future<void> _ensureFirebaseAuth() async {
@@ -613,13 +770,68 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (!_isBootstrapDone) {
       return Scaffold(
         backgroundColor: StitchTheme.bg,
-        body: Center(
-          child: ClipOval(
-            child: Image.asset(
-              'icon.png',
-              width: 140,
-              height: 140,
-              fit: BoxFit.cover,
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[StitchTheme.bg, StitchTheme.surfaceAlt],
+            ),
+          ),
+          child: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Container(
+                    width: 132,
+                    height: 132,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: StitchTheme.surface,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: StitchTheme.border),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: StitchTheme.textMain.withValues(alpha: 0.08),
+                          blurRadius: 24,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.asset('icon.png', fit: BoxFit.cover),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    appSettingsStore.settings.brandName.isNotEmpty
+                        ? appSettingsStore.settings.brandName
+                        : AppEnv.appName,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Đang khởi động hệ thống',
+                    style: TextStyle(
+                      color: StitchTheme.textMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        StitchTheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -643,28 +855,58 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
     }
 
+    // ─── Meetings: web GET /meetings has no role middleware (all can view)
+    // Create/Update: admin,quan_ly | Delete: admin only
     final bool canManageMeetings = _hasRole(<String>['admin', 'quan_ly']);
     final bool canDeleteMeetings = _hasRole(<String>['admin']);
+    // ─── CRM: clients CRUD: admin,quan_ly,nhan_vien | payments: admin,ke_toan
     final bool canManageCrm = _hasRole(<String>[
       'admin',
       'quan_ly',
       'nhan_vien',
     ]);
     final bool canDeleteCrm = _hasRole(<String>['admin']);
-    final bool canManageContracts = _hasRole(<String>[
+    // ─── Contracts: web allows nhan_vien to CREATE but NOT edit/delete
+    // View: admin,quan_ly,nhan_vien,ke_toan
+    // Create: admin,quan_ly,nhan_vien,ke_toan
+    // Edit: admin,quan_ly,ke_toan (NOT nhan_vien)
+    // Delete: admin,quan_ly,ke_toan
+    final bool canViewContracts = _hasRole(<String>[
       'admin',
       'quan_ly',
       'nhan_vien',
       'ke_toan',
     ]);
-    final bool canDeleteContracts = _hasRole(<String>['admin']);
+    final bool canCreateContracts = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+      'ke_toan',
+    ]);
+    final bool canEditContracts = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'ke_toan',
+    ]);
+    final bool canDeleteContracts = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'ke_toan',
+    ]);
+    // ─── Projects: create: admin,quan_ly | view: admin,quan_ly,nhan_vien
     final bool canCreateProject = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewProjects = _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']);
+    final bool canViewProjects = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+    ]);
     final bool canViewReports = _hasRole(<String>['admin', 'quan_ly']);
     final bool canViewDepartments = _hasRole(<String>['admin', 'quan_ly']);
     final bool canViewRevenue = _hasRole(<String>['admin']);
+    // ─── Handover: web route: admin,quan_ly,nhan_vien
     final bool canViewHandover = _hasRole(<String>[
       'admin',
+      'quan_ly',
       'nhan_vien',
     ]);
     final bool canViewChat = _hasRole(<String>[
@@ -674,15 +916,40 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       'ke_toan',
     ]);
     final bool canViewLogs = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewMeetings = _hasRole(<String>['admin', 'quan_ly']);
+    // ─── Meetings: web GET has no middleware, open for all
+    final bool canViewMeetings = true;
+    // ─── Opportunities: view/create/edit: admin,quan_ly,nhan_vien | delete: admin only
     final bool canViewOpportunities = _hasRole(<String>[
       'admin',
       'quan_ly',
       'nhan_vien',
     ]);
+    final bool canManageOpportunities = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+    ]);
+    final bool canDeleteOpportunities = _hasRole(<String>['admin']);
     final bool canViewLeadForms = _hasRole(<String>['admin']);
     final bool canViewLeadTypes = _hasRole(<String>['admin']);
+    final bool canViewOpportunityStatuses = _hasRole(<String>['admin']);
     final bool canViewRevenueTiers = _hasRole(<String>['admin']);
+    final bool canViewAttendance = _hasRole(<String>[
+      'admin',
+      'administrator',
+      'quan_ly',
+      'nhan_vien',
+      'ke_toan',
+    ]);
+    // ─── Products: web CRUD: admin,ke_toan (NOT quan_ly!) | view: all
+    final bool canViewProducts = _hasRole(<String>[
+      'admin',
+      'quan_ly',
+      'nhan_vien',
+      'ke_toan',
+    ]);
+    final bool canManageProducts = _hasRole(<String>['admin', 'ke_toan']);
+    final bool canDeleteProducts = _hasRole(<String>['admin']);
 
     Future<void> openScreen(Widget Function() builder) {
       return Navigator.of(
@@ -715,9 +982,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         currentUserId: currentUserId,
       );
     });
-    void openChatbot() => openScreen(
-      () => ChatbotBotListScreen(token: authToken!, apiService: _api),
-    );
     void openActivityLogs() => openScreen(
       () => ActivityLogScreen(token: authToken!, apiService: _api),
     );
@@ -753,14 +1017,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       () => OpportunitiesScreen(
         token: authToken!,
         apiService: _api,
-        canManage: _hasRole(<String>['admin', 'quan_ly', 'nhan_vien']),
+        canManage: canManageOpportunities,
+        canDelete: canDeleteOpportunities,
       ),
     );
     void openContracts() => openScreen(
       () => ContractsScreen(
         token: authToken!,
         apiService: _api,
-        canManage: canManageContracts,
+        canManage: canEditContracts,
+        canCreate: canCreateContracts,
         canDelete: canDeleteContracts,
         canApprove: _hasRole(<String>['admin', 'ke_toan']),
         currentUserRole: currentUserRole,
@@ -771,8 +1037,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       () => ProductsScreen(
         token: authToken!,
         apiService: _api,
-        canManage: _hasRole(<String>['admin', 'quan_ly']),
-        canDelete: _hasRole(<String>['admin']),
+        canManage: canManageProducts,
+        canDelete: canDeleteProducts,
       ),
     );
     void openDepartments() => openScreen(
@@ -793,6 +1059,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         openScreen(() => LeadFormsScreen(token: authToken!, apiService: _api));
     void openLeadTypes() =>
         openScreen(() => LeadTypesScreen(token: authToken!, apiService: _api));
+    void openOpportunityStatuses() => openScreen(
+      () => OpportunityStatusesScreen(token: authToken!, apiService: _api),
+    );
     void openRevenueTiers() => openScreen(
       () => RevenueTiersScreen(token: authToken!, apiService: _api),
     );
@@ -804,6 +1073,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         apiService: _api,
         canManage: _hasRole(<String>['admin', 'quan_ly']),
         canDelete: _hasRole(<String>['admin']),
+      ),
+    );
+    void openAttendance() => openScreen(
+      () => AttendanceWifiScreen(
+        token: authToken!,
+        apiService: _api,
+        currentUserRole: currentUserRole,
       ),
     );
     void openCreateProject() => openScreen(
@@ -820,16 +1096,18 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenMeetings: canViewMeetings ? openMeetings : null,
       onOpenCrm: canManageCrm ? openCrm : null,
       onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
-      onOpenContracts: canManageContracts ? openContracts : null,
-      onOpenProducts: canManageContracts ? openProducts : null,
+      onOpenContracts: canViewContracts ? openContracts : null,
+      onOpenProducts: canViewProducts ? openProducts : null,
       onOpenDepartments: canViewDepartments ? openDepartments : null,
       onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
       onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
       onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
+      onOpenOpportunityStatuses:
+          canViewOpportunityStatuses ? openOpportunityStatuses : null,
       onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
       onOpenReports: canViewReports ? openReports : null,
       onOpenServices: canViewProjects ? openServices : null,
-      onOpenChatbot: openChatbot,
+      onOpenAttendance: canViewAttendance ? openAttendance : null,
     );
 
     final List<OverviewQuickAction> quickActions = <OverviewQuickAction>[
@@ -868,12 +1146,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           onTap: openActivityLogs,
           color: const Color(0xFF64748B),
         ),
-      OverviewQuickAction(
-        label: 'Trợ lý AI',
-        icon: Icons.smart_toy_outlined,
-        onTap: openChatbot,
-        color: const Color(0xFF6366F1),
-      ),
+      if (canViewAttendance)
+        OverviewQuickAction(
+          label: 'Chấm công',
+          icon: Icons.wifi_tethering_outlined,
+          onTap: openAttendance,
+          color: const Color(0xFF0EA5A6),
+        ),
     ];
 
     final List<OverviewQuickAction> adminActions = <OverviewQuickAction>[
@@ -909,6 +1188,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         unreadChats: unreadChats,
         onOpenNotifications: openNotifications,
         onOpenChat: canViewChat ? openChat : null,
+        token: authToken,
+        apiService: _api,
+        currentUserRole: currentUserRole,
       ),
       TasksScreen(
         tasks: tasks,
@@ -927,10 +1209,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       CrmHubScreen(
         onOpenCrm: canManageCrm ? openCrm : null,
         onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
-        onOpenContracts: canManageContracts ? openContracts : null,
-        onOpenProducts: canManageContracts ? openProducts : null,
+        onOpenContracts: canViewContracts ? openContracts : null,
+        onOpenProducts: canViewProducts ? openProducts : null,
         onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
         onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
+        onOpenOpportunityStatuses:
+            canViewOpportunityStatuses ? openOpportunityStatuses : null,
         onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
         onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
       ),
@@ -1102,6 +1386,274 @@ class _NavItem extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EssentialPermissionSheet extends StatelessWidget {
+  const _EssentialPermissionSheet({
+    required this.state,
+    required this.requesting,
+    required this.onGrantNow,
+    required this.onCheckAgain,
+    required this.onLater,
+    required this.onOpenSettings,
+    required this.preferOpenSettings,
+  });
+
+  final AppPermissionBootstrapState state;
+  final bool requesting;
+  final Future<void> Function() onGrantNow;
+  final Future<void> Function() onCheckAgain;
+  final VoidCallback onLater;
+  final Future<void> Function() onOpenSettings;
+  final bool preferOpenSettings;
+
+  static String _wifiStatusLabel(AppPermissionBootstrapState state) {
+    if (state.wifiGranted) return 'Đã sẵn sàng';
+    if (state.wifiPermission.requiresSettings) return 'Cần mở Cài đặt';
+    return 'Cần cấp quyền';
+  }
+
+  static String _notificationStatusLabel(AppPermissionBootstrapState state) {
+    if (!state.notificationsSupported) return 'Không sử dụng';
+    if (state.notificationsGranted) return 'Đã sẵn sàng';
+    if (state.notificationStatus == AuthorizationStatus.denied) {
+      return 'Cần bật trong Cài đặt';
+    }
+    return 'Cần cấp quyền';
+  }
+
+  static Color _wifiColor(AppPermissionBootstrapState state) {
+    if (state.wifiGranted) return StitchTheme.successStrong;
+    return StitchTheme.warningStrong;
+  }
+
+  static Color _notificationColor(AppPermissionBootstrapState state) {
+    if (!state.notificationsSupported) return StitchTheme.textMuted;
+    if (state.notificationsGranted) return StitchTheme.successStrong;
+    return StitchTheme.warningStrong;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bool showSettingsButton =
+        state.needsSettingsAttention || preferOpenSettings;
+    final bool canRequestNow = !requesting && !state.allGranted;
+    final String primaryLabel =
+        state.allGranted
+            ? 'Mọi thứ đã sẵn sàng'
+            : showSettingsButton
+            ? 'Mở Cài đặt'
+            : (requesting ? 'Đang xin quyền...' : 'Cấp quyền ngay');
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      padding: EdgeInsets.fromLTRB(20, 18, 20, bottomInset + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Center(
+            child: Container(
+              width: 46,
+              height: 5,
+              decoration: BoxDecoration(
+                color: StitchTheme.border,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(
+                colors: <Color>[Color(0xFF0F766E), Color(0xFF14B8A6)],
+              ),
+            ),
+            child: const Icon(
+              Icons.verified_user_outlined,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Cấp quyền cần thiết ngay từ đầu',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: StitchTheme.textMain,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Để chấm công Wi-Fi và nhận thông báo nhắc giờ không bị ngắt mạch, ứng dụng sẽ xin quyền ngay khi bạn vào hệ thống.',
+            style: TextStyle(color: StitchTheme.textMuted, height: 1.45),
+          ),
+          const SizedBox(height: 18),
+          _EssentialPermissionTile(
+            icon: Icons.wifi_tethering_outlined,
+            title: 'Wi-Fi và vị trí',
+            status: _wifiStatusLabel(state),
+            description:
+                state.wifiGranted
+                    ? 'Đã có thể đọc SSID/BSSID và kiểm tra đúng mạng công ty.'
+                    : 'Trên iPhone, ứng dụng cần quyền Vị trí để đọc Wi-Fi hiện tại và xác minh BSSID nội bộ.',
+            color: _wifiColor(state),
+          ),
+          if (state.notificationsSupported) ...<Widget>[
+            const SizedBox(height: 12),
+            _EssentialPermissionTile(
+              icon: Icons.notifications_active_outlined,
+              title: 'Thông báo',
+              status: _notificationStatusLabel(state),
+              description:
+                  state.notificationsGranted
+                      ? 'Đã sẵn sàng nhận nhắc giờ chấm công và thông báo hệ thống.'
+                      : 'Bật thông báo để nhận nhắc trước giờ vào làm và các cập nhật quan trọng.',
+              color: _notificationColor(state),
+            ),
+          ],
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  requesting || state.allGranted
+                      ? null
+                      : (showSettingsButton ? onOpenSettings : onGrantNow),
+              icon: Icon(
+                state.allGranted
+                    ? Icons.check_circle_outline
+                    : (showSettingsButton
+                        ? Icons.settings_outlined
+                        : Icons.shield_outlined),
+              ),
+              label: Text(primaryLabel),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: canRequestNow ? onCheckAgain : null,
+                  child: const Text('Kiểm tra lại'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              if (showSettingsButton)
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: requesting ? null : onOpenSettings,
+                    icon: const Icon(Icons.settings_outlined),
+                    label: const Text('Mở Cài đặt'),
+                  ),
+                )
+              else
+                Expanded(
+                  child: TextButton(
+                    onPressed: requesting ? null : onLater,
+                    child: const Text('Để sau'),
+                  ),
+                ),
+            ],
+          ),
+          if (showSettingsButton) ...<Widget>[
+            const SizedBox(height: 6),
+            Center(
+              child: TextButton(
+                onPressed: requesting ? null : onLater,
+                child: const Text('Để sau'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EssentialPermissionTile extends StatelessWidget {
+  const _EssentialPermissionTile({
+    required this.icon,
+    required this.title,
+    required this.status,
+    required this.description,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String status;
+  final String description;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: StitchTheme.textMain,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: StitchTheme.textMuted,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

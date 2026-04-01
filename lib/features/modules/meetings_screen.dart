@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -39,7 +40,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   String message = '';
   int? editingMeetingId;
   int? attendeeFilterId;
-  DateTime selectedDate = DateTime.now();
+  DateTime selectedDate = VietnamTime.now();
 
   int? _parseInt(dynamic value) {
     if (value is int) return value;
@@ -49,11 +50,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
 
   DateTime? _parseMeetingDate(String raw) {
     if (raw.trim().isEmpty) return null;
-    final DateTime? direct = DateTime.tryParse(raw);
-    if (direct != null) return direct.toLocal();
-    final String fixed = raw.replaceFirst(' ', 'T');
-    final DateTime? secondTry = DateTime.tryParse(fixed);
-    return secondTry?.toLocal();
+    return VietnamTime.parse(raw);
   }
 
   String _fmtDate(DateTime date) {
@@ -81,7 +78,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   }
 
   Future<void> _pickDate(TextEditingController controller) async {
-    final DateTime now = DateTime.now();
+    final DateTime now = VietnamTime.now();
     final DateTime? date = await showDatePicker(
       context: context,
       firstDate: DateTime(now.year - 3),
@@ -94,7 +91,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   }
 
   Future<void> _pickDateTime(TextEditingController controller) async {
-    final DateTime now = DateTime.now();
+    final DateTime now = VietnamTime.now();
     final DateTime? date = await showDatePicker(
       context: context,
       firstDate: DateTime(now.year - 3),
@@ -137,9 +134,8 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   }
 
   Future<void> _fetchUsers() async {
-    final List<Map<String, dynamic>> rows = await widget.apiService.getUsersLookup(
-      widget.token,
-    );
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getUsersLookup(widget.token);
     if (!mounted) return;
     setState(() => users = rows);
   }
@@ -157,9 +153,10 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
     if (!mounted) return;
     setState(() {
       loading = false;
-      meetings = ((data['data'] ?? <dynamic>[]) as List<dynamic>)
-          .map((dynamic e) => e as Map<String, dynamic>)
-          .toList();
+      meetings =
+          ((data['data'] ?? <dynamic>[]) as List<dynamic>)
+              .map((dynamic e) => e as Map<String, dynamic>)
+              .toList();
     });
   }
 
@@ -194,36 +191,42 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                   const SizedBox(height: 8),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 360),
-                    child: users.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Text(
-                              'Không tải được danh sách thành viên.',
-                              style: TextStyle(color: StitchTheme.textMuted),
+                    child:
+                        users.isEmpty
+                            ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Text(
+                                'Không tải được danh sách thành viên.',
+                                style: TextStyle(color: StitchTheme.textMuted),
+                              ),
+                            )
+                            : ListView(
+                              shrinkWrap: true,
+                              children:
+                                  users.map((Map<String, dynamic> user) {
+                                    final int id = _parseInt(user['id']) ?? 0;
+                                    final bool checked = temp.contains(id);
+                                    return CheckboxListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      value: checked,
+                                      title: Text(
+                                        (user['name'] ?? '').toString(),
+                                      ),
+                                      subtitle: Text(
+                                        (user['role'] ?? '').toString(),
+                                      ),
+                                      onChanged: (_) {
+                                        setSheetState(() {
+                                          if (checked) {
+                                            temp.remove(id);
+                                          } else {
+                                            temp.add(id);
+                                          }
+                                        });
+                                      },
+                                    );
+                                  }).toList(),
                             ),
-                          )
-                        : ListView(
-                            shrinkWrap: true,
-                            children: users.map((Map<String, dynamic> user) {
-                              final int id = _parseInt(user['id']) ?? 0;
-                              final bool checked = temp.contains(id);
-                              return CheckboxListTile(
-                                contentPadding: EdgeInsets.zero,
-                                value: checked,
-                                title: Text((user['name'] ?? '').toString()),
-                                subtitle: Text((user['role'] ?? '').toString()),
-                                onChanged: (_) {
-                                  setSheetState(() {
-                                    if (checked) {
-                                      temp.remove(id);
-                                    } else {
-                                      temp.add(id);
-                                    }
-                                  });
-                                },
-                              );
-                            }).toList(),
-                          ),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -237,7 +240,8 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () => Navigator.of(context).pop(temp.toList()),
+                          onPressed:
+                              () => Navigator.of(context).pop(temp.toList()),
                           child: const Text('Xác nhận'),
                         ),
                       ),
@@ -275,35 +279,47 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
     }
 
     final List<int> attendeeIds = selectedAttendeeIds.toList()..sort();
-    final bool ok = editingMeetingId == null
-        ? await widget.apiService.createMeeting(
-            widget.token,
-            title: titleCtrl.text.trim(),
-            scheduledAt: dateCtrl.text.trim(),
-            meetingLink: linkCtrl.text.trim().isEmpty ? null : linkCtrl.text.trim(),
-            description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-            minutes: minutesCtrl.text.trim().isEmpty ? null : minutesCtrl.text.trim(),
-            attendeeIds: attendeeIds,
-          )
-        : await widget.apiService.updateMeeting(
-            widget.token,
-            editingMeetingId!,
-            title: titleCtrl.text.trim(),
-            scheduledAt: dateCtrl.text.trim(),
-            meetingLink: linkCtrl.text.trim().isEmpty ? null : linkCtrl.text.trim(),
-            description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-            minutes: minutesCtrl.text.trim().isEmpty ? null : minutesCtrl.text.trim(),
-            attendeeIds: attendeeIds,
-          );
+    final bool ok =
+        editingMeetingId == null
+            ? await widget.apiService.createMeeting(
+              widget.token,
+              title: titleCtrl.text.trim(),
+              scheduledAt: dateCtrl.text.trim(),
+              meetingLink:
+                  linkCtrl.text.trim().isEmpty ? null : linkCtrl.text.trim(),
+              description:
+                  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+              minutes:
+                  minutesCtrl.text.trim().isEmpty
+                      ? null
+                      : minutesCtrl.text.trim(),
+              attendeeIds: attendeeIds,
+            )
+            : await widget.apiService.updateMeeting(
+              widget.token,
+              editingMeetingId!,
+              title: titleCtrl.text.trim(),
+              scheduledAt: dateCtrl.text.trim(),
+              meetingLink:
+                  linkCtrl.text.trim().isEmpty ? null : linkCtrl.text.trim(),
+              description:
+                  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+              minutes:
+                  minutesCtrl.text.trim().isEmpty
+                      ? null
+                      : minutesCtrl.text.trim(),
+              attendeeIds: attendeeIds,
+            );
     if (!mounted) return false;
     setState(() {
-      message = ok
-          ? (editingMeetingId == null
-                ? 'Tạo lịch họp thành công. Đã gửi thông báo cho thành viên.'
-                : 'Cập nhật lịch họp thành công.')
-          : (editingMeetingId == null
-                ? 'Tạo lịch họp thất bại.'
-                : 'Cập nhật lịch họp thất bại.');
+      message =
+          ok
+              ? (editingMeetingId == null
+                  ? 'Tạo lịch họp thành công. Đã gửi thông báo cho thành viên.'
+                  : 'Cập nhật lịch họp thành công.')
+              : (editingMeetingId == null
+                  ? 'Tạo lịch họp thất bại.'
+                  : 'Cập nhật lịch họp thất bại.');
     });
     if (ok) {
       editingMeetingId = null;
@@ -348,21 +364,30 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
       message = '';
       if (meeting == null) {
         _resetForm();
-        dateCtrl.text = _fmtDateTime(selectedDate, const TimeOfDay(hour: 9, minute: 0));
+        dateCtrl.text = _fmtDateTime(
+          selectedDate,
+          const TimeOfDay(hour: 9, minute: 0),
+        );
       } else {
         editingMeetingId = _parseInt(meeting['id']) ?? 0;
         titleCtrl.text = (meeting['title'] ?? '').toString();
-        dateCtrl.text = (meeting['scheduled_at'] ?? '').toString().replaceFirst('T', ' ').substring(0, 19);
+        dateCtrl.text = (meeting['scheduled_at'] ?? '')
+            .toString()
+            .replaceFirst('T', ' ')
+            .substring(0, 19);
         linkCtrl.text = (meeting['meeting_link'] ?? '').toString();
         descCtrl.text = (meeting['description'] ?? '').toString();
         minutesCtrl.text = (meeting['minutes'] ?? '').toString();
-        selectedAttendeeIds = ((meeting['attendees'] ?? <dynamic>[]) as List<dynamic>)
-            .map((dynamic attendee) {
-              if (attendee is! Map<String, dynamic>) return null;
-              return _parseInt(attendee['user_id'] ?? attendee['user']?['id']);
-            })
-            .whereType<int>()
-            .toSet();
+        selectedAttendeeIds =
+            ((meeting['attendees'] ?? <dynamic>[]) as List<dynamic>)
+                .map((dynamic attendee) {
+                  if (attendee is! Map<String, dynamic>) return null;
+                  return _parseInt(
+                    attendee['user_id'] ?? attendee['user']?['id'],
+                  );
+                })
+                .whereType<int>()
+                .toSet();
       }
     });
 
@@ -390,13 +415,17 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      editingMeetingId == null ? 'Tạo lịch họp' : 'Sửa lịch họp',
+                      editingMeetingId == null
+                          ? 'Tạo lịch họp'
+                          : 'Sửa lịch họp',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: titleCtrl,
-                      decoration: const InputDecoration(labelText: 'Tiêu đề họp'),
+                      decoration: const InputDecoration(
+                        labelText: 'Tiêu đề họp',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -410,18 +439,24 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: linkCtrl,
-                      decoration: const InputDecoration(labelText: 'Liên kết họp'),
+                      decoration: const InputDecoration(
+                        labelText: 'Liên kết họp',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: descCtrl,
-                      decoration: const InputDecoration(labelText: 'Ghi chú họp'),
+                      decoration: const InputDecoration(
+                        labelText: 'Ghi chú họp',
+                      ),
                       maxLines: 2,
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: minutesCtrl,
-                      decoration: const InputDecoration(labelText: 'Biên bản họp'),
+                      decoration: const InputDecoration(
+                        labelText: 'Biên bản họp',
+                      ),
                       maxLines: 2,
                     ),
                     const SizedBox(height: 10),
@@ -436,32 +471,40 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                         });
                       },
                       icon: const Icon(Icons.group_outlined, size: 18),
-                      label: Text('Chọn thành viên (${selectedAttendeeIds.length})'),
+                      label: Text(
+                        'Chọn thành viên (${selectedAttendeeIds.length})',
+                      ),
                     ),
                     if (attendeeNames.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 6,
                         runSpacing: 6,
-                        children: attendeeNames
-                            .map(
-                              (String name) => Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: StitchTheme.primary.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  name,
-                                  style: TextStyle(
-                                    color: StitchTheme.primary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                        children:
+                            attendeeNames
+                                .map(
+                                  (String name) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: StitchTheme.primary.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      name,
+                                      style: TextStyle(
+                                        color: StitchTheme.primary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            )
-                            .toList(),
+                                )
+                                .toList(),
                       ),
                     ],
                     if (message.isNotEmpty) ...<Widget>[
@@ -480,17 +523,18 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: widget.canManage
-                                ? () async {
-                                    final bool ok = await _save();
-                                    if (!context.mounted) return;
-                                    if (ok) {
-                                      Navigator.of(context).pop();
-                                    } else {
-                                      setSheetState(() {});
+                            onPressed:
+                                widget.canManage
+                                    ? () async {
+                                      final bool ok = await _save();
+                                      if (!context.mounted) return;
+                                      if (ok) {
+                                        Navigator.of(context).pop();
+                                      } else {
+                                        setSheetState(() {});
+                                      }
                                     }
-                                  }
-                                : null,
+                                    : null,
                             child: Text(
                               editingMeetingId == null
                                   ? 'Tạo lịch họp'
@@ -538,7 +582,8 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   }
 
   void _showMeetingDetails(Map<String, dynamic> meeting) {
-    final List<dynamic> attendees = (meeting['attendees'] ?? <dynamic>[]) as List<dynamic>;
+    final List<dynamic> attendees =
+        (meeting['attendees'] ?? <dynamic>[]) as List<dynamic>;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -555,10 +600,15 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
             children: <Widget>[
               Text(
                 (meeting['title'] ?? 'Lịch họp').toString(),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
-              Text('Bắt đầu: ${_displayDateTime((meeting['scheduled_at'] ?? '').toString())}'),
+              Text(
+                'Bắt đầu: ${_displayDateTime((meeting['scheduled_at'] ?? '').toString())}',
+              ),
               const SizedBox(height: 8),
               Text('Liên kết: ${(meeting['meeting_link'] ?? '—').toString()}'),
               const SizedBox(height: 8),
@@ -580,15 +630,23 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
-                  children: attendees.map((dynamic attendee) {
-                    if (attendee is! Map<String, dynamic>) return const SizedBox.shrink();
-                    final String name =
-                        (attendee['user']?['name'] ?? '#${attendee['user_id']}').toString();
-                    return Chip(
-                      label: Text(name, style: const TextStyle(fontSize: 12)),
-                      visualDensity: VisualDensity.compact,
-                    );
-                  }).toList(),
+                  children:
+                      attendees.map((dynamic attendee) {
+                        if (attendee is! Map<String, dynamic>) {
+                          return const SizedBox.shrink();
+                        }
+                        final String name =
+                            (attendee['user']?['name'] ??
+                                    '#${attendee['user_id']}')
+                                .toString();
+                        return Chip(
+                          label: Text(
+                            name,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                        );
+                      }).toList(),
                 ),
             ],
           ),
@@ -601,18 +659,21 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> selectedDayMeetings =
         meetings.where((Map<String, dynamic> meeting) {
-      final DateTime? when =
-          _parseMeetingDate((meeting['scheduled_at'] ?? '').toString());
-      if (when == null) return false;
-      return when.year == selectedDate.year &&
-          when.month == selectedDate.month &&
-          when.day == selectedDate.day;
-    }).toList()
+            final DateTime? when = _parseMeetingDate(
+              (meeting['scheduled_at'] ?? '').toString(),
+            );
+            if (when == null) return false;
+            return when.year == selectedDate.year &&
+                when.month == selectedDate.month &&
+                when.day == selectedDate.day;
+          }).toList()
           ..sort((Map<String, dynamic> a, Map<String, dynamic> b) {
-            final DateTime? da =
-                _parseMeetingDate((a['scheduled_at'] ?? '').toString());
-            final DateTime? db =
-                _parseMeetingDate((b['scheduled_at'] ?? '').toString());
+            final DateTime? da = _parseMeetingDate(
+              (a['scheduled_at'] ?? '').toString(),
+            );
+            final DateTime? db = _parseMeetingDate(
+              (b['scheduled_at'] ?? '').toString(),
+            );
             return (da ?? DateTime(2000)).compareTo(db ?? DateTime(2000));
           });
 
@@ -620,10 +681,6 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
       appBar: AppBar(
         title: const Text('Lịch họp'),
         actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetch,
-          ),
           if (widget.canManage)
             IconButton(
               icon: const Icon(Icons.add),
@@ -792,7 +849,10 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                           ),
                         if (widget.canDelete)
                           IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                            ),
                             onPressed: () => _confirmDelete(id),
                           ),
                       ],

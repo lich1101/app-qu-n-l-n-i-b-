@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../../config/app_env.dart';
+import '../../core/utils/vietnam_time.dart';
 
 class MobileApiService {
   Map<String, String> _jsonHeaders([String? token]) {
@@ -79,17 +80,27 @@ class MobileApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getPublicSummary() async {
+  Future<Map<String, dynamic>> getPublicSummary([String? token]) async {
+    final Map<String, String> headers =
+        token != null && token.isNotEmpty
+            ? _authHeaders(token)
+            : <String, String>{};
     final http.Response res = await http.get(
       Uri.parse('${AppEnv.apiBaseUrl}/public/summary'),
+      headers: headers,
     );
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getPublicAccountsSummary() async {
+  Future<Map<String, dynamic>> getPublicAccountsSummary([String? token]) async {
+    final Map<String, String> headers =
+        token != null && token.isNotEmpty
+            ? _authHeaders(token)
+            : <String, String>{};
     final http.Response res = await http.get(
       Uri.parse('${AppEnv.apiBaseUrl}/public/accounts-summary'),
+      headers: headers,
     );
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -395,6 +406,15 @@ class MobileApiService {
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
 
+  Future<Map<String, dynamic>> getContractDetail(String token, int id) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/contracts/$id'),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<List<Map<String, dynamic>>> getUsersLookup(
     String token, {
     String search = '',
@@ -424,11 +444,11 @@ class MobileApiService {
 
   Future<bool> createContract(
     String token, {
-    String? code,
     required String title,
     required int clientId,
     int? projectId,
     int? collectorUserId,
+    List<int>? careStaffIds,
     double? value,
     int? paymentTimes,
     String status = 'draft',
@@ -444,9 +464,9 @@ class MobileApiService {
       'client_id': clientId,
       'status': status,
       'create_and_approve': createAndApprove,
-      if (code != null && code.trim().isNotEmpty) 'code': code.trim(),
       if (projectId != null) 'project_id': projectId,
       if (collectorUserId != null) 'collector_user_id': collectorUserId,
+      if (careStaffIds != null) 'care_staff_ids': careStaffIds,
       if (value != null) 'value': value,
       if (paymentTimes != null) 'payment_times': paymentTimes,
       if (signedAt != null) 'signed_at': signedAt,
@@ -466,11 +486,11 @@ class MobileApiService {
   Future<bool> updateContract(
     String token,
     int id, {
-    String? code,
     required String title,
     required int clientId,
     int? projectId,
     int? collectorUserId,
+    List<int>? careStaffIds,
     double? value,
     int? paymentTimes,
     String status = 'draft',
@@ -484,9 +504,9 @@ class MobileApiService {
       'title': title,
       'client_id': clientId,
       'status': status,
-      if (code != null && code.trim().isNotEmpty) 'code': code.trim(),
       if (projectId != null) 'project_id': projectId,
       if (collectorUserId != null) 'collector_user_id': collectorUserId,
+      if (careStaffIds != null) 'care_staff_ids': careStaffIds,
       if (value != null) 'value': value,
       if (paymentTimes != null) 'payment_times': paymentTimes,
       if (signedAt != null) 'signed_at': signedAt,
@@ -520,6 +540,24 @@ class MobileApiService {
       }),
     );
     return res.statusCode == 200;
+  }
+
+  Future<Map<String, dynamic>?> createContractCareNote(
+    String token,
+    int contractId, {
+    required String title,
+    required String detail,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/contracts/$contractId/care-notes'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{'title': title, 'detail': detail}),
+    );
+    if (res.statusCode != 201) return null;
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
+    final dynamic note = body['note'];
+    return note is Map<String, dynamic> ? note : null;
   }
 
   Future<List<Map<String, dynamic>>> getContractPayments(
@@ -762,6 +800,63 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
+  Future<List<Map<String, dynamic>>> getOpportunityStatuses(
+    String token,
+  ) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/opportunity-statuses'),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) return <Map<String, dynamic>>[];
+    final List<dynamic> rows = jsonDecode(res.body) as List<dynamic>;
+    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<bool> createOpportunityStatus(
+    String token, {
+    required String name,
+    String? colorHex,
+    int? sortOrder,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/opportunity-statuses'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'name': name,
+        if (colorHex != null) 'color_hex': colorHex,
+        if (sortOrder != null) 'sort_order': sortOrder,
+      }),
+    );
+    return res.statusCode == 201;
+  }
+
+  Future<bool> updateOpportunityStatus(
+    String token,
+    int id, {
+    required String name,
+    String? colorHex,
+    int? sortOrder,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/opportunity-statuses/$id'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'name': name,
+        if (colorHex != null) 'color_hex': colorHex,
+        if (sortOrder != null) 'sort_order': sortOrder,
+      }),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<bool> deleteOpportunityStatus(String token, int id) async {
+    final http.Response res = await http.delete(
+      Uri.parse('${AppEnv.apiBaseUrl}/opportunity-statuses/$id'),
+      headers: _jsonHeaders(token),
+    );
+    return res.statusCode == 200;
+  }
+
   Future<List<Map<String, dynamic>>> getRevenueTiers(String token) async {
     final http.Response res = await http.get(
       Uri.parse('${AppEnv.apiBaseUrl}/revenue-tiers'),
@@ -855,7 +950,6 @@ class MobileApiService {
 
   Future<bool> createProduct(
     String token, {
-    String? code,
     required String name,
     int? categoryId,
     String? unit,
@@ -867,7 +961,6 @@ class MobileApiService {
       Uri.parse('${AppEnv.apiBaseUrl}/products'),
       headers: _jsonHeaders(token),
       body: jsonEncode(<String, dynamic>{
-        if (code != null) 'code': code,
         'name': name,
         if (categoryId != null) 'category_id': categoryId,
         if (unit != null) 'unit': unit,
@@ -882,7 +975,6 @@ class MobileApiService {
   Future<bool> updateProduct(
     String token,
     int id, {
-    String? code,
     required String name,
     int? categoryId,
     String? unit,
@@ -894,7 +986,6 @@ class MobileApiService {
       Uri.parse('${AppEnv.apiBaseUrl}/products/$id'),
       headers: _jsonHeaders(token),
       body: jsonEncode(<String, dynamic>{
-        if (code != null) 'code': code,
         'name': name,
         if (categoryId != null) 'category_id': categoryId,
         if (unit != null) 'unit': unit,
@@ -1720,7 +1811,7 @@ class MobileApiService {
   Future<bool> acknowledgeTask(String token, Map<String, dynamic> task) async {
     final int taskId = (task['id'] ?? 0) as int;
     if (taskId <= 0) return false;
-    final DateTime now = DateTime.now();
+    final DateTime now = VietnamTime.now();
     final String stamp =
         '${now.year.toString().padLeft(4, '0')}-'
         '${now.month.toString().padLeft(2, '0')}-'
@@ -2072,6 +2163,7 @@ class MobileApiService {
     int? salesOwnerId,
     int? assignedDepartmentId,
     int? assignedStaffId,
+    List<int>? careStaffIds,
     int? leadTypeId,
     String? leadSource,
     String? leadChannel,
@@ -2090,6 +2182,7 @@ class MobileApiService {
         if (assignedDepartmentId != null)
           'assigned_department_id': assignedDepartmentId,
         if (assignedStaffId != null) 'assigned_staff_id': assignedStaffId,
+        if (careStaffIds != null) 'care_staff_ids': careStaffIds,
         if (leadTypeId != null) 'lead_type_id': leadTypeId,
         if (leadSource != null) 'lead_source': leadSource,
         if (leadChannel != null) 'lead_channel': leadChannel,
@@ -2110,6 +2203,7 @@ class MobileApiService {
     int? salesOwnerId,
     int? assignedDepartmentId,
     int? assignedStaffId,
+    List<int>? careStaffIds,
     int? leadTypeId,
     String? leadSource,
     String? leadChannel,
@@ -2128,6 +2222,7 @@ class MobileApiService {
         if (assignedDepartmentId != null)
           'assigned_department_id': assignedDepartmentId,
         if (assignedStaffId != null) 'assigned_staff_id': assignedStaffId,
+        if (careStaffIds != null) 'care_staff_ids': careStaffIds,
         if (leadTypeId != null) 'lead_type_id': leadTypeId,
         if (leadSource != null) 'lead_source': leadSource,
         if (leadChannel != null) 'lead_channel': leadChannel,
@@ -2218,9 +2313,19 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
-  Future<Map<String, dynamic>> getReportSummary(String token) async {
+  Future<Map<String, dynamic>> getReportSummary(
+    String token, {
+    String? from,
+    String? to,
+  }) async {
+    final Map<String, String> params = <String, String>{};
+    if (from != null && from.isNotEmpty) params['from'] = from;
+    if (to != null && to.isNotEmpty) params['to'] = to;
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/reports/dashboard-summary',
+    ).replace(queryParameters: params.isEmpty ? null : params);
     final http.Response res = await http.get(
-      Uri.parse('${AppEnv.apiBaseUrl}/reports/dashboard-summary'),
+      uri,
       headers: _jsonHeaders(token),
     );
     if (res.statusCode != 200) return <String, dynamic>{};
@@ -2648,6 +2753,804 @@ class MobileApiService {
       headers: _jsonHeaders(token),
     );
     return res.statusCode == 200;
+  }
+
+  Map<String, dynamic> _decodeResponseBody(String body) {
+    if (body.trim().isEmpty) {
+      return <String, dynamic>{};
+    }
+    final dynamic decoded = jsonDecode(body);
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+  }
+
+  Map<String, dynamic> _withMeta(http.Response res) {
+    final Map<String, dynamic> body = _decodeResponseBody(res.body);
+    return <String, dynamic>{
+      ...body,
+      'ok': res.statusCode >= 200 && res.statusCode < 300,
+      'statusCode': res.statusCode,
+      'message':
+          (body['message'] ?? body['error'] ?? 'Co loi xay ra').toString(),
+    };
+  }
+
+  Future<Map<String, dynamic>> getAttendanceDashboard(String token) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/dashboard'),
+      headers: _jsonHeaders(token),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getAttendanceRecords(
+    String token, {
+    String? fromDate,
+    String? toDate,
+  }) async {
+    final Map<String, String> params = <String, String>{};
+    if (fromDate != null && fromDate.trim().isNotEmpty) {
+      params['from_date'] = fromDate.trim();
+    }
+    if (toDate != null && toDate.trim().isNotEmpty) {
+      params['to_date'] = toDate.trim();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/attendance/records/my',
+    ).replace(queryParameters: params.isEmpty ? null : params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getAttendanceRequests(
+    String token, {
+    int page = 1,
+    int perPage = 50,
+    String status = '',
+    String requestType = '',
+    String search = '',
+  }) async {
+    final Map<String, String> params = <String, String>{
+      'page': '$page',
+      'per_page': '$perPage',
+    };
+    if (status.trim().isNotEmpty) {
+      params['status'] = status.trim();
+    }
+    if (requestType.trim().isNotEmpty) {
+      params['request_type'] = requestType.trim();
+    }
+    if (search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/attendance/requests',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> submitAttendanceRequest(
+    String token, {
+    required String requestType,
+    required String requestDate,
+    required String title,
+    String? expectedCheckInTime,
+    String? content,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/requests'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'request_type': requestType,
+        'request_date': requestDate,
+        'title': title,
+        if (expectedCheckInTime != null &&
+            expectedCheckInTime.trim().isNotEmpty)
+          'expected_check_in_time': expectedCheckInTime.trim(),
+        if (content != null && content.trim().isNotEmpty)
+          'content': content.trim(),
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> reviewAttendanceRequest(
+    String token,
+    int requestId, {
+    required String status,
+    String? approvalMode,
+    double? approvedWorkUnits,
+    String? decisionNote,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/requests/$requestId/review'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'status': status,
+        if (approvalMode != null && approvalMode.trim().isNotEmpty)
+          'approval_mode': approvalMode.trim(),
+        if (approvedWorkUnits != null) 'approved_work_units': approvedWorkUnits,
+        if (decisionNote != null && decisionNote.trim().isNotEmpty)
+          'decision_note': decisionNote.trim(),
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> submitAttendanceDevice(
+    String token, {
+    required String deviceUuid,
+    required String deviceName,
+    required String devicePlatform,
+    required String deviceModel,
+    String? note,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/devices/request'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'device_uuid': deviceUuid,
+        'device_name': deviceName,
+        'device_platform': devicePlatform,
+        'device_model': deviceModel,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> reviewAttendanceDevice(
+    String token,
+    int deviceId, {
+    required String status,
+    String? note,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/devices/$deviceId/review'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'status': status,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> checkInAttendance(
+    String token, {
+    required String deviceUuid,
+    required String deviceName,
+    required String devicePlatform,
+    required String deviceModel,
+    required String wifiSsid,
+    String? wifiBssid,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/check-in'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'device_uuid': deviceUuid,
+        'device_name': deviceName,
+        'device_platform': devicePlatform,
+        'device_model': deviceModel,
+        'wifi_ssid': wifiSsid,
+        if (wifiBssid != null && wifiBssid.trim().isNotEmpty)
+          'wifi_bssid': wifiBssid.trim(),
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getAttendanceSettings(String token) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/settings'),
+      headers: _jsonHeaders(token),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> updateAttendanceSettings(
+    String token, {
+    required bool attendanceEnabled,
+    required String workStartTime,
+    required String workEndTime,
+    required String afternoonStartTime,
+    required int lateGraceMinutes,
+    required bool reminderEnabled,
+    required int reminderMinutesBefore,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/settings'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'attendance_enabled': attendanceEnabled,
+        'attendance_work_start_time': workStartTime,
+        'attendance_work_end_time': workEndTime,
+        'attendance_afternoon_start_time': afternoonStartTime,
+        'attendance_late_grace_minutes': lateGraceMinutes,
+        'attendance_reminder_enabled': reminderEnabled,
+        'attendance_reminder_minutes_before': reminderMinutesBefore,
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getAttendanceWifiNetworks(String token) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/wifi'),
+      headers: _jsonHeaders(token),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> createAttendanceWifiNetwork(
+    String token, {
+    required String ssid,
+    String? bssid,
+    String? note,
+    bool isActive = true,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/wifi'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'ssid': ssid,
+        if (bssid != null && bssid.trim().isNotEmpty) 'bssid': bssid.trim(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        'is_active': isActive,
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> updateAttendanceWifiNetwork(
+    String token,
+    int wifiId, {
+    required String ssid,
+    String? bssid,
+    String? note,
+    bool isActive = true,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/wifi/$wifiId'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'ssid': ssid,
+        if (bssid != null && bssid.trim().isNotEmpty) 'bssid': bssid.trim(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        'is_active': isActive,
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> deleteAttendanceWifiNetwork(
+    String token,
+    int wifiId,
+  ) async {
+    final http.Response res = await http.delete(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/wifi/$wifiId'),
+      headers: _jsonHeaders(token),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getAttendanceDevices(
+    String token, {
+    int page = 1,
+    int perPage = 50,
+    String status = '',
+    String search = '',
+  }) async {
+    final Map<String, String> params = <String, String>{
+      'page': '$page',
+      'per_page': '$perPage',
+    };
+    if (status.trim().isNotEmpty) {
+      params['status'] = status.trim();
+    }
+    if (search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/attendance/devices',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getAttendanceHolidays(
+    String token, {
+    String? fromDate,
+    String? toDate,
+  }) async {
+    final Map<String, String> params = <String, String>{};
+    if (fromDate != null && fromDate.trim().isNotEmpty) {
+      params['from_date'] = fromDate.trim();
+    }
+    if (toDate != null && toDate.trim().isNotEmpty) {
+      params['to_date'] = toDate.trim();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/attendance/holidays',
+    ).replace(queryParameters: params.isEmpty ? null : params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> createAttendanceHoliday(
+    String token, {
+    required String startDate,
+    required String endDate,
+    required String title,
+    String? note,
+    bool isActive = true,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/holidays'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'start_date': startDate,
+        'end_date': endDate,
+        'title': title,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        'is_active': isActive,
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> updateAttendanceHoliday(
+    String token,
+    int holidayId, {
+    required String startDate,
+    required String endDate,
+    required String title,
+    String? note,
+    bool isActive = true,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/holidays/$holidayId'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'start_date': startDate,
+        'end_date': endDate,
+        'title': title,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        'is_active': isActive,
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> deleteAttendanceHoliday(
+    String token,
+    int holidayId,
+  ) async {
+    final http.Response res = await http.delete(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/holidays/$holidayId'),
+      headers: _jsonHeaders(token),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getAttendanceStaff(
+    String token, {
+    int page = 1,
+    int perPage = 100,
+    String search = '',
+    String role = '',
+  }) async {
+    final Map<String, String> params = <String, String>{
+      'page': '$page',
+      'per_page': '$perPage',
+    };
+    if (search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    if (role.trim().isNotEmpty) {
+      params['role'] = role.trim();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/attendance/staff',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> updateAttendanceStaff(
+    String token,
+    int userId, {
+    required String employmentType,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/staff/$userId'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'attendance_employment_type': employmentType,
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getAttendanceReport(
+    String token, {
+    required String startDate,
+    required String endDate,
+    String search = '',
+    String userId = '',
+  }) async {
+    final Map<String, String> params = <String, String>{
+      'start_date': startDate,
+      'end_date': endDate,
+    };
+    if (search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    if (userId.trim().isNotEmpty) {
+      params['user_id'] = userId.trim();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/attendance/report',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> manualUpdateAttendanceRecord(
+    String token, {
+    required int userId,
+    required String workDate,
+    required double workUnits,
+    String? checkInTime,
+    String? note,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/attendance/records/manual'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'user_id': userId,
+        'work_date': workDate,
+        'work_units': workUnits,
+        if (checkInTime != null && checkInTime.trim().isNotEmpty)
+          'check_in_time': checkInTime.trim(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  // ─── Project Update & Delete ───────────────────────────────────────────
+
+  Future<bool> updateProject(
+    String token,
+    int id, {
+    required String name,
+    required String serviceType,
+    String? serviceTypeOther,
+    String? status,
+    int? contractId,
+    int? ownerId,
+    String? startDate,
+    String? deadline,
+    String? customerRequirement,
+    String? repoUrl,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/projects/$id'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'name': name,
+        'service_type': serviceType,
+        if (serviceTypeOther != null) 'service_type_other': serviceTypeOther,
+        if (status != null) 'status': status,
+        if (contractId != null) 'contract_id': contractId,
+        if (ownerId != null) 'owner_id': ownerId,
+        if (startDate != null) 'start_date': startDate,
+        if (deadline != null) 'deadline': deadline,
+        if (customerRequirement != null)
+          'customer_requirement': customerRequirement,
+        if (repoUrl != null) 'repo_url': repoUrl,
+      }),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<bool> deleteProject(String token, int id) async {
+    final http.Response res = await http.delete(
+      Uri.parse('${AppEnv.apiBaseUrl}/projects/$id'),
+      headers: _jsonHeaders(token),
+    );
+    return res.statusCode == 200;
+  }
+
+  // ─── Project Flow & Files ─────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getProjectFlow(String token, int projectId) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/projects/$projectId/flow'),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getProjectFiles(
+    String token,
+    int projectId, {
+    int? parentId,
+  }) async {
+    final Map<String, String> params = <String, String>{};
+    if (parentId != null) {
+      params['parent_id'] = parentId.toString();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/projects/$projectId/files',
+    ).replace(queryParameters: params.isEmpty ? null : params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <Map<String, dynamic>>[];
+    final List<dynamic> rows = jsonDecode(res.body) as List<dynamic>;
+    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+  }
+
+  // ─── Task Full Update & Delete ────────────────────────────────────────
+
+  Future<bool> updateTask(
+    String token,
+    int id, {
+    required int projectId,
+    int? departmentId,
+    int? assigneeId,
+    int? reviewerId,
+    required String title,
+    String? description,
+    String priority = 'medium',
+    String status = 'todo',
+    String? startAt,
+    String? deadline,
+    String? completedAt,
+    int? progressPercent,
+    int? weightPercent,
+    bool? requireAcknowledgement,
+    String? acknowledgedAt,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/tasks/$id'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'project_id': projectId,
+        if (departmentId != null) 'department_id': departmentId,
+        if (assigneeId != null) 'assignee_id': assigneeId,
+        if (reviewerId != null) 'reviewer_id': reviewerId,
+        'title': title,
+        if (description != null) 'description': description,
+        'priority': priority,
+        'status': status,
+        if (startAt != null) 'start_at': startAt,
+        if (deadline != null) 'deadline': deadline,
+        if (completedAt != null) 'completed_at': completedAt,
+        if (progressPercent != null) 'progress_percent': progressPercent,
+        if (weightPercent != null) 'weight_percent': weightPercent,
+        if (requireAcknowledgement != null)
+          'require_acknowledgement': requireAcknowledgement,
+        if (acknowledgedAt != null) 'acknowledged_at': acknowledgedAt,
+      }),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<bool> deleteTask(String token, int id) async {
+    final http.Response res = await http.delete(
+      Uri.parse('${AppEnv.apiBaseUrl}/tasks/$id'),
+      headers: _jsonHeaders(token),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<Map<String, dynamic>> getTaskConversations(
+    String token, {
+    int perPage = 20,
+  }) async {
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/task-conversations',
+    ).replace(queryParameters: <String, String>{'per_page': '$perPage'});
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<bool> markTaskChatRead(
+    String token, {
+    required int taskId,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/notifications/in-app/read-task-chat'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{'task_id': taskId}),
+    );
+    return res.statusCode == 200;
+  }
+
+  // ─── Opportunities CRUD ───────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getOpportunities(
+    String token, {
+    int perPage = 50,
+    String search = '',
+    String? status,
+    int? clientId,
+  }) async {
+    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
+    if (search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    if (status != null && status.trim().isNotEmpty) {
+      params['status'] = status.trim();
+    }
+    if (clientId != null) {
+      params['client_id'] = clientId.toString();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/opportunities',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <Map<String, dynamic>>[];
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
+    final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
+    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<Map<String, dynamic>?> getOpportunityDetail(
+    String token,
+    int id,
+  ) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/opportunities/$id'),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) return null;
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<bool> createOpportunity(
+    String token, {
+    required String title,
+    required int clientId,
+    String? opportunityType,
+    double? amount,
+    String? status,
+    String? source,
+    int? successProbability,
+    int? productId,
+    int? assignedTo,
+    List<int>? watcherIds,
+    String? expectedCloseDate,
+    String? notes,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/opportunities'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'title': title,
+        'client_id': clientId,
+        if (opportunityType != null) 'opportunity_type': opportunityType,
+        if (amount != null) 'amount': amount,
+        if (status != null) 'status': status,
+        if (source != null) 'source': source,
+        if (successProbability != null)
+          'success_probability': successProbability,
+        if (productId != null) 'product_id': productId,
+        if (assignedTo != null) 'assigned_to': assignedTo,
+        if (watcherIds != null) 'watcher_ids': watcherIds,
+        if (expectedCloseDate != null) 'expected_close_date': expectedCloseDate,
+        if (notes != null) 'notes': notes,
+      }),
+    );
+    return res.statusCode == 201;
+  }
+
+  Future<bool> updateOpportunity(
+    String token,
+    int id, {
+    required String title,
+    required int clientId,
+    String? opportunityType,
+    double? amount,
+    String? status,
+    String? source,
+    int? successProbability,
+    int? productId,
+    int? assignedTo,
+    List<int>? watcherIds,
+    String? expectedCloseDate,
+    String? notes,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse('${AppEnv.apiBaseUrl}/opportunities/$id'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'title': title,
+        'client_id': clientId,
+        if (opportunityType != null) 'opportunity_type': opportunityType,
+        if (amount != null) 'amount': amount,
+        if (status != null) 'status': status,
+        if (source != null) 'source': source,
+        if (successProbability != null)
+          'success_probability': successProbability,
+        if (productId != null) 'product_id': productId,
+        if (assignedTo != null) 'assigned_to': assignedTo,
+        if (watcherIds != null) 'watcher_ids': watcherIds,
+        if (expectedCloseDate != null) 'expected_close_date': expectedCloseDate,
+        if (notes != null) 'notes': notes,
+      }),
+    );
+    return res.statusCode == 200;
+  }
+
+  Future<bool> deleteOpportunity(String token, int id) async {
+    final http.Response res = await http.delete(
+      Uri.parse('${AppEnv.apiBaseUrl}/opportunities/$id'),
+      headers: _jsonHeaders(token),
+    );
+    return res.statusCode == 200;
+  }
+
+  // ─── Client Flow & Care Notes ─────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getClientFlow(
+    String token,
+    int clientId,
+  ) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/crm/clients/$clientId/flow'),
+      headers: _jsonHeaders(token),
+    );
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<bool> storeClientCareNote(
+    String token,
+    int clientId, {
+    required String title,
+    required String detail,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/crm/clients/$clientId/care-notes'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{'title': title, 'detail': detail}),
+    );
+    return res.statusCode == 201;
+  }
+
+  // ─── Lead Form Duplicate ──────────────────────────────────────────────
+
+  Future<bool> duplicateLeadForm(String token, int id) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/lead-forms/$id/duplicate'),
+      headers: _jsonHeaders(token),
+    );
+    return res.statusCode == 201;
+  }
+
+  // ─── Chatbot History ──────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getChatbotHistory(
+    String token, {
+    int perPage = 20,
+    int? botId,
+  }) async {
+    final Map<String, String> params = <String, String>{
+      'per_page': '$perPage',
+      if (botId != null && botId > 0) 'bot_id': '$botId',
+    };
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/chatbot/history',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }
 

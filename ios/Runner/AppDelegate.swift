@@ -4,6 +4,7 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private let pushEnvironmentChannelName = "vn.clickon.jobnew/push_environment"
+  private let deviceIdentityChannelName = "vn.clickon.jobnew/device_identity"
 
   override func application(
     _ application: UIApplication,
@@ -18,6 +19,19 @@ import UIKit
         switch call.method {
         case "getApnsEnvironment":
           result(self?.currentApnsEnvironment())
+        default:
+          result(FlutterMethodNotImplemented)
+        }
+      }
+
+      let deviceChannel = FlutterMethodChannel(
+        name: deviceIdentityChannelName,
+        binaryMessenger: controller.binaryMessenger
+      )
+      deviceChannel.setMethodCallHandler { [weak self] call, result in
+        switch call.method {
+        case "getDeviceId":
+          result(self?.currentDeviceId())
         default:
           result(FlutterMethodNotImplemented)
         }
@@ -39,5 +53,9 @@ import UIKit
       .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
       .lowercased()
     return normalized.isEmpty ? nil : normalized
+  }
+
+  private func currentDeviceId() -> String? {
+    return UIDevice.current.identifierForVendor?.uuidString.uppercased()
   }
 }

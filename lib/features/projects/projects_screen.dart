@@ -37,8 +37,10 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       loading = true;
       message = '';
     });
-    final List<Map<String, dynamic>> rows =
-        await widget.apiService.getProjects(widget.token, perPage: 200);
+    final List<Map<String, dynamic>> rows = await widget.apiService.getProjects(
+      widget.token,
+      perPage: 200,
+    );
     if (!mounted) return;
     setState(() {
       projects = rows;
@@ -101,10 +103,11 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     Navigator.of(context)
         .push(
           MaterialPageRoute<Widget>(
-            builder: (_) => CreateProjectScreen(
-              token: widget.token,
-              apiService: widget.apiService,
-            ),
+            builder:
+                (_) => CreateProjectScreen(
+                  token: widget.token,
+                  apiService: widget.apiService,
+                ),
           ),
         )
         .then((_) => _fetch());
@@ -114,11 +117,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     Navigator.of(context)
         .push(
           MaterialPageRoute<Widget>(
-            builder: (_) => ProjectDetailScreen(
-              token: widget.token,
-              apiService: widget.apiService,
-              projectId: projectId,
-            ),
+            builder:
+                (_) => ProjectDetailScreen(
+                  token: widget.token,
+                  apiService: widget.apiService,
+                  projectId: projectId,
+                ),
           ),
         )
         .then((_) => _fetch());
@@ -136,10 +140,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       appBar: AppBar(
         title: const Text('Quản lý dự án'),
         actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetch,
-          ),
           if (widget.canCreate)
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
@@ -148,198 +148,221 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         ],
       ),
       body: SafeArea(
-        child: loading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _fetch,
-                child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                children: <Widget>[
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: StitchTheme.border),
-                    ),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: _ProjectSummaryTile(
-                            label: 'Tổng dự án',
-                            value: projects.length.toString(),
-                          ),
-                        ),
-                        Expanded(
-                          child: _ProjectSummaryTile(
-                            label: 'Đang triển khai',
-                            value: _countProjectsByStatus('dang_trien_khai').toString(),
-                            color: StitchTheme.primary,
-                          ),
-                        ),
-                        Expanded(
-                          child: _ProjectSummaryTile(
-                            label: 'Chờ duyệt',
-                            value: _countProjectsByStatus('cho_duyet').toString(),
-                            color: StitchTheme.warning,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (message.isNotEmpty)
-                    Text(
-                      message,
-                      style: const TextStyle(color: StitchTheme.textMuted),
-                    ),
-                  ...projects.map((Map<String, dynamic> project) {
-                    final String name =
-                        (project['name'] ?? 'Dự án').toString();
-                    final String code =
-                        (project['code'] ?? '').toString();
-                    final String status =
-                        (project['status'] ?? '').toString();
-                    final String serviceType =
-                        (project['service_type'] ?? '').toString();
-                    final String serviceOther =
-                        (project['service_type_other'] ?? '').toString();
-                    final String deadline =
-                        (project['deadline'] ?? '').toString();
-                    final String ownerName =
-                        ((project['owner'] ?? const <String, dynamic>{})['name'] ?? 'Chưa phân công')
-                            .toString();
-                    final String serviceLabel = serviceType == 'khac'
-                        ? (serviceOther.isEmpty ? 'Khác' : serviceOther)
-                        : _serviceLabel(serviceType);
-                    final int projectId =
-                        int.tryParse('${project['id'] ?? 0}') ?? 0;
-                    final int progress = (project['progress_percent'] ?? 0) is int
-                        ? project['progress_percent'] as int
-                        : int.tryParse('${project['progress_percent'] ?? 0}') ?? 0;
-                    return InkWell(
-                      onTap: projectId > 0 ? () => _openDetail(projectId) : null,
-                      borderRadius: BorderRadius.circular(18),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
+        child:
+            loading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                  onRefresh: _fetch,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                    children: <Widget>[
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 14),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: StitchTheme.border),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           children: <Widget>[
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: <Widget>[
-                                Expanded(
-                                  child: Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        _statusColor(status).withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: _statusColor(status)
-                                          .withValues(alpha: 0.3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    _statusLabel(status),
-                                    style: TextStyle(
-                                      color: _statusColor(status),
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              code.isEmpty
-                                  ? serviceLabel
-                                  : '$code • $serviceLabel',
-                              style:
-                                  const TextStyle(color: StitchTheme.textMuted),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Tiến độ: $progress%',
-                              style: const TextStyle(
-                                color: StitchTheme.textMuted,
-                                fontSize: 12,
+                            Expanded(
+                              child: _ProjectSummaryTile(
+                                label: 'Tổng dự án',
+                                value: projects.length.toString(),
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(999),
-                              child: LinearProgressIndicator(
-                                value: progress.clamp(0, 100) / 100,
-                                minHeight: 6,
-                                color: _statusColor(status),
-                                backgroundColor: StitchTheme.surfaceAlt,
+                            Expanded(
+                              child: _ProjectSummaryTile(
+                                label: 'Đang triển khai',
+                                value:
+                                    _countProjectsByStatus(
+                                      'dang_trien_khai',
+                                    ).toString(),
+                                color: StitchTheme.primary,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: <Widget>[
-                                const Icon(
-                                  Icons.person_outline,
-                                  size: 16,
-                                  color: StitchTheme.textMuted,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Phụ trách: $ownerName',
-                                    style: const TextStyle(
-                                      color: StitchTheme.textMuted,
-                                      fontSize: 12,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (deadline.isNotEmpty) ...<Widget>[
-                              const SizedBox(height: 8),
-                              Row(
-                                children: <Widget>[
-                                  const Icon(Icons.timer_outlined,
-                                      size: 16, color: StitchTheme.textMuted),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Hạn chót: $deadline',
-                                    style: const TextStyle(
-                                      color: StitchTheme.textMuted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
+                            Expanded(
+                              child: _ProjectSummaryTile(
+                                label: 'Chờ duyệt',
+                                value:
+                                    _countProjectsByStatus(
+                                      'cho_duyet',
+                                    ).toString(),
+                                color: StitchTheme.warning,
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
-                    );
-                  }).toList(),
-                ],
-              ),
-            ),
+                      if (message.isNotEmpty)
+                        Text(
+                          message,
+                          style: const TextStyle(color: StitchTheme.textMuted),
+                        ),
+                      ...projects.map((Map<String, dynamic> project) {
+                        final String name =
+                            (project['name'] ?? 'Dự án').toString();
+                        final String code = (project['code'] ?? '').toString();
+                        final String status =
+                            (project['status'] ?? '').toString();
+                        final String serviceType =
+                            (project['service_type'] ?? '').toString();
+                        final String serviceOther =
+                            (project['service_type_other'] ?? '').toString();
+                        final String deadline =
+                            (project['deadline'] ?? '').toString();
+                        final String ownerName =
+                            ((project['owner'] ??
+                                        const <String, dynamic>{})['name'] ??
+                                    'Chưa phân công')
+                                .toString();
+                        final String serviceLabel =
+                            serviceType == 'khac'
+                                ? (serviceOther.isEmpty ? 'Khác' : serviceOther)
+                                : _serviceLabel(serviceType);
+                        final int projectId =
+                            int.tryParse('${project['id'] ?? 0}') ?? 0;
+                        final int progress =
+                            (project['progress_percent'] ?? 0) is int
+                                ? project['progress_percent'] as int
+                                : int.tryParse(
+                                      '${project['progress_percent'] ?? 0}',
+                                    ) ??
+                                    0;
+                        return InkWell(
+                          onTap:
+                              projectId > 0
+                                  ? () => _openDetail(projectId)
+                                  : null,
+                          borderRadius: BorderRadius.circular(18),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Text(
+                                        name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _statusColor(
+                                          status,
+                                        ).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: _statusColor(
+                                            status,
+                                          ).withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        _statusLabel(status),
+                                        style: TextStyle(
+                                          color: _statusColor(status),
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  code.isEmpty
+                                      ? serviceLabel
+                                      : '$code • $serviceLabel',
+                                  style: const TextStyle(
+                                    color: StitchTheme.textMuted,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Tiến độ: $progress%',
+                                  style: const TextStyle(
+                                    color: StitchTheme.textMuted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: LinearProgressIndicator(
+                                    value: progress.clamp(0, 100) / 100,
+                                    minHeight: 6,
+                                    color: _statusColor(status),
+                                    backgroundColor: StitchTheme.surfaceAlt,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: <Widget>[
+                                    const Icon(
+                                      Icons.person_outline,
+                                      size: 16,
+                                      color: StitchTheme.textMuted,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        'Phụ trách: $ownerName',
+                                        style: const TextStyle(
+                                          color: StitchTheme.textMuted,
+                                          fontSize: 12,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (deadline.isNotEmpty) ...<Widget>[
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: <Widget>[
+                                      const Icon(
+                                        Icons.timer_outlined,
+                                        size: 16,
+                                        color: StitchTheme.textMuted,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Hạn chót: $deadline',
+                                        style: const TextStyle(
+                                          color: StitchTheme.textMuted,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
       ),
     );
   }

@@ -11,6 +11,7 @@ class CrmHubScreen extends StatelessWidget {
     this.onOpenProducts,
     this.onOpenLeadForms,
     this.onOpenLeadTypes,
+    this.onOpenOpportunityStatuses,
     this.onOpenRevenueTiers,
     this.onOpenRevenueReport,
   });
@@ -21,6 +22,7 @@ class CrmHubScreen extends StatelessWidget {
   final VoidCallback? onOpenProducts;
   final VoidCallback? onOpenLeadForms;
   final VoidCallback? onOpenLeadTypes;
+  final VoidCallback? onOpenOpportunityStatuses;
   final VoidCallback? onOpenRevenueTiers;
   final VoidCallback? onOpenRevenueReport;
 
@@ -72,6 +74,13 @@ class CrmHubScreen extends StatelessWidget {
           subtitle: 'Cấu hình thẻ & màu sắc',
           icon: Icons.label_outline,
           onTap: onOpenLeadTypes!,
+        ),
+      if (onOpenOpportunityStatuses != null)
+        _CrmItem(
+          title: 'Trạng thái cơ hội',
+          subtitle: 'Cấu hình bước bán hàng, màu và thứ tự hiển thị',
+          icon: Icons.flag_outlined,
+          onTap: onOpenOpportunityStatuses!,
         ),
       if (onOpenRevenueTiers != null)
         _CrmItem(

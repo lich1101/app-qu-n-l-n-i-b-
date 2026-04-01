@@ -117,7 +117,7 @@ class AppFirebase {
 
     await FirebaseMessaging.instance
         .setForegroundNotificationPresentationOptions(
-          alert: false,
+          alert: true,
           badge: true,
           sound: true,
         );
@@ -135,7 +135,11 @@ class AppFirebase {
         return;
       }
       _foregroundController.add(message);
-      await _showLocalNotification(message, channel);
+      final bool shouldShowLocalNotification =
+          !Platform.isIOS || message.notification == null;
+      if (shouldShowLocalNotification) {
+        await _showLocalNotification(message, channel);
+      }
     });
 
     _foregroundConfigured = true;
@@ -254,6 +258,7 @@ class AppFirebase {
       String? apnsEnvironment,
     )
     onToken,
+    bool requestPermission = true,
   }) async {
     if (!isConfigured) return null;
     await ensureInitialized();
@@ -261,12 +266,15 @@ class AppFirebase {
     bool notificationsEnabled = false;
     String? apnsEnvironment;
     try {
-      final NotificationSettings settings = await messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
+      final NotificationSettings settings =
+          requestPermission
+              ? await messaging.requestPermission(
+                alert: true,
+                badge: true,
+                sound: true,
+                provisional: false,
+              )
+              : await messaging.getNotificationSettings();
       notificationsEnabled = _isAuthorizedStatus(settings.authorizationStatus);
     } catch (_) {
       // Ignore permission errors and continue to avoid blocking app startup.
@@ -283,16 +291,14 @@ class AppFirebase {
                   : newToken;
           debugPrint('[Push][TokenRefresh] suffix=$suffix');
         }
-        notificationPermissionGranted().then(
-          (bool permission) async {
-            final String? environment =
-                Platform.isIOS
-                    ? (_lastApnsEnvironment ?? await _resolveApnsEnvironment())
-                    : null;
-            _lastApnsEnvironment = environment;
-            return onToken(newToken, permission, environment);
-          },
-        );
+        notificationPermissionGranted().then((bool permission) async {
+          final String? environment =
+              Platform.isIOS
+                  ? (_lastApnsEnvironment ?? await _resolveApnsEnvironment())
+                  : null;
+          _lastApnsEnvironment = environment;
+          return onToken(newToken, permission, environment);
+        });
       }
     });
 
@@ -332,9 +338,8 @@ class AppFirebase {
   static Future<String?> _resolveApnsEnvironment() async {
     if (!Platform.isIOS) return null;
     try {
-      final String? environment = await _pushEnvironmentChannel.invokeMethod<
-        String
-      >('getApnsEnvironment');
+      final String? environment = await _pushEnvironmentChannel
+          .invokeMethod<String>('getApnsEnvironment');
       if (environment == null) return null;
       final String normalized = environment.trim().toLowerCase();
       if (normalized == 'development' || normalized == 'production') {

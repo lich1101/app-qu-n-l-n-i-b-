@@ -18,12 +18,13 @@ class ModuleCenterScreen extends StatelessWidget {
     this.onOpenRevenueReport,
     this.onOpenLeadForms,
     this.onOpenLeadTypes,
+    this.onOpenOpportunityStatuses,
     this.onOpenRevenueTiers,
     this.onOpenReports,
     this.onOpenServices,
+    this.onOpenAttendance,
     this.onOpenProjects,
     this.onOpenCreateProject,
-    this.onOpenChatbot,
   });
 
   final VoidCallback? onOpenNotifications;
@@ -39,12 +40,13 @@ class ModuleCenterScreen extends StatelessWidget {
   final VoidCallback? onOpenRevenueReport;
   final VoidCallback? onOpenLeadForms;
   final VoidCallback? onOpenLeadTypes;
+  final VoidCallback? onOpenOpportunityStatuses;
   final VoidCallback? onOpenRevenueTiers;
   final VoidCallback? onOpenReports;
   final VoidCallback? onOpenServices;
+  final VoidCallback? onOpenAttendance;
   final VoidCallback? onOpenProjects;
   final VoidCallback? onOpenCreateProject;
-  final VoidCallback? onOpenChatbot;
 
   @override
   Widget build(BuildContext context) {
@@ -96,10 +98,10 @@ class ModuleCenterScreen extends StatelessWidget {
         onTap: onOpenChat,
       ),
       _ModuleItem(
-        title: 'Trợ lý AI',
-        subtitle: 'Chatbot Gemini theo ngữ cảnh riêng từng tài khoản',
-        icon: Icons.smart_toy_outlined,
-        onTap: onOpenChatbot,
+        title: 'Chấm công Wi-Fi',
+        subtitle: 'Thiết bị duyệt, Wi-Fi/BSSID, đơn đi muộn và báo cáo công',
+        icon: Icons.wifi_tethering_outlined,
+        onTap: onOpenAttendance,
       ),
       _ModuleItem(
         title: 'Thông báo nội bộ',
@@ -160,6 +162,12 @@ class ModuleCenterScreen extends StatelessWidget {
         subtitle: 'Cấu hình thẻ & màu sắc',
         icon: Icons.label_outline,
         onTap: onOpenLeadTypes,
+      ),
+      _ModuleItem(
+        title: 'Trạng thái cơ hội',
+        subtitle: 'Cấu hình màu và thứ tự các bước bán hàng',
+        icon: Icons.flag_outlined,
+        onTap: onOpenOpportunityStatuses,
       ),
       _ModuleItem(
         title: 'Hạng doanh thu',

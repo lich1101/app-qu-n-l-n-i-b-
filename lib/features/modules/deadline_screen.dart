@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -15,7 +16,8 @@ class DeadlineRemindersScreen extends StatefulWidget {
   final MobileApiService apiService;
 
   @override
-  State<DeadlineRemindersScreen> createState() => _DeadlineRemindersScreenState();
+  State<DeadlineRemindersScreen> createState() =>
+      _DeadlineRemindersScreenState();
 }
 
 class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
@@ -31,8 +33,10 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> data =
-        await widget.apiService.getTasks(widget.token, perPage: 50);
+    final List<Map<String, dynamic>> data = await widget.apiService.getTasks(
+      widget.token,
+      perPage: 50,
+    );
     if (!mounted) return;
     setState(() {
       loading = false;
@@ -46,7 +50,7 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
 
   DateTime? _parseDate(String? raw) {
     if (raw == null || raw.isEmpty) return null;
-    return DateTime.tryParse(raw)?.toLocal();
+    return VietnamTime.parse(raw);
   }
 
   String _formatDate(DateTime date) {
@@ -69,7 +73,7 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
     if (taskId <= 0) return;
 
     String channel = 'in_app';
-    DateTime scheduledAt = DateTime.now().add(const Duration(hours: 2));
+    DateTime scheduledAt = VietnamTime.now().add(const Duration(hours: 2));
     final DateTime? deadline = _parseDate((task['deadline'] ?? '').toString());
     if (deadline != null) {
       scheduledAt = DateTime(
@@ -90,7 +94,7 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
           builder: (BuildContext context, StateSetter setSheetState) {
             final BuildContext sheetContext = context;
             Future<void> pickSchedule() async {
-              final DateTime now = DateTime.now();
+              final DateTime now = VietnamTime.now();
               final DateTime? date = await showDatePicker(
                 context: sheetContext,
                 firstDate: now,
@@ -187,18 +191,20 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () async {
-                        final bool ok = await widget.apiService.createTaskReminder(
-                          widget.token,
-                          taskId,
-                          channel: channel,
-                          triggerType: 'custom',
-                          scheduledAt: _formatDateTime(scheduledAt),
-                        );
+                        final bool ok = await widget.apiService
+                            .createTaskReminder(
+                              widget.token,
+                              taskId,
+                              channel: channel,
+                              triggerType: 'custom',
+                              scheduledAt: _formatDateTime(scheduledAt),
+                            );
                         if (!mounted) return;
                         setState(() {
-                          message = ok
-                              ? 'Đã tạo nhắc hạn chót.'
-                              : 'Tạo nhắc hạn chót thất bại.';
+                          message =
+                              ok
+                                  ? 'Đã tạo nhắc hạn chót.'
+                                  : 'Tạo nhắc hạn chót thất bại.';
                         });
                         if (ok) {
                           if (!context.mounted) return;
@@ -295,7 +301,10 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
                 ),
                 child: Text(
                   status.replaceAll('_', ' '),
-                  style: const TextStyle(fontSize: 11, color: StitchTheme.textMuted),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: StitchTheme.textMuted,
+                  ),
                 ),
               ),
               const Spacer(),
@@ -326,7 +335,9 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
             style: TextStyle(color: StitchTheme.textMuted),
           )
         else
-          ...items.map((Map<String, dynamic> task) => _buildTaskCard(task, now)),
+          ...items.map(
+            (Map<String, dynamic> task) => _buildTaskCard(task, now),
+          ),
         const SizedBox(height: 12),
       ],
     );
@@ -342,7 +353,9 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
     for (final Map<String, dynamic> task in tasks) {
       final String status = (task['status'] ?? '').toString();
       if (_isDone(status)) continue;
-      final DateTime? deadline = _parseDate((task['deadline'] ?? '').toString());
+      final DateTime? deadline = _parseDate(
+        (task['deadline'] ?? '').toString(),
+      );
       if (deadline == null) continue;
       final Duration diff = deadline.difference(now);
       if (diff.isNegative) {
@@ -395,14 +408,19 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
                 StitchMetricCard(
                   icon: Icons.playlist_add_check,
                   label: 'Đang theo dõi',
-                  value: (dueSoon.length + dueToday.length + overdue.length).toString(),
+                  value:
+                      (dueSoon.length + dueToday.length + overdue.length)
+                          .toString(),
                   accent: StitchTheme.success,
                 ),
               ],
             ),
             if (message.isNotEmpty) ...<Widget>[
               const SizedBox(height: 12),
-              Text(message, style: const TextStyle(color: StitchTheme.textMuted)),
+              Text(
+                message,
+                style: const TextStyle(color: StitchTheme.textMuted),
+              ),
             ],
             if (loading)
               const Padding(

@@ -53,14 +53,14 @@ class _DepartmentAssignmentsScreenState
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> rows =
-        await widget.apiService.getDepartmentAssignments(widget.token);
-    final List<Map<String, dynamic>> deptRows =
-        await widget.apiService.getDepartments(widget.token);
-    final List<Map<String, dynamic>> clientRows =
-        await widget.apiService.getClients(widget.token, perPage: 200);
-    final List<Map<String, dynamic>> contractRows =
-        await widget.apiService.getContracts(widget.token, perPage: 200);
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getDepartmentAssignments(widget.token);
+    final List<Map<String, dynamic>> deptRows = await widget.apiService
+        .getDepartments(widget.token);
+    final List<Map<String, dynamic>> clientRows = await widget.apiService
+        .getClients(widget.token, perPage: 200);
+    final List<Map<String, dynamic>> contractRows = await widget.apiService
+        .getContracts(widget.token, perPage: 200);
     if (!mounted) return;
     setState(() {
       loading = false;
@@ -86,16 +86,18 @@ class _DepartmentAssignmentsScreenState
       clientId: formClientId!,
       contractId: formContractId,
       departmentId: formDepartmentId!,
-      requirements: requirementCtrl.text.trim().isEmpty
-          ? null
-          : requirementCtrl.text.trim(),
-      deadline: deadlineCtrl.text.trim().isEmpty
-          ? null
-          : deadlineCtrl.text.trim(),
+      requirements:
+          requirementCtrl.text.trim().isEmpty
+              ? null
+              : requirementCtrl.text.trim(),
+      deadline:
+          deadlineCtrl.text.trim().isEmpty ? null : deadlineCtrl.text.trim(),
       allocatedValue: value,
     );
     if (!mounted) return false;
-    setState(() => message = ok ? 'Đã tạo điều phối.' : 'Tạo điều phối thất bại.');
+    setState(
+      () => message = ok ? 'Đã tạo điều phối.' : 'Tạo điều phối thất bại.',
+    );
     if (ok) {
       formClientId = null;
       formContractId = null;
@@ -152,44 +154,58 @@ class _DepartmentAssignmentsScreenState
                     const SizedBox(height: 10),
                     DropdownButtonFormField<int>(
                       value: formClientId,
-                      decoration:
-                          const InputDecoration(labelText: 'Khách hàng'),
-                      items: clients
-                          .map((client) => DropdownMenuItem<int>(
-                                value: client['id'] as int,
-                                child:
-                                    Text((client['name'] ?? '').toString()),
-                              ))
-                          .toList(),
-                      onChanged: (value) =>
-                          setSheetState(() => formClientId = value),
+                      decoration: const InputDecoration(
+                        labelText: 'Khách hàng',
+                      ),
+                      items:
+                          clients
+                              .map(
+                                (client) => DropdownMenuItem<int>(
+                                  value: client['id'] as int,
+                                  child: Text(
+                                    (client['name'] ?? '').toString(),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (value) => setSheetState(() => formClientId = value),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
                       value: formContractId,
                       decoration: const InputDecoration(labelText: 'Hợp đồng'),
-                      items: contracts
-                          .map((contract) => DropdownMenuItem<int>(
-                                value: contract['id'] as int,
-                                child:
-                                    Text((contract['title'] ?? '').toString()),
-                              ))
-                          .toList(),
-                      onChanged: (value) =>
-                          setSheetState(() => formContractId = value),
+                      items:
+                          contracts
+                              .map(
+                                (contract) => DropdownMenuItem<int>(
+                                  value: contract['id'] as int,
+                                  child: Text(
+                                    (contract['title'] ?? '').toString(),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (value) =>
+                              setSheetState(() => formContractId = value),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
                       value: formDepartmentId,
                       decoration: const InputDecoration(labelText: 'Phòng ban'),
-                      items: departments
-                          .map((dept) => DropdownMenuItem<int>(
-                                value: dept['id'] as int,
-                                child: Text((dept['name'] ?? '').toString()),
-                              ))
-                          .toList(),
-                      onChanged: (value) =>
-                          setSheetState(() => formDepartmentId = value),
+                      items:
+                          departments
+                              .map(
+                                (dept) => DropdownMenuItem<int>(
+                                  value: dept['id'] as int,
+                                  child: Text((dept['name'] ?? '').toString()),
+                                ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (value) =>
+                              setSheetState(() => formDepartmentId = value),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -201,21 +217,25 @@ class _DepartmentAssignmentsScreenState
                     const SizedBox(height: 8),
                     TextField(
                       controller: valueCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Giá trị phân bổ'),
+                      decoration: const InputDecoration(
+                        labelText: 'Giá trị phân bổ',
+                      ),
                       keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: requirementCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Yêu cầu chi tiết'),
+                      decoration: const InputDecoration(
+                        labelText: 'Yêu cầu chi tiết',
+                      ),
                       maxLines: 2,
                     ),
                     if (message.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 8),
-                      Text(message,
-                          style: const TextStyle(color: StitchTheme.textMuted)),
+                      Text(
+                        message,
+                        style: const TextStyle(color: StitchTheme.textMuted),
+                      ),
                     ],
                     const SizedBox(height: 12),
                     Row(
@@ -270,7 +290,9 @@ class _DepartmentAssignmentsScreenState
       progressNote: note,
     );
     if (!mounted) return;
-    setState(() => message = ok ? 'Đã cập nhật tiến độ.' : 'Cập nhật thất bại.');
+    setState(
+      () => message = ok ? 'Đã cập nhật tiến độ.' : 'Cập nhật thất bại.',
+    );
     if (ok) await _fetch();
   }
 
@@ -280,133 +302,148 @@ class _DepartmentAssignmentsScreenState
       appBar: AppBar(
         title: const Text('Điều phối phòng ban'),
         actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetch,
-          ),
           if (widget.canCreate)
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: _openForm,
-            ),
+            IconButton(icon: const Icon(Icons.add), onPressed: _openForm),
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Expanded(
-                  child: Text(
-                    'Danh sách điều phối',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+        child: RefreshIndicator(
+          onRefresh: _fetch,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Expanded(
+                    child: Text(
+                      'Danh sách điều phối',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                ),
-                if (widget.canCreate)
-                  ElevatedButton.icon(
-                    onPressed: _openForm,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Thêm'),
-                  ),
-              ],
-            ),
-            if (message.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(message,
-                    style: const TextStyle(color: StitchTheme.textMuted)),
+                  if (widget.canCreate)
+                    ElevatedButton.icon(
+                      onPressed: _openForm,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Thêm'),
+                    ),
+                ],
               ),
-            const SizedBox(height: 16),
-            if (loading)
-              const Center(child: CircularProgressIndicator())
-            else ...assignments.map((assignment) {
-              final Map<String, dynamic>? client =
-                  assignment['client'] as Map<String, dynamic>?;
-              final Map<String, dynamic>? dept =
-                  assignment['department'] as Map<String, dynamic>?;
-              final TextEditingController noteCtrl = TextEditingController(
-                text: (assignment['progress_note'] ?? '').toString(),
-              );
-              int progress =
-                  int.tryParse((assignment['progress_percent'] ?? 0).toString()) ??
-                      0;
-              String status = (assignment['status'] ?? 'new').toString();
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        (client?['name'] ?? 'Khách hàng').toString(),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      Text(
-                        (dept?['name'] ?? 'Phòng ban').toString(),
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Trạng thái: ${(assignment['status'] ?? 'new').toString()}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      if (widget.canUpdate) ...<Widget>[
-                        const Divider(height: 24),
-                        DropdownButtonFormField<String>(
-                          value: status,
-                          decoration:
-                              const InputDecoration(labelText: 'Trạng thái'),
-                          items: const <DropdownMenuItem<String>>[
-                            DropdownMenuItem(value: 'new', child: Text('Mới')),
-                            DropdownMenuItem(
-                                value: 'in_progress',
-                                child: Text('Đang triển khai')),
-                            DropdownMenuItem(
-                                value: 'done', child: Text('Hoàn tất')),
-                          ],
-                          onChanged: (value) {
-                            if (value == null) return;
-                            status = value;
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          decoration: const InputDecoration(
-                            labelText: 'Tiến độ (%)',
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (value) {
-                            progress = int.tryParse(value) ?? progress;
-                          },
-                          controller: TextEditingController(
-                            text: progress.toString(),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: noteCtrl,
-                          decoration:
-                              const InputDecoration(labelText: 'Ghi chú'),
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 8),
-                        ElevatedButton(
-                          onPressed: () => _updateProgress(
-                            assignment,
-                            status,
-                            progress,
-                            noteCtrl.text.trim(),
-                          ),
-                          child: const Text('Cập nhật'),
-                        ),
-                      ],
-                    ],
+              if (message.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    message,
+                    style: const TextStyle(color: StitchTheme.textMuted),
                   ),
                 ),
-              );
-            }),
-          ],
+              const SizedBox(height: 16),
+              if (loading)
+                const Center(child: CircularProgressIndicator())
+              else
+                ...assignments.map((assignment) {
+                  final Map<String, dynamic>? client =
+                      assignment['client'] as Map<String, dynamic>?;
+                  final Map<String, dynamic>? dept =
+                      assignment['department'] as Map<String, dynamic>?;
+                  final TextEditingController noteCtrl = TextEditingController(
+                    text: (assignment['progress_note'] ?? '').toString(),
+                  );
+                  int progress =
+                      int.tryParse(
+                        (assignment['progress_percent'] ?? 0).toString(),
+                      ) ??
+                      0;
+                  String status = (assignment['status'] ?? 'new').toString();
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            (client?['name'] ?? 'Khách hàng').toString(),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            (dept?['name'] ?? 'Phòng ban').toString(),
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Trạng thái: ${(assignment['status'] ?? 'new').toString()}',
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
+                          if (widget.canUpdate) ...<Widget>[
+                            const Divider(height: 24),
+                            DropdownButtonFormField<String>(
+                              value: status,
+                              decoration: const InputDecoration(
+                                labelText: 'Trạng thái',
+                              ),
+                              items: const <DropdownMenuItem<String>>[
+                                DropdownMenuItem(
+                                  value: 'new',
+                                  child: Text('Mới'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'in_progress',
+                                  child: Text('Đang triển khai'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'done',
+                                  child: Text('Hoàn tất'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                status = value;
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              decoration: const InputDecoration(
+                                labelText: 'Tiến độ (%)',
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (value) {
+                                progress = int.tryParse(value) ?? progress;
+                              },
+                              controller: TextEditingController(
+                                text: progress.toString(),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: noteCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Ghi chú',
+                              ),
+                              maxLines: 2,
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed:
+                                  () => _updateProgress(
+                                    assignment,
+                                    status,
+                                    progress,
+                                    noteCtrl.text.trim(),
+                                  ),
+                              child: const Text('Cập nhật'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+            ],
+          ),
         ),
       ),
     );

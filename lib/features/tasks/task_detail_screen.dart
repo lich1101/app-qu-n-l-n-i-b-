@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -42,16 +43,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       loading = true;
       message = '';
     });
-    final List<dynamic> responses = await Future.wait<dynamic>(<Future<dynamic>>[
-      widget.apiService.getTaskDetail(widget.token, widget.taskId),
-      widget.apiService.getTaskItems(widget.token, widget.taskId),
-      widget.apiService.me(widget.token),
-    ]);
+    final List<dynamic> responses =
+        await Future.wait<dynamic>(<Future<dynamic>>[
+          widget.apiService.getTaskDetail(widget.token, widget.taskId),
+          widget.apiService.getTaskItems(widget.token, widget.taskId),
+          widget.apiService.me(widget.token),
+        ]);
     final Map<String, dynamic>? detail = responses[0] as Map<String, dynamic>?;
     final List<Map<String, dynamic>> rows =
         responses[1] as List<Map<String, dynamic>>;
-    final Map<String, dynamic> mePayload =
-        responses[2] as Map<String, dynamic>;
+    final Map<String, dynamic> mePayload = responses[2] as Map<String, dynamic>;
     final Map<String, dynamic> meBody =
         (mePayload['body'] as Map<String, dynamic>?) ?? <String, dynamic>{};
     if (!mounted) return;
@@ -60,9 +61,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       items = rows;
       loading = false;
       message = detail == null ? 'Không tìm thấy công việc.' : '';
-      currentUserId = meBody['id'] is int
-          ? meBody['id'] as int
-          : int.tryParse('${meBody['id'] ?? ''}');
+      currentUserId =
+          meBody['id'] is int
+              ? meBody['id'] as int
+              : int.tryParse('${meBody['id'] ?? ''}');
       currentUserRole = (meBody['role'] ?? '').toString();
     });
   }
@@ -96,19 +98,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   String _formatDate(String raw) {
     if (raw.isEmpty) return '—';
-    final DateTime? dt = DateTime.tryParse(raw);
+    final DateTime? dt = VietnamTime.parse(raw);
     if (dt == null) return raw.length >= 10 ? raw.substring(0, 10) : raw;
-    final DateTime local = dt.toLocal();
-    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year}';
+    return VietnamTime.formatDate(dt);
   }
 
   String _formatDateTime(String raw) {
     if (raw.isEmpty) return '—';
-    final DateTime? dt = DateTime.tryParse(raw);
+    final DateTime? dt = VietnamTime.parse(raw);
     if (dt == null) return raw;
-    final DateTime local = dt.toLocal();
-    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year} '
-        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    return VietnamTime.formatDateTime(dt);
   }
 
   int _progressValue(Map<String, dynamic> item) {
@@ -138,13 +137,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   bool _canApproveItemUpdates() {
-    return currentUserRole == 'admin' || _isProjectOwner() || _isDepartmentManager();
+    return currentUserRole == 'admin' ||
+        _isProjectOwner() ||
+        _isDepartmentManager();
   }
 
   bool _canSubmitReport(Map<String, dynamic> item) {
-    final int? assigneeId = item['assignee_id'] is int
-        ? item['assignee_id'] as int
-        : int.tryParse('${item['assignee_id'] ?? ''}');
+    final int? assigneeId =
+        item['assignee_id'] is int
+            ? item['assignee_id'] as int
+            : int.tryParse('${item['assignee_id'] ?? ''}');
     return _canApproveItemUpdates() ||
         (currentUserId != null && currentUserId == assigneeId);
   }
@@ -152,10 +154,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   Future<void> _openItemInsightSheet(Map<String, dynamic> item) async {
     final Map<String, dynamic>? insight = await widget.apiService
         .getTaskItemProgressInsight(
-      widget.token,
-      widget.taskId,
-      (item['id'] ?? 0) as int,
-    );
+          widget.token,
+          widget.taskId,
+          (item['id'] ?? 0) as int,
+        );
     if (!mounted) return;
     if (insight == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -168,10 +170,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
     final Map<String, dynamic> summary =
         (insight['summary'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-    final List<Map<String, dynamic>> chart = ((insight['chart'] ?? <dynamic>[])
-            as List<dynamic>)
-        .map((dynamic row) => row as Map<String, dynamic>)
-        .toList();
+    final List<Map<String, dynamic>> chart =
+        ((insight['chart'] ?? <dynamic>[]) as List<dynamic>)
+            .map((dynamic row) => row as Map<String, dynamic>)
+            .toList();
     final List<Map<String, dynamic>> approvedUpdates =
         ((insight['approved_updates'] ?? <dynamic>[]) as List<dynamic>)
             .map((dynamic row) => row as Map<String, dynamic>)
@@ -195,7 +197,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    (summary['task_item_title'] ?? item['title'] ?? 'Biểu đồ tiến độ')
+                    (summary['task_item_title'] ??
+                            item['title'] ??
+                            'Biểu đồ tiến độ')
                         .toString(),
                     style: const TextStyle(
                       fontSize: 18,
@@ -218,8 +222,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       ),
                       _InsightMetric(
                         label: 'Dự kiến hôm nay',
-                        value:
-                            '${summary['expected_progress_today'] ?? 0}%',
+                        value: '${summary['expected_progress_today'] ?? 0}%',
                         tone: const Color(0xFF2563EB),
                       ),
                       _InsightMetric(
@@ -230,9 +233,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       _InsightMetric(
                         label: 'Đang chậm',
                         value: '${summary['lag_percent'] ?? 0}%',
-                        tone: (summary['is_late'] == true)
-                            ? StitchTheme.danger
-                            : StitchTheme.success,
+                        tone:
+                            (summary['is_late'] == true)
+                                ? StitchTheme.danger
+                                : StitchTheme.success,
                       ),
                     ],
                   ),
@@ -272,7 +276,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   const SizedBox(height: 14),
                   _ReviewInfoRow(
                     label: 'Bắt đầu',
-                    value: _formatDate((summary['start_date'] ?? '').toString()),
+                    value: _formatDate(
+                      (summary['start_date'] ?? '').toString(),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   _ReviewInfoRow(
@@ -287,9 +293,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   const SizedBox(height: 16),
                   const Text(
                     'Phiếu duyệt đã được chấp thuận',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
                   if (approvedUpdates.isEmpty)
@@ -327,7 +331,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                 fontSize: 12,
                               ),
                             ),
-                            if ((update['note'] ?? '').toString().trim().isNotEmpty) ...<Widget>[
+                            if ((update['note'] ?? '')
+                                .toString()
+                                .trim()
+                                .isNotEmpty) ...<Widget>[
                               const SizedBox(height: 6),
                               Text(
                                 (update['note'] ?? '').toString(),
@@ -365,17 +372,19 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (_canApproveItemUpdates()) {
       return true;
     }
-    final int? assigneeId = item['assignee_id'] is int
-        ? item['assignee_id'] as int
-        : int.tryParse('${item['assignee_id'] ?? ''}');
+    final int? assigneeId =
+        item['assignee_id'] is int
+            ? item['assignee_id'] as int
+            : int.tryParse('${item['assignee_id'] ?? ''}');
     final Map<String, dynamic>? submitter =
         update['submitter'] is Map<String, dynamic>
             ? update['submitter'] as Map<String, dynamic>
             : null;
     final dynamic submitterRawId = submitter?['id'] ?? update['submitted_by'];
-    final int? submitterId = submitterRawId is int
-        ? submitterRawId
-        : int.tryParse('$submitterRawId');
+    final int? submitterId =
+        submitterRawId is int
+            ? submitterRawId
+            : int.tryParse('$submitterRawId');
     return (currentUserId != null && currentUserId == assigneeId) ||
         (currentUserId != null && currentUserId == submitterId);
   }
@@ -391,38 +400,41 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               : null;
       final dynamic assigneeId = assignee?['id'];
       final String label = _assigneeLabel(item);
-      final String key = assigneeId != null
-          ? 'user_$assigneeId'
-          : 'label_${label.toLowerCase()}';
+      final String key =
+          assigneeId != null
+              ? 'user_$assigneeId'
+              : 'label_${label.toLowerCase()}';
       grouped.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(item);
     }
 
-    final List<_TaskItemGroup> groups = grouped.entries.map((entry) {
-      final List<Map<String, dynamic>> rows =
-          List<Map<String, dynamic>>.from(entry.value)
-            ..sort((a, b) {
-              final String aDeadline = (a['deadline'] ?? '').toString();
-              final String bDeadline = (b['deadline'] ?? '').toString();
-              if (aDeadline.isEmpty && bDeadline.isEmpty) return 0;
-              if (aDeadline.isEmpty) return 1;
-              if (bDeadline.isEmpty) return -1;
-              return aDeadline.compareTo(bDeadline);
-            });
+    final List<_TaskItemGroup> groups =
+        grouped.entries.map((entry) {
+            final List<Map<String, dynamic>> rows =
+                List<Map<String, dynamic>>.from(entry.value)..sort((a, b) {
+                  final String aDeadline = (a['deadline'] ?? '').toString();
+                  final String bDeadline = (b['deadline'] ?? '').toString();
+                  if (aDeadline.isEmpty && bDeadline.isEmpty) return 0;
+                  if (aDeadline.isEmpty) return 1;
+                  if (bDeadline.isEmpty) return -1;
+                  return aDeadline.compareTo(bDeadline);
+                });
 
-      return _TaskItemGroup(
-        assignee: _assigneeLabel(rows.first),
-        items: rows,
-      );
-    }).toList()
-      ..sort((a, b) {
-        if (a.assignee == 'Chưa phân công' && b.assignee != 'Chưa phân công') {
-          return 1;
-        }
-        if (b.assignee == 'Chưa phân công' && a.assignee != 'Chưa phân công') {
-          return -1;
-        }
-        return a.assignee.toLowerCase().compareTo(b.assignee.toLowerCase());
-      });
+            return _TaskItemGroup(
+              assignee: _assigneeLabel(rows.first),
+              items: rows,
+            );
+          }).toList()
+          ..sort((a, b) {
+            if (a.assignee == 'Chưa phân công' &&
+                b.assignee != 'Chưa phân công') {
+              return 1;
+            }
+            if (b.assignee == 'Chưa phân công' &&
+                a.assignee != 'Chưa phân công') {
+              return -1;
+            }
+            return a.assignee.toLowerCase().compareTo(b.assignee.toLowerCase());
+          });
 
     return groups;
   }
@@ -466,14 +478,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   statusValue.isEmpty &&
                   attachment == null) {
                 setModalState(
-                  () => localMessage =
-                      'Vui lòng nhập trạng thái, tiến độ, ghi chú hoặc file.',
+                  () =>
+                      localMessage =
+                          'Vui lòng nhập trạng thái, tiến độ, ghi chú hoặc file.',
                 );
                 return;
               }
-              final int? progress = progressCtrl.text.trim().isEmpty
-                  ? null
-                  : int.tryParse(progressCtrl.text.trim());
+              final int? progress =
+                  progressCtrl.text.trim().isEmpty
+                      ? null
+                      : int.tryParse(progressCtrl.text.trim());
               if (progress != null && (progress < 0 || progress > 100)) {
                 setModalState(
                   () => localMessage = 'Tiến độ phải nằm trong khoảng 0-100.',
@@ -485,28 +499,30 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 localMessage = '';
               });
 
-              final bool ok = update == null
-                  ? await widget.apiService.createTaskItemUpdate(
-                      widget.token,
-                      widget.taskId,
-                      (item['id'] ?? 0) as int,
-                      status: statusValue.isEmpty ? null : statusValue,
-                      progressPercent: progress,
-                      note: noteCtrl.text.trim().isEmpty
-                          ? null
-                          : noteCtrl.text.trim(),
-                      attachment: attachment,
-                    )
-                  : await widget.apiService.updateTaskItemUpdate(
-                      widget.token,
-                      widget.taskId,
-                      (item['id'] ?? 0) as int,
-                      (update['id'] ?? 0) as int,
-                      status: statusValue.isEmpty ? null : statusValue,
-                      progressPercent: progress,
-                      note: noteCtrl.text.trim(),
-                      attachment: attachment,
-                    );
+              final bool ok =
+                  update == null
+                      ? await widget.apiService.createTaskItemUpdate(
+                        widget.token,
+                        widget.taskId,
+                        (item['id'] ?? 0) as int,
+                        status: statusValue.isEmpty ? null : statusValue,
+                        progressPercent: progress,
+                        note:
+                            noteCtrl.text.trim().isEmpty
+                                ? null
+                                : noteCtrl.text.trim(),
+                        attachment: attachment,
+                      )
+                      : await widget.apiService.updateTaskItemUpdate(
+                        widget.token,
+                        widget.taskId,
+                        (item['id'] ?? 0) as int,
+                        (update['id'] ?? 0) as int,
+                        status: statusValue.isEmpty ? null : statusValue,
+                        progressPercent: progress,
+                        note: noteCtrl.text.trim(),
+                        attachment: attachment,
+                      );
 
               if (!mounted || !ctx.mounted) return;
               if (ok) {
@@ -516,9 +532,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               } else {
                 setModalState(() {
                   submitting = false;
-                  localMessage = update == null
-                      ? 'Tạo phiếu duyệt thất bại.'
-                      : 'Cập nhật phiếu duyệt thất bại.';
+                  localMessage =
+                      update == null
+                          ? 'Tạo phiếu duyệt thất bại.'
+                          : 'Cập nhật phiếu duyệt thất bại.';
                 });
               }
             }
@@ -554,12 +571,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       value: statusValue.isEmpty ? null : statusValue,
                       items: const <DropdownMenuItem<String>>[
                         DropdownMenuItem(value: 'todo', child: Text('Cần làm')),
-                        DropdownMenuItem(value: 'doing', child: Text('Đang làm')),
-                        DropdownMenuItem(value: 'done', child: Text('Hoàn tất')),
-                        DropdownMenuItem(value: 'blocked', child: Text('Bị chặn')),
+                        DropdownMenuItem(
+                          value: 'doing',
+                          child: Text('Đang làm'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'done',
+                          child: Text('Hoàn tất'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'blocked',
+                          child: Text('Bị chặn'),
+                        ),
                       ],
-                      onChanged: (String? v) =>
-                          setModalState(() => statusValue = v ?? ''),
+                      onChanged:
+                          (String? v) =>
+                              setModalState(() => statusValue = v ?? ''),
                       decoration: const InputDecoration(
                         labelText: 'Trạng thái báo cáo',
                       ),
@@ -626,9 +653,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: submitting
-                                ? null
-                                : () => Navigator.of(ctx).pop(),
+                            onPressed:
+                                submitting
+                                    ? null
+                                    : () => Navigator.of(ctx).pop(),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -663,7 +691,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     Future<void> fetchUpdates(StateSetter setModalState) async {
       setModalState(() => loadingUpdates = true);
       final List<Map<String, dynamic>> rows = await widget.apiService
-          .getTaskItemUpdates(widget.token, widget.taskId, (item['id'] ?? 0) as int);
+          .getTaskItemUpdates(
+            widget.token,
+            widget.taskId,
+            (item['id'] ?? 0) as int,
+          );
       setModalState(() {
         updates = rows;
         selectedUpdate = rows.isNotEmpty ? rows.first : null;
@@ -692,15 +724,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 widget.taskId,
                 (item['id'] ?? 0) as int,
                 (update['id'] ?? 0) as int,
-                status: (update['status'] ?? '').toString().isEmpty
-                    ? null
-                    : (update['status'] ?? '').toString(),
-                progressPercent: update['progress_percent'] is int
-                    ? update['progress_percent'] as int
-                    : int.tryParse('${update['progress_percent'] ?? ''}'),
-                note: (update['note'] ?? '').toString().trim().isEmpty
-                    ? null
-                    : (update['note'] ?? '').toString(),
+                status:
+                    (update['status'] ?? '').toString().isEmpty
+                        ? null
+                        : (update['status'] ?? '').toString(),
+                progressPercent:
+                    update['progress_percent'] is int
+                        ? update['progress_percent'] as int
+                        : int.tryParse('${update['progress_percent'] ?? ''}'),
+                note:
+                    (update['note'] ?? '').toString().trim().isEmpty
+                        ? null
+                        : (update['note'] ?? '').toString(),
               );
               if (ok) {
                 await _fetch();
@@ -785,11 +820,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             }
 
             final bool canSubmit = _canSubmitReport(item);
-            final bool canApprove = selectedUpdate != null &&
+            final bool canApprove =
+                selectedUpdate != null &&
                 _canApproveItemUpdates() &&
                 (selectedUpdate!['review_status'] ?? 'pending').toString() ==
                     'pending';
-            final bool canEdit = selectedUpdate != null &&
+            final bool canEdit =
+                selectedUpdate != null &&
                 _canEditPendingReport(item, selectedUpdate!);
 
             return Container(
@@ -861,24 +898,27 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                             padding: const EdgeInsets.only(bottom: 10),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(14),
-                              onTap: () => setModalState(() {
-                                selectedUpdate = update;
-                                rejectCtrl.clear();
-                                localMessage = '';
-                              }),
+                              onTap:
+                                  () => setModalState(() {
+                                    selectedUpdate = update;
+                                    rejectCtrl.clear();
+                                    localMessage = '';
+                                  }),
                               child: Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: selected
-                                      ? StitchTheme.primary.withValues(
-                                          alpha: 0.08,
-                                        )
-                                      : Colors.white,
+                                  color:
+                                      selected
+                                          ? StitchTheme.primary.withValues(
+                                            alpha: 0.08,
+                                          )
+                                          : Colors.white,
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
-                                    color: selected
-                                        ? StitchTheme.primary
-                                        : StitchTheme.border,
+                                    color:
+                                        selected
+                                            ? StitchTheme.primary
+                                            : StitchTheme.border,
                                   ),
                                 ),
                                 child: Column(
@@ -972,7 +1012,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                           .trim()
                                           .isEmpty
                                       ? 'Không có ghi chú.'
-                                      : (selectedUpdate!['note'] ?? '').toString(),
+                                      : (selectedUpdate!['note'] ?? '')
+                                          .toString(),
                                   style: const TextStyle(fontSize: 13),
                                 ),
                                 if ((selectedUpdate!['review_note'] ?? '')
@@ -1013,8 +1054,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                   Row(
                                     children: <Widget>[
                                       OutlinedButton(
-                                        onPressed: () =>
-                                            _openReportEditor(item, update: selectedUpdate),
+                                        onPressed:
+                                            () => _openReportEditor(
+                                              item,
+                                              update: selectedUpdate,
+                                            ),
                                         child: const Text('Sửa phiếu'),
                                       ),
                                       const SizedBox(width: 8),
@@ -1034,7 +1078,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                     controller: rejectCtrl,
                                     maxLines: 2,
                                     decoration: const InputDecoration(
-                                      labelText: 'Lý do từ chối (nếu không duyệt)',
+                                      labelText:
+                                          'Lý do từ chối (nếu không duyệt)',
                                     ),
                                   ),
                                   const SizedBox(height: 12),
@@ -1124,19 +1169,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             const SizedBox(height: 6),
             Text(
               'Trạng thái: ${_statusLabel(status)} • Tiến độ: $progress%',
-              style: const TextStyle(color: StitchTheme.textMuted, fontSize: 12),
+              style: const TextStyle(
+                color: StitchTheme.textMuted,
+                fontSize: 12,
+              ),
             ),
             if (showAssignee) ...<Widget>[
               const SizedBox(height: 6),
               Text(
                 'Phụ trách: $assignee',
-                style: const TextStyle(color: StitchTheme.textMuted, fontSize: 12),
+                style: const TextStyle(
+                  color: StitchTheme.textMuted,
+                  fontSize: 12,
+                ),
               ),
             ],
             const SizedBox(height: 6),
             Text(
               'Bắt đầu: ${_formatDate(start)} • Deadline: ${_formatDate(deadline)}',
-              style: const TextStyle(color: StitchTheme.textMuted, fontSize: 12),
+              style: const TextStyle(
+                color: StitchTheme.textMuted,
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 8),
             ClipRRect(
@@ -1181,10 +1235,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Widget _buildItemGroup(_TaskItemGroup group) {
-    final int averageProgress = group.items.isEmpty
-        ? 0
-        : group.items.map(_progressValue).reduce((int a, int b) => a + b) ~/
-            group.items.length;
+    final int averageProgress =
+        group.items.isEmpty
+            ? 0
+            : group.items.map(_progressValue).reduce((int a, int b) => a + b) ~/
+                group.items.length;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1261,100 +1316,105 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final List<_TaskItemGroup> groupedItems = _groupedItems();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chi tiết công việc'),
-        actions: <Widget>[
-          IconButton(onPressed: _fetch, icon: const Icon(Icons.refresh)),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Chi tiết công việc')),
       body: SafeArea(
-        child: loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                children: <Widget>[
-                  if (message.isNotEmpty)
-                    Text(
-                      message,
-                      style: const TextStyle(color: StitchTheme.textMuted),
-                    ),
-                  if (task != null) ...<Widget>[
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: StitchTheme.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            (task?['title'] ?? 'Công việc').toString(),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 18,
-                            ),
+        child:
+            loading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                  onRefresh: _fetch,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                    children: <Widget>[
+                      if (message.isNotEmpty)
+                        Text(
+                          message,
+                          style: const TextStyle(color: StitchTheme.textMuted),
+                        ),
+                      if (task != null) ...<Widget>[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: StitchTheme.border),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Trạng thái: ${_statusLabel((task?['status'] ?? '').toString())}',
-                            style: const TextStyle(color: StitchTheme.textMuted),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                (task?['title'] ?? 'Công việc').toString(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Trạng thái: ${_statusLabel((task?['status'] ?? '').toString())}',
+                                style: const TextStyle(
+                                  color: StitchTheme.textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Tiến độ: ${(task?['progress_percent'] ?? 0)}%',
+                                style: const TextStyle(
+                                  color: StitchTheme.textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Deadline: ${_formatDate((task?['deadline'] ?? '').toString())}',
+                                style: const TextStyle(
+                                  color: StitchTheme.textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Phòng ban: ${(task?['department']?['name'] ?? '—').toString()}',
+                                style: const TextStyle(
+                                  color: StitchTheme.textMuted,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Tiến độ: ${(task?['progress_percent'] ?? 0)}%',
-                            style: const TextStyle(color: StitchTheme.textMuted),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Danh sách đầu việc',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Deadline: ${_formatDate((task?['deadline'] ?? '').toString())}',
-                            style: const TextStyle(color: StitchTheme.textMuted),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Phòng ban: ${(task?['department']?['name'] ?? '—').toString()}',
-                            style: const TextStyle(color: StitchTheme.textMuted),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Danh sách đầu việc',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                    ),
-                    const SizedBox(height: 10),
-                    if (items.isEmpty)
-                      const Text(
-                        'Chưa có đầu việc nào.',
-                        style: TextStyle(color: StitchTheme.textMuted),
-                      )
-                    else
-                      ...groupedItems.map(_buildItemGroup),
-                  ],
-                ],
-              ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (items.isEmpty)
+                          const Text(
+                            'Chưa có đầu việc nào.',
+                            style: TextStyle(color: StitchTheme.textMuted),
+                          )
+                        else
+                          ...groupedItems.map(_buildItemGroup),
+                      ],
+                    ],
+                  ),
+                ),
       ),
     );
   }
 }
 
 class _TaskItemGroup {
-  const _TaskItemGroup({
-    required this.assignee,
-    required this.items,
-  });
+  const _TaskItemGroup({required this.assignee, required this.items});
 
   final String assignee;
   final List<Map<String, dynamic>> items;
 }
 
 class _ReviewInfoRow extends StatelessWidget {
-  const _ReviewInfoRow({
-    required this.label,
-    required this.value,
-  });
+  const _ReviewInfoRow({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1368,20 +1428,14 @@ class _ReviewInfoRow extends StatelessWidget {
           width: 110,
           child: Text(
             label,
-            style: const TextStyle(
-              color: StitchTheme.textMuted,
-              fontSize: 12,
-            ),
+            style: const TextStyle(color: StitchTheme.textMuted, fontSize: 12),
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
           ),
         ),
       ],
@@ -1414,10 +1468,7 @@ class _InsightMetric extends StatelessWidget {
         children: <Widget>[
           Text(
             label,
-            style: const TextStyle(
-              color: StitchTheme.textMuted,
-              fontSize: 11,
-            ),
+            style: const TextStyle(color: StitchTheme.textMuted, fontSize: 11),
           ),
           const SizedBox(height: 6),
           Text(
@@ -1435,10 +1486,7 @@ class _InsightMetric extends StatelessWidget {
 }
 
 class _LegendDot extends StatelessWidget {
-  const _LegendDot({
-    required this.color,
-    required this.label,
-  });
+  const _LegendDot({required this.color, required this.label});
 
   final Color color;
   final String label;
@@ -1451,18 +1499,12 @@ class _LegendDot extends StatelessWidget {
         Container(
           width: 10,
           height: 10,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(
-            color: StitchTheme.textMuted,
-            fontSize: 12,
-          ),
+          style: const TextStyle(color: StitchTheme.textMuted, fontSize: 12),
         ),
       ],
     );
@@ -1470,9 +1512,7 @@ class _LegendDot extends StatelessWidget {
 }
 
 class _TaskItemInsightChart extends StatelessWidget {
-  const _TaskItemInsightChart({
-    required this.points,
-  });
+  const _TaskItemInsightChart({required this.points});
 
   final List<Map<String, dynamic>> points;
 
@@ -1482,9 +1522,7 @@ class _TaskItemInsightChart extends StatelessWidget {
       return const Center(
         child: Text(
           'Chưa có dữ liệu tiến độ để hiển thị.',
-          style: TextStyle(
-            color: StitchTheme.textMuted,
-          ),
+          style: TextStyle(color: StitchTheme.textMuted),
         ),
       );
     }
@@ -1504,18 +1542,19 @@ class _TaskItemInsightChart extends StatelessWidget {
               bottom: 0,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: points.map((Map<String, dynamic> point) {
-                  return Expanded(
-                    child: Text(
-                      (point['label'] ?? '').toString(),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: StitchTheme.textMuted,
-                      ),
-                    ),
-                  );
-                }).toList(),
+                children:
+                    points.map((Map<String, dynamic> point) {
+                      return Expanded(
+                        child: Text(
+                          (point['label'] ?? '').toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: StitchTheme.textMuted,
+                          ),
+                        ),
+                      );
+                    }).toList(),
               ),
             ),
           ],
@@ -1526,37 +1565,35 @@ class _TaskItemInsightChart extends StatelessWidget {
 }
 
 class _TaskItemInsightPainter extends CustomPainter {
-  const _TaskItemInsightPainter({
-    required this.points,
-  });
+  const _TaskItemInsightPainter({required this.points});
 
   final List<Map<String, dynamic>> points;
 
   @override
   void paint(Canvas canvas, Size size) {
     final double chartHeight = math.max(40, size.height - 28);
-    final Paint gridPaint = Paint()
-      ..color = StitchTheme.border
-      ..strokeWidth = 1;
-    final Paint expectedPaint = Paint()
-      ..color = const Color(0xFF2563EB)
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-    final Paint actualPaint = Paint()
-      ..color = const Color(0xFF16A34A)
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-    final Paint pointPaint = Paint()
-      ..color = const Color(0xFF16A34A)
-      ..style = PaintingStyle.fill;
+    final Paint gridPaint =
+        Paint()
+          ..color = StitchTheme.border
+          ..strokeWidth = 1;
+    final Paint expectedPaint =
+        Paint()
+          ..color = const Color(0xFF2563EB)
+          ..strokeWidth = 2.5
+          ..style = PaintingStyle.stroke;
+    final Paint actualPaint =
+        Paint()
+          ..color = const Color(0xFF16A34A)
+          ..strokeWidth = 2.5
+          ..style = PaintingStyle.stroke;
+    final Paint pointPaint =
+        Paint()
+          ..color = const Color(0xFF16A34A)
+          ..style = PaintingStyle.fill;
 
     for (int i = 0; i <= 4; i++) {
       final double y = (chartHeight / 4) * i;
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        gridPaint,
-      );
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
     if (points.length < 2) {
@@ -1568,9 +1605,10 @@ class _TaskItemInsightPainter extends CustomPainter {
 
     for (int i = 0; i < points.length; i++) {
       final Map<String, dynamic> point = points[i];
-      final double x = points.length == 1
-          ? size.width / 2
-          : (size.width / (points.length - 1)) * i;
+      final double x =
+          points.length == 1
+              ? size.width / 2
+              : (size.width / (points.length - 1)) * i;
       final double expected = _clampPercent(point['expected_progress']);
       final double actual = _clampPercent(point['actual_progress']);
       final double expectedY = chartHeight - (chartHeight * expected / 100);
@@ -1592,9 +1630,8 @@ class _TaskItemInsightPainter extends CustomPainter {
   }
 
   double _clampPercent(dynamic value) {
-    final double parsed = value is num
-        ? value.toDouble()
-        : double.tryParse('${value ?? 0}') ?? 0;
+    final double parsed =
+        value is num ? value.toDouble() : double.tryParse('${value ?? 0}') ?? 0;
     return parsed.clamp(0, 100);
   }
 

@@ -23,7 +23,9 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
   List<Map<String, dynamic>> leadTypes = <Map<String, dynamic>>[];
   int? editingId;
   final TextEditingController nameCtrl = TextEditingController();
-  final TextEditingController colorCtrl = TextEditingController(text: '#4B5563');
+  final TextEditingController colorCtrl = TextEditingController(
+    text: '#4B5563',
+  );
   final TextEditingController orderCtrl = TextEditingController(text: '1');
 
   @override
@@ -42,8 +44,8 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> rows =
-        await widget.apiService.getLeadTypes(widget.token);
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getLeadTypes(widget.token);
     if (!mounted) return;
     setState(() {
       loading = false;
@@ -64,20 +66,21 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
       return false;
     }
     final int? order = int.tryParse(orderCtrl.text.trim());
-    final bool ok = editingId == null
-        ? await widget.apiService.createLeadType(
-            widget.token,
-            name: nameCtrl.text.trim(),
-            colorHex: colorCtrl.text.trim(),
-            sortOrder: order,
-          )
-        : await widget.apiService.updateLeadType(
-            widget.token,
-            editingId!,
-            name: nameCtrl.text.trim(),
-            colorHex: colorCtrl.text.trim(),
-            sortOrder: order,
-          );
+    final bool ok =
+        editingId == null
+            ? await widget.apiService.createLeadType(
+              widget.token,
+              name: nameCtrl.text.trim(),
+              colorHex: colorCtrl.text.trim(),
+              sortOrder: order,
+            )
+            : await widget.apiService.updateLeadType(
+              widget.token,
+              editingId!,
+              name: nameCtrl.text.trim(),
+              colorHex: colorCtrl.text.trim(),
+              sortOrder: order,
+            );
     if (!mounted) return false;
     setState(() => message = ok ? 'Đã lưu trạng thái.' : 'Lưu thất bại.');
     if (ok) {
@@ -136,8 +139,9 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
                     const SizedBox(height: 10),
                     TextField(
                       controller: nameCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Tên trạng thái'),
+                      decoration: const InputDecoration(
+                        labelText: 'Tên trạng thái',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -178,7 +182,9 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
                                 setSheetState(() {});
                               }
                             },
-                            child: Text(editingId == null ? 'Tạo mới' : 'Cập nhật'),
+                            child: Text(
+                              editingId == null ? 'Tạo mới' : 'Cập nhật',
+                            ),
                           ),
                         ),
                       ],
@@ -201,67 +207,68 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
       appBar: AppBar(
         title: const Text('Trạng thái khách hàng tiềm năng'),
         actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetch,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _openForm(),
-          ),
+          IconButton(icon: const Icon(Icons.add), onPressed: () => _openForm()),
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Expanded(
-                  child: Text(
-                    'Danh sách trạng thái',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+        child: RefreshIndicator(
+          onRefresh: _fetch,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Expanded(
+                    child: Text(
+                      'Danh sách trạng thái',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _openForm(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Thêm mới'),
-                ),
-              ],
-            ),
-            if (message.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(message,
-                    style: const TextStyle(color: StitchTheme.textMuted)),
+                  ElevatedButton.icon(
+                    onPressed: () => _openForm(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Thêm mới'),
+                  ),
+                ],
               ),
-            const SizedBox(height: 12),
-            if (loading)
-              const Center(child: CircularProgressIndicator())
-            else ...leadTypes.map((item) {
-              return Card(
-                child: ListTile(
-                  title: Text((item['name'] ?? '').toString()),
-                  subtitle:
-                      Text('Màu: ${(item['color_hex'] ?? '').toString()}'),
-                  trailing: Wrap(
-                    spacing: 8,
-                    children: <Widget>[
-                      IconButton(
-                        icon: const Icon(Icons.edit, size: 18),
-                        onPressed: () => _openForm(item: item),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, size: 18),
-                        onPressed: () => _delete(item['id'] as int),
-                      ),
-                    ],
+              if (message.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    message,
+                    style: const TextStyle(color: StitchTheme.textMuted),
                   ),
                 ),
-              );
-            }),
-          ],
+              const SizedBox(height: 12),
+              if (loading)
+                const Center(child: CircularProgressIndicator())
+              else
+                ...leadTypes.map((item) {
+                  return Card(
+                    child: ListTile(
+                      title: Text((item['name'] ?? '').toString()),
+                      subtitle: Text(
+                        'Màu: ${(item['color_hex'] ?? '').toString()}',
+                      ),
+                      trailing: Wrap(
+                        spacing: 8,
+                        children: <Widget>[
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 18),
+                            onPressed: () => _openForm(item: item),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, size: 18),
+                            onPressed: () => _delete(item['id'] as int),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+            ],
+          ),
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -64,7 +65,28 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
     super.dispose();
   }
 
+  bool _isNearBottom({double threshold = 72}) {
+    if (!_messageScrollController.hasClients) return true;
+    final ScrollPosition position = _messageScrollController.position;
+    return (position.maxScrollExtent - position.pixels) <= threshold;
+  }
+
+  void _scrollToBottom({bool animated = true}) {
+    if (!_messageScrollController.hasClients) return;
+    final double target = _messageScrollController.position.maxScrollExtent;
+    if (animated) {
+      _messageScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    _messageScrollController.jumpTo(target);
+  }
+
   Future<void> _loadConversation({bool silent = false}) async {
+    final bool shouldAutoScroll = _isNearBottom();
     if (!silent) {
       setState(() => _loading = true);
     }
@@ -118,14 +140,11 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_messageScrollController.hasClients) return;
-      _messageScrollController.animateTo(
-        _messageScrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-    });
+    if (shouldAutoScroll) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom(animated: true);
+      });
+    }
   }
 
   Future<void> _send() async {
@@ -183,7 +202,7 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
     }
 
     setState(() => _sendingPreview = null);
-    _applyPayload(data);
+    _applyPayload(data, forceScroll: true);
   }
 
   Future<void> _stop() async {
@@ -233,7 +252,8 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
     _showSnack('Đã xoá khỏi hàng chờ.');
   }
 
-  void _applyPayload(Map<String, dynamic> data) {
+  void _applyPayload(Map<String, dynamic> data, {bool forceScroll = false}) {
+    final bool shouldAutoScroll = forceScroll || _isNearBottom();
     final List<Map<String, dynamic>> messages =
         ((data['messages'] ?? <dynamic>[]) as List<dynamic>)
             .map((dynamic item) => Map<String, dynamic>.from(item as Map))
@@ -260,6 +280,12 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
         _queueDrafts.putIfAbsent(id, () => (item['content'] ?? '').toString());
       }
     });
+
+    if (shouldAutoScroll) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom(animated: true);
+      });
+    }
   }
 
   int _toInt(dynamic value) {
@@ -321,19 +347,48 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
   }
 
   String _resolveAttachmentUrl(String raw) {
-    final String value = raw.trim();
-    if (value.isEmpty) return '';
-    if (value.startsWith('http://') || value.startsWith('https://')) {
-      return value;
+    return AppEnv.resolveMediaUrl(raw);
+  }
+
+  String _normalizeBotIcon(dynamic value) {
+    final String icon = (value ?? '').toString().trim();
+    if (icon.isEmpty) return '🤖';
+    return icon;
+  }
+
+  Widget _buildBotAvatar({
+    required String avatarUrl,
+    required String fallbackIcon,
+    double radius = 15,
+    double iconSize = 13,
+  }) {
+    final String resolvedAvatarUrl = _resolveAttachmentUrl(avatarUrl);
+    final String safeIcon = _normalizeBotIcon(fallbackIcon);
+    if (resolvedAvatarUrl.isEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: StitchTheme.primary.withValues(alpha: 0.14),
+        child: Text(safeIcon, style: TextStyle(fontSize: iconSize)),
+      );
     }
-    final Uri apiUri = Uri.parse(AppEnv.apiBaseUrl);
-    final String host = apiUri.host;
-    final String scheme = apiUri.scheme;
-    final String port = apiUri.hasPort ? ':${apiUri.port}' : '';
-    if (value.startsWith('/')) {
-      return '$scheme://$host$port$value';
-    }
-    return '$scheme://$host$port/$value';
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: StitchTheme.primary.withValues(alpha: 0.14),
+      child: ClipOval(
+        child: Image.network(
+          resolvedAvatarUrl,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          errorBuilder:
+              (BuildContext context, Object error, StackTrace? stackTrace) =>
+                  Center(
+                    child: Text(safeIcon, style: TextStyle(fontSize: iconSize)),
+                  ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openAttachment(String url) async {
@@ -397,6 +452,111 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
     }
   }
 
+  MarkdownStyleSheet _markdownStyle({required bool isUser}) {
+    final Color textColor = isUser ? Colors.white : StitchTheme.textMain;
+    final Color headingColor = isUser ? Colors.white : StitchTheme.textMain;
+    return MarkdownStyleSheet(
+      p: TextStyle(fontSize: 14, height: 1.5, color: textColor),
+      h1: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: headingColor,
+      ),
+      h2: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        color: headingColor,
+      ),
+      h3: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        color: headingColor,
+      ),
+      listBullet: TextStyle(fontSize: 14, height: 1.45, color: textColor),
+      strong: TextStyle(fontWeight: FontWeight.w700, color: headingColor),
+      a: TextStyle(
+        color: isUser ? Colors.white : StitchTheme.primary,
+        decoration: TextDecoration.underline,
+      ),
+      code: TextStyle(
+        fontSize: 12.5,
+        fontFamily: 'monospace',
+        color: isUser ? Colors.white : const Color(0xFF1E293B),
+        backgroundColor:
+            isUser
+                ? Colors.white.withValues(alpha: 0.18)
+                : const Color(0xFFE2E8F0),
+      ),
+      codeblockPadding: const EdgeInsets.all(10),
+      codeblockDecoration: BoxDecoration(
+        color:
+            isUser
+                ? Colors.black.withValues(alpha: 0.24)
+                : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color:
+              isUser
+                  ? Colors.white.withValues(alpha: 0.25)
+                  : StitchTheme.border,
+        ),
+      ),
+      blockSpacing: 8,
+      listIndent: 22,
+    );
+  }
+
+  Future<void> _openMarkdownLink(String raw) async {
+    final String value = raw.trim();
+    if (value.isEmpty) return;
+    final String href =
+        value.startsWith('http://') || value.startsWith('https://')
+            ? value
+            : 'https://$value';
+    final Uri? uri = Uri.tryParse(href);
+    if (uri == null) {
+      _showSnack('Liên kết không hợp lệ.');
+      return;
+    }
+    final bool launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched) {
+      _showSnack('Không mở được liên kết.');
+    }
+  }
+
+  Widget _buildMessageMarkdown({
+    required String content,
+    required bool isUser,
+  }) {
+    final String text = content.trim();
+    if (text.isEmpty) {
+      return Text(
+        'Tin nhắn chỉ có tệp đính kèm.',
+        style: TextStyle(
+          fontSize: 14,
+          height: 1.45,
+          color:
+              isUser
+                  ? Colors.white.withValues(alpha: 0.9)
+                  : StitchTheme.textMuted,
+        ),
+      );
+    }
+    return MarkdownBody(
+      data: text,
+      selectable: false,
+      softLineBreak: true,
+      styleSheet: _markdownStyle(isUser: isUser),
+      onTapLink: (String text, String? href, String title) {
+        if (href == null || href.trim().isEmpty) return;
+        unawaited(_openMarkdownLink(href));
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final String inputTrimmed = _inputController.text.trim();
@@ -408,9 +568,9 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
         _chatbotConfigured &&
         (inputTrimmed.isNotEmpty || hasPendingAttachment);
     final bool canStop = _chatbotEnabled && _chatbotConfigured && _isProcessing;
-    final String assistantIcon = (_bot['icon'] ?? '🤖').toString();
+    final String assistantIcon = _normalizeBotIcon(_bot['icon']);
     final String assistantAvatarUrl =
-        (_bot['avatar_url'] ?? '').toString().trim();
+        (_bot['avatar_url'] ?? _bot['avatar'] ?? '').toString().trim();
 
     return Scaffold(
       appBar: AppBar(
@@ -419,12 +579,6 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
               ? widget.botName!
               : 'Trợ lý AI',
         ),
-        actions: <Widget>[
-          IconButton(
-            onPressed: _loading ? null : () => _loadConversation(),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
       ),
       body: SafeArea(
         child: Column(
@@ -448,571 +602,583 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
                   borderRadius: BorderRadius.circular(18),
                   child:
                       _loading
-                          ? const Center(child: CircularProgressIndicator())
-                          : ListView(
-                            controller: _messageScrollController,
-                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                            children: <Widget>[
-                              if (!_chatbotConfigured || !_chatbotEnabled)
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFEF3C7),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: const Color(0xFFFCD34D),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Chatbot chưa sẵn sàng. Administrator cần bật chatbot và nhập key/model ở Cài đặt hệ thống.',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF92400E),
-                                    ),
-                                  ),
+                          ? Container(
+                            color: const Color(0xFFF8FAFC),
+                            alignment: Alignment.center,
+                            child: const CircularProgressIndicator(),
+                          )
+                          : RefreshIndicator(
+                            onRefresh: () => _loadConversation(silent: true),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: <Color>[
+                                    Color(0xFFF8FAFC),
+                                    Color(0xFFFFFFFF),
+                                    Color(0xFFF1F5F9),
+                                  ],
                                 ),
-                              if (_messages.isEmpty)
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: StitchTheme.border,
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Chưa có hội thoại. Hãy gửi câu hỏi đầu tiên.',
-                                    style: TextStyle(
-                                      color: StitchTheme.textMuted,
-                                    ),
-                                  ),
+                              ),
+                              child: ListView(
+                                controller: _messageScrollController,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  10,
+                                  12,
+                                  12,
                                 ),
-                              ..._messages.map((Map<String, dynamic> row) {
-                                final bool isUser =
-                                    (row['role'] ?? '') == 'user';
-                                final String status =
-                                    (row['status'] ?? '').toString();
-                                final String content =
-                                    (row['content'] ?? '').toString();
-                                final String error =
-                                    (row['error_message'] ?? '').toString();
-                                final Map<String, dynamic>? attachment =
-                                    row['attachment'] is Map
-                                        ? Map<String, dynamic>.from(
-                                          row['attachment'] as Map,
-                                        )
-                                        : null;
-                                final String attachmentUrl =
-                                    _resolveAttachmentUrl(
-                                      (attachment?['url'] ?? '').toString(),
-                                    );
-                                final String attachmentName =
-                                    (attachment?['name'] ?? 'Tệp đính kèm')
-                                        .toString();
-                                final String attachmentSize = _formatBytes(
-                                  attachment?['size'],
-                                );
-                                final bool attachmentIsImage =
-                                    (attachment?['is_image'] == true) ||
-                                    _isImageFileName(attachmentName) ||
-                                    _isImageFileName(attachmentUrl);
-                                final DateTime? createdAt = DateTime.tryParse(
-                                  (row['created_at'] ?? '').toString(),
-                                );
-                                final String timeLabel =
-                                    createdAt == null
-                                        ? ''
-                                        : '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        isUser
-                                            ? MainAxisAlignment.end
-                                            : MainAxisAlignment.start,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      if (!isUser)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            right: 8,
-                                            top: 2,
-                                          ),
-                                          child: CircleAvatar(
-                                            radius: 15,
-                                            backgroundColor: StitchTheme.primary
-                                                .withValues(alpha: 0.14),
-                                            backgroundImage:
-                                                assistantAvatarUrl.isNotEmpty
-                                                    ? NetworkImage(
-                                                      assistantAvatarUrl,
-                                                    )
-                                                    : null,
-                                            child:
-                                                assistantAvatarUrl.isNotEmpty
-                                                    ? null
-                                                    : Text(
-                                                      assistantIcon,
-                                                      style: const TextStyle(
-                                                        fontSize: 13,
-                                                      ),
-                                                    ),
-                                          ),
+                                children: <Widget>[
+                                  if (!_chatbotConfigured || !_chatbotEnabled)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFEF3C7),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: const Color(0xFFFCD34D),
                                         ),
-                                      Flexible(
-                                        child: Container(
-                                          constraints: BoxConstraints(
-                                            maxWidth:
-                                                MediaQuery.of(
-                                                  context,
-                                                ).size.width *
-                                                0.82,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 10,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                isUser
-                                                    ? StitchTheme.primary
-                                                    : Colors.white,
-                                            borderRadius: BorderRadius.circular(
-                                              14,
-                                            ),
-                                            border:
-                                                isUser
-                                                    ? null
-                                                    : Border.all(
-                                                      color: StitchTheme.border,
-                                                    ),
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: <Widget>[
-                                              Text(
-                                                content.trim().isEmpty
-                                                    ? 'Tin nhắn chỉ có tệp đính kèm.'
-                                                    : content,
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  height: 1.45,
-                                                  color:
-                                                      isUser
-                                                          ? Colors.white
-                                                          : StitchTheme
-                                                              .textMain,
-                                                ),
+                                      ),
+                                      child: const Text(
+                                        'Chatbot chưa sẵn sàng. Administrator cần hoàn tất cấu hình ở Cài đặt hệ thống.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF92400E),
+                                        ),
+                                      ),
+                                    ),
+                                  if (_messages.isEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: StitchTheme.border,
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Chưa có hội thoại. Hãy gửi câu hỏi đầu tiên.',
+                                        style: TextStyle(
+                                          color: StitchTheme.textMuted,
+                                        ),
+                                      ),
+                                    ),
+                                  ..._messages.map((Map<String, dynamic> row) {
+                                    final bool isUser =
+                                        (row['role'] ?? '') == 'user';
+                                    final String status =
+                                        (row['status'] ?? '').toString();
+                                    final String content =
+                                        (row['content'] ?? '').toString();
+                                    final String error =
+                                        (row['error_message'] ?? '').toString();
+                                    final Map<String, dynamic>? attachment =
+                                        row['attachment'] is Map
+                                            ? Map<String, dynamic>.from(
+                                              row['attachment'] as Map,
+                                            )
+                                            : null;
+                                    final String attachmentUrl =
+                                        _resolveAttachmentUrl(
+                                          (attachment?['url'] ?? '').toString(),
+                                        );
+                                    final String attachmentName =
+                                        (attachment?['name'] ?? 'Tệp đính kèm')
+                                            .toString();
+                                    final String attachmentSize = _formatBytes(
+                                      attachment?['size'],
+                                    );
+                                    final bool attachmentIsImage =
+                                        (attachment?['is_image'] == true) ||
+                                        _isImageFileName(attachmentName) ||
+                                        _isImageFileName(attachmentUrl);
+                                    final DateTime? createdAt =
+                                        DateTime.tryParse(
+                                          (row['created_at'] ?? '').toString(),
+                                        );
+                                    final String timeLabel =
+                                        createdAt == null
+                                            ? ''
+                                            : '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}';
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 10,
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            isUser
+                                                ? MainAxisAlignment.end
+                                                : MainAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          if (!isUser)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                right: 8,
+                                                top: 2,
                                               ),
-                                              if (attachment != null)
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        top: 8,
-                                                      ),
-                                                  child: InkWell(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          12,
+                                              child: _buildBotAvatar(
+                                                avatarUrl: assistantAvatarUrl,
+                                                fallbackIcon: assistantIcon,
+                                                radius: 15,
+                                                iconSize: 13,
+                                              ),
+                                            ),
+                                          Flexible(
+                                            child: Container(
+                                              constraints: BoxConstraints(
+                                                maxWidth:
+                                                    MediaQuery.of(
+                                                      context,
+                                                    ).size.width *
+                                                    0.82,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 10,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    isUser
+                                                        ? StitchTheme.primary
+                                                        : Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                                boxShadow: const <BoxShadow>[
+                                                  BoxShadow(
+                                                    color: Color(0x220F172A),
+                                                    blurRadius: 14,
+                                                    offset: Offset(0, 5),
+                                                  ),
+                                                ],
+                                                border:
+                                                    isUser
+                                                        ? null
+                                                        : Border.all(
+                                                          color:
+                                                              StitchTheme
+                                                                  .border,
                                                         ),
-                                                    onTap:
-                                                        attachmentUrl.isEmpty
-                                                            ? null
-                                                            : () =>
-                                                                _openAttachment(
-                                                                  attachmentUrl,
-                                                                ),
-                                                    child: Container(
-                                                      width: double.infinity,
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: <Widget>[
+                                                  _buildMessageMarkdown(
+                                                    content: content,
+                                                    isUser: isUser,
+                                                  ),
+                                                  if (attachment != null)
+                                                    Padding(
                                                       padding:
-                                                          const EdgeInsets.all(
-                                                            8,
+                                                          const EdgeInsets.only(
+                                                            top: 8,
                                                           ),
-                                                      decoration: BoxDecoration(
-                                                        color:
-                                                            isUser
-                                                                ? Colors.white
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.14,
-                                                                    )
-                                                                : const Color(
-                                                                  0xFFF8FAFC,
-                                                                ),
+                                                      child: InkWell(
                                                         borderRadius:
                                                             BorderRadius.circular(
                                                               12,
                                                             ),
-                                                        border: Border.all(
+                                                        onTap:
+                                                            attachmentUrl
+                                                                    .isEmpty
+                                                                ? null
+                                                                : () => _openAttachment(
+                                                                  attachmentUrl,
+                                                                ),
+                                                        child: Container(
+                                                          width:
+                                                              double.infinity,
+                                                          padding:
+                                                              const EdgeInsets.all(
+                                                                8,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color:
+                                                                isUser
+                                                                    ? Colors
+                                                                        .white
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.14,
+                                                                        )
+                                                                    : const Color(
+                                                                      0xFFF8FAFC,
+                                                                    ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  12,
+                                                                ),
+                                                            border: Border.all(
+                                                              color:
+                                                                  isUser
+                                                                      ? Colors
+                                                                          .white
+                                                                          .withValues(
+                                                                            alpha:
+                                                                                0.22,
+                                                                          )
+                                                                      : StitchTheme
+                                                                          .border,
+                                                            ),
+                                                          ),
+                                                          child: Column(
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .start,
+                                                            children: <Widget>[
+                                                              if (attachmentIsImage &&
+                                                                  attachmentUrl
+                                                                      .isNotEmpty)
+                                                                ClipRRect(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        10,
+                                                                      ),
+                                                                  child: Image.network(
+                                                                    attachmentUrl,
+                                                                    height: 150,
+                                                                    width:
+                                                                        double
+                                                                            .infinity,
+                                                                    fit:
+                                                                        BoxFit
+                                                                            .cover,
+                                                                    errorBuilder:
+                                                                        (
+                                                                          _,
+                                                                          __,
+                                                                          ___,
+                                                                        ) => Container(
+                                                                          height:
+                                                                              78,
+                                                                          alignment:
+                                                                              Alignment.center,
+                                                                          color:
+                                                                              Colors.black26,
+                                                                          child: Text(
+                                                                            'Không xem trước được ảnh',
+                                                                            style: TextStyle(
+                                                                              color:
+                                                                                  isUser
+                                                                                      ? Colors.white
+                                                                                      : StitchTheme.textMuted,
+                                                                              fontSize:
+                                                                                  12,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                  ),
+                                                                )
+                                                              else
+                                                                Row(
+                                                                  children: <
+                                                                    Widget
+                                                                  >[
+                                                                    Container(
+                                                                      width: 34,
+                                                                      height:
+                                                                          34,
+                                                                      decoration: BoxDecoration(
+                                                                        color:
+                                                                            isUser
+                                                                                ? Colors.white.withValues(
+                                                                                  alpha:
+                                                                                      0.2,
+                                                                                )
+                                                                                : const Color(
+                                                                                  0xFFE2E8F0,
+                                                                                ),
+                                                                        borderRadius:
+                                                                            BorderRadius.circular(
+                                                                              8,
+                                                                            ),
+                                                                      ),
+                                                                      alignment:
+                                                                          Alignment
+                                                                              .center,
+                                                                      child: Text(
+                                                                        attachmentIsImage
+                                                                            ? '🖼️'
+                                                                            : '📎',
+                                                                        style: const TextStyle(
+                                                                          fontSize:
+                                                                              16,
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    const SizedBox(
+                                                                      width: 8,
+                                                                    ),
+                                                                    Expanded(
+                                                                      child: Column(
+                                                                        crossAxisAlignment:
+                                                                            CrossAxisAlignment.start,
+                                                                        children: <
+                                                                          Widget
+                                                                        >[
+                                                                          Text(
+                                                                            attachmentName,
+                                                                            maxLines:
+                                                                                1,
+                                                                            overflow:
+                                                                                TextOverflow.ellipsis,
+                                                                            style: TextStyle(
+                                                                              fontWeight:
+                                                                                  FontWeight.w600,
+                                                                              color:
+                                                                                  isUser
+                                                                                      ? Colors.white
+                                                                                      : StitchTheme.textMain,
+                                                                            ),
+                                                                          ),
+                                                                          if (attachmentSize
+                                                                              .isNotEmpty)
+                                                                            Text(
+                                                                              attachmentSize,
+                                                                              style: TextStyle(
+                                                                                fontSize:
+                                                                                    11,
+                                                                                color:
+                                                                                    isUser
+                                                                                        ? Colors.white.withValues(
+                                                                                          alpha:
+                                                                                              0.9,
+                                                                                        )
+                                                                                        : StitchTheme.textMuted,
+                                                                              ),
+                                                                            ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              if (attachmentIsImage &&
+                                                                  attachmentUrl
+                                                                      .isNotEmpty)
+                                                                Padding(
+                                                                  padding:
+                                                                      const EdgeInsets.only(
+                                                                        top: 6,
+                                                                      ),
+                                                                  child: Text(
+                                                                    '$attachmentName${attachmentSize.isNotEmpty ? ' • $attachmentSize' : ''}',
+                                                                    style: TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      color:
+                                                                          isUser
+                                                                              ? Colors.white.withValues(
+                                                                                alpha:
+                                                                                    0.9,
+                                                                              )
+                                                                              : StitchTheme.textMuted,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  const SizedBox(height: 8),
+                                                  Wrap(
+                                                    spacing: 8,
+                                                    runSpacing: 6,
+                                                    crossAxisAlignment:
+                                                        WrapCrossAlignment
+                                                            .center,
+                                                    children: <Widget>[
+                                                      if (timeLabel.isNotEmpty)
+                                                        Text(
+                                                          timeLabel,
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            color:
+                                                                isUser
+                                                                    ? Colors
+                                                                        .white
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.88,
+                                                                        )
+                                                                    : StitchTheme
+                                                                        .textMuted,
+                                                          ),
+                                                        ),
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 8,
+                                                              vertical: 4,
+                                                            ),
+                                                        decoration: BoxDecoration(
                                                           color:
                                                               isUser
                                                                   ? Colors.white
                                                                       .withValues(
                                                                         alpha:
-                                                                            0.22,
+                                                                            0.2,
                                                                       )
-                                                                  : StitchTheme
-                                                                      .border,
+                                                                  : _statusBg(
+                                                                    status,
+                                                                  ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                999,
+                                                              ),
                                                         ),
-                                                      ),
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: <Widget>[
-                                                          if (attachmentIsImage &&
-                                                              attachmentUrl
-                                                                  .isNotEmpty)
-                                                            ClipRRect(
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    10,
-                                                                  ),
-                                                              child: Image.network(
-                                                                attachmentUrl,
-                                                                height: 150,
-                                                                width:
-                                                                    double
-                                                                        .infinity,
-                                                                fit:
-                                                                    BoxFit
-                                                                        .cover,
-                                                                errorBuilder:
-                                                                    (
-                                                                      _,
-                                                                      __,
-                                                                      ___,
-                                                                    ) => Container(
-                                                                      height:
-                                                                          78,
-                                                                      alignment:
-                                                                          Alignment
-                                                                              .center,
-                                                                      color:
-                                                                          Colors
-                                                                              .black12,
-                                                                      child: Text(
-                                                                        'Không xem trước được ảnh',
-                                                                        style: TextStyle(
-                                                                          color:
-                                                                              isUser
-                                                                                  ? Colors.white
-                                                                                  : StitchTheme.textMuted,
-                                                                          fontSize:
-                                                                              12,
-                                                                        ),
-                                                                      ),
+                                                        child: Text(
+                                                          _statusLabel(status),
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            color:
+                                                                isUser
+                                                                    ? Colors
+                                                                        .white
+                                                                    : _statusText(
+                                                                      status,
                                                                     ),
-                                                              ),
-                                                            )
-                                                          else
-                                                            Row(
-                                                              children: <
-                                                                Widget
-                                                              >[
-                                                                Container(
-                                                                  width: 34,
-                                                                  height: 34,
-                                                                  decoration: BoxDecoration(
-                                                                    color:
-                                                                        isUser
-                                                                            ? Colors.white.withValues(
-                                                                              alpha:
-                                                                                  0.2,
-                                                                            )
-                                                                            : const Color(
-                                                                              0xFFE2E8F0,
-                                                                            ),
-                                                                    borderRadius:
-                                                                        BorderRadius.circular(
-                                                                          8,
-                                                                        ),
-                                                                  ),
-                                                                  alignment:
-                                                                      Alignment
-                                                                          .center,
-                                                                  child: Text(
-                                                                    attachmentIsImage
-                                                                        ? '🖼️'
-                                                                        : '📎',
-                                                                    style: const TextStyle(
-                                                                      fontSize:
-                                                                          16,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                                const SizedBox(
-                                                                  width: 8,
-                                                                ),
-                                                                Expanded(
-                                                                  child: Column(
-                                                                    crossAxisAlignment:
-                                                                        CrossAxisAlignment
-                                                                            .start,
-                                                                    children: <
-                                                                      Widget
-                                                                    >[
-                                                                      Text(
-                                                                        attachmentName,
-                                                                        maxLines:
-                                                                            1,
-                                                                        overflow:
-                                                                            TextOverflow.ellipsis,
-                                                                        style: TextStyle(
-                                                                          fontWeight:
-                                                                              FontWeight.w600,
-                                                                          color:
-                                                                              isUser
-                                                                                  ? Colors.white
-                                                                                  : StitchTheme.textMain,
-                                                                        ),
-                                                                      ),
-                                                                      if (attachmentSize
-                                                                          .isNotEmpty)
-                                                                        Text(
-                                                                          attachmentSize,
-                                                                          style: TextStyle(
-                                                                            fontSize:
-                                                                                11,
-                                                                            color:
-                                                                                isUser
-                                                                                    ? Colors.white.withValues(
-                                                                                      alpha:
-                                                                                          0.9,
-                                                                                    )
-                                                                                    : StitchTheme.textMuted,
-                                                                          ),
-                                                                        ),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          if (attachmentIsImage &&
-                                                              attachmentUrl
-                                                                  .isNotEmpty)
-                                                            Padding(
-                                                              padding:
-                                                                  const EdgeInsets.only(
-                                                                    top: 6,
-                                                                  ),
-                                                              child: Text(
-                                                                '$attachmentName${attachmentSize.isNotEmpty ? ' • $attachmentSize' : ''}',
-                                                                style: TextStyle(
-                                                                  fontSize: 11,
-                                                                  color:
-                                                                      isUser
-                                                                          ? Colors.white.withValues(
-                                                                            alpha:
-                                                                                0.9,
-                                                                          )
-                                                                          : StitchTheme
-                                                                              .textMuted,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              const SizedBox(height: 8),
-                                              Wrap(
-                                                spacing: 8,
-                                                runSpacing: 6,
-                                                crossAxisAlignment:
-                                                    WrapCrossAlignment.center,
-                                                children: <Widget>[
-                                                  if (timeLabel.isNotEmpty)
-                                                    Text(
-                                                      timeLabel,
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        color:
-                                                            isUser
-                                                                ? Colors.white
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.88,
-                                                                    )
-                                                                : StitchTheme
-                                                                    .textMuted,
-                                                      ),
-                                                    ),
-                                                  Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 8,
-                                                          vertical: 4,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color:
-                                                          isUser
-                                                              ? Colors.white
-                                                                  .withValues(
-                                                                    alpha: 0.2,
-                                                                  )
-                                                              : _statusBg(
-                                                                status,
-                                                              ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            999,
                                                           ),
-                                                    ),
-                                                    child: Text(
-                                                      _statusLabel(status),
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color:
-                                                            isUser
-                                                                ? Colors.white
-                                                                : _statusText(
-                                                                  status,
-                                                                ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  if (error.isNotEmpty)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            top: 8,
+                                                          ),
+                                                      child: Text(
+                                                        error,
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          color:
+                                                              isUser
+                                                                  ? Colors.white
+                                                                  : const Color(
+                                                                    0xFFB91C1C,
+                                                                  ),
+                                                        ),
                                                       ),
                                                     ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+                                  if (_sendingPreview != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 10,
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Flexible(
+                                            child: Container(
+                                              constraints: BoxConstraints(
+                                                maxWidth:
+                                                    MediaQuery.of(
+                                                      context,
+                                                    ).size.width *
+                                                    0.82,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 10,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: StitchTheme.primary,
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                                boxShadow: const <BoxShadow>[
+                                                  BoxShadow(
+                                                    color: Color(0x330F172A),
+                                                    blurRadius: 14,
+                                                    offset: Offset(0, 6),
                                                   ),
                                                 ],
                                               ),
-                                              if (error.isNotEmpty)
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        top: 8,
-                                                      ),
-                                                  child: Text(
-                                                    error,
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color:
-                                                          isUser
-                                                              ? Colors.white
-                                                              : const Color(
-                                                                0xFFB91C1C,
-                                                              ),
-                                                    ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: <Widget>[
+                                                  _buildMessageMarkdown(
+                                                    content:
+                                                        (_sendingPreview?['content'] ??
+                                                                '')
+                                                            .toString(),
+                                                    isUser: true,
                                                   ),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }),
-                              if (_sendingPreview != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Flexible(
-                                        child: Container(
-                                          constraints: BoxConstraints(
-                                            maxWidth:
-                                                MediaQuery.of(
-                                                  context,
-                                                ).size.width *
-                                                0.82,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 10,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: StitchTheme.primary,
-                                            borderRadius: BorderRadius.circular(
-                                              14,
-                                            ),
-                                            boxShadow: const <BoxShadow>[
-                                              BoxShadow(
-                                                color: Color(0x330F172A),
-                                                blurRadius: 14,
-                                                offset: Offset(0, 6),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: <Widget>[
-                                              Text(
-                                                ((_sendingPreview?['content'] ??
-                                                            '')
-                                                        .toString()
-                                                        .trim()
-                                                        .isEmpty)
-                                                    ? 'Tin nhắn chỉ có tệp đính kèm.'
-                                                    : (_sendingPreview?['content'] ??
-                                                            '')
-                                                        .toString(),
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  height: 1.45,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                              if ((_sendingPreview?['attachment_name'] ??
-                                                      '')
-                                                  .toString()
-                                                  .isNotEmpty)
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        top: 8,
-                                                      ),
-                                                  child: Container(
-                                                    width: double.infinity,
-                                                    padding:
-                                                        const EdgeInsets.all(8),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.white
-                                                          .withValues(
-                                                            alpha: 0.14,
+                                                  if ((_sendingPreview?['attachment_name'] ??
+                                                          '')
+                                                      .toString()
+                                                      .isNotEmpty)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            top: 8,
                                                           ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            12,
-                                                          ),
-                                                      border: Border.all(
-                                                        color: Colors.white
-                                                            .withValues(
-                                                              alpha: 0.22,
+                                                      child: Container(
+                                                        width: double.infinity,
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              8,
                                                             ),
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      children: <Widget>[
-                                                        const Text(
-                                                          '📎',
-                                                          style: TextStyle(
-                                                            fontSize: 16,
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.white
+                                                              .withValues(
+                                                                alpha: 0.14,
+                                                              ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                12,
+                                                              ),
+                                                          border: Border.all(
+                                                            color: Colors.white
+                                                                .withValues(
+                                                                  alpha: 0.22,
+                                                                ),
                                                           ),
                                                         ),
-                                                        const SizedBox(
-                                                          width: 8,
-                                                        ),
-                                                        Expanded(
-                                                          child: Text(
-                                                            (_sendingPreview?['attachment_name'] ??
-                                                                    '')
-                                                                .toString(),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            style:
-                                                                const TextStyle(
+                                                        child: Row(
+                                                          children: <Widget>[
+                                                            const Text(
+                                                              '📎',
+                                                              style: TextStyle(
+                                                                fontSize: 16,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            Expanded(
+                                                              child: Text(
+                                                                (_sendingPreview?['attachment_name'] ??
+                                                                        '')
+                                                                    .toString(),
+                                                                maxLines: 1,
+                                                                overflow:
+                                                                    TextOverflow
+                                                                        .ellipsis,
+                                                                style: const TextStyle(
                                                                   color:
                                                                       Colors
                                                                           .white,
@@ -1021,77 +1187,88 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
                                                                           .w600,
                                                                   fontSize: 12,
                                                                 ),
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              (_sendingPreview?['attachment_size'] ??
+                                                                      '')
+                                                                  .toString(),
+                                                              style: const TextStyle(
+                                                                color:
+                                                                    Colors
+                                                                        .white70,
+                                                                fontSize: 11,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  const SizedBox(height: 8),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 4,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white
+                                                          .withValues(
+                                                            alpha: 0.22,
+                                                          ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
+                                                          ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: <Widget>[
+                                                        Container(
+                                                          width: 7,
+                                                          height: 7,
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.white,
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
                                                           ),
                                                         ),
+                                                        const SizedBox(
+                                                          width: 6,
+                                                        ),
                                                         Text(
-                                                          (_sendingPreview?['attachment_size'] ??
-                                                                  '')
-                                                              .toString(),
-                                                          style: const TextStyle(
-                                                            color:
-                                                                Colors.white70,
-                                                            fontSize: 11,
-                                                          ),
+                                                          ((_sendingPreview?['failed'] ??
+                                                                      false) ==
+                                                                  true)
+                                                              ? 'Gửi thất bại'
+                                                              : 'Đang gửi...',
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 11,
+                                                                color:
+                                                                    Colors
+                                                                        .white,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                              ),
                                                         ),
                                                       ],
                                                     ),
                                                   ),
-                                                ),
-                                              const SizedBox(height: 8),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 4,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white
-                                                      .withValues(alpha: 0.22),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        999,
-                                                      ),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: <Widget>[
-                                                    Container(
-                                                      width: 7,
-                                                      height: 7,
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.white,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              999,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      ((_sendingPreview?['failed'] ??
-                                                                  false) ==
-                                                              true)
-                                                          ? 'Gửi thất bại'
-                                                          : 'Đang gửi...',
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                        color: Colors.white,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
+                                                ],
                                               ),
-                                            ],
+                                            ),
                                           ),
-                                        ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
-                                ),
-                            ],
+                                    ),
+                                ],
+                              ),
+                            ),
                           ),
                 ),
               ),

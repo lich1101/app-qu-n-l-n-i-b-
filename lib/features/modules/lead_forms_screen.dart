@@ -49,12 +49,12 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> formRows =
-        await widget.apiService.getLeadForms(widget.token);
-    final List<Map<String, dynamic>> types =
-        await widget.apiService.getLeadTypes(widget.token);
-    final List<Map<String, dynamic>> deptRows =
-        await widget.apiService.getDepartments(widget.token);
+    final List<Map<String, dynamic>> formRows = await widget.apiService
+        .getLeadForms(widget.token);
+    final List<Map<String, dynamic>> types = await widget.apiService
+        .getLeadTypes(widget.token);
+    final List<Map<String, dynamic>> deptRows = await widget.apiService
+        .getDepartments(widget.token);
     if (!mounted) return;
     setState(() {
       loading = false;
@@ -80,31 +80,36 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
       setState(() => message = 'Vui lòng nhập tên form.');
       return false;
     }
-    final bool ok = editingId == null
-        ? await widget.apiService.createLeadForm(
-            widget.token,
-            name: nameCtrl.text.trim(),
-            slug: slugCtrl.text.trim().isEmpty ? null : slugCtrl.text.trim(),
-            leadTypeId: leadTypeId,
-            departmentId: departmentId,
-            redirectUrl:
-                redirectCtrl.text.trim().isEmpty ? null : redirectCtrl.text.trim(),
-            description:
-                descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-            isActive: isActive,
-          )
-        : await widget.apiService.updateLeadForm(
-            widget.token,
-            editingId!,
-            name: nameCtrl.text.trim(),
-            leadTypeId: leadTypeId,
-            departmentId: departmentId,
-            redirectUrl:
-                redirectCtrl.text.trim().isEmpty ? null : redirectCtrl.text.trim(),
-            description:
-                descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-            isActive: isActive,
-          );
+    final bool ok =
+        editingId == null
+            ? await widget.apiService.createLeadForm(
+              widget.token,
+              name: nameCtrl.text.trim(),
+              slug: slugCtrl.text.trim().isEmpty ? null : slugCtrl.text.trim(),
+              leadTypeId: leadTypeId,
+              departmentId: departmentId,
+              redirectUrl:
+                  redirectCtrl.text.trim().isEmpty
+                      ? null
+                      : redirectCtrl.text.trim(),
+              description:
+                  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+              isActive: isActive,
+            )
+            : await widget.apiService.updateLeadForm(
+              widget.token,
+              editingId!,
+              name: nameCtrl.text.trim(),
+              leadTypeId: leadTypeId,
+              departmentId: departmentId,
+              redirectUrl:
+                  redirectCtrl.text.trim().isEmpty
+                      ? null
+                      : redirectCtrl.text.trim(),
+              description:
+                  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+              isActive: isActive,
+            );
     if (!mounted) return false;
     setState(() => message = ok ? 'Đã lưu form.' : 'Lưu form thất bại.');
     if (ok) {
@@ -118,6 +123,15 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
     final bool ok = await widget.apiService.deleteLeadForm(widget.token, id);
     if (!mounted) return;
     setState(() => message = ok ? 'Đã xóa form.' : 'Xóa form thất bại.');
+    if (ok) await _fetch();
+  }
+
+  Future<void> _duplicate(int id) async {
+    final bool ok = await widget.apiService.duplicateLeadForm(widget.token, id);
+    if (!mounted) return;
+    setState(
+      () => message = ok ? 'Đã sao chép form.' : 'Sao chép form thất bại.',
+    );
     if (ok) await _fetch();
   }
 
@@ -172,23 +186,27 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: slugCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Slug (không dấu)'),
+                      decoration: const InputDecoration(
+                        labelText: 'Slug (không dấu)',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
                       value: leadTypeId,
-                      decoration:
-                          const InputDecoration(
-                              labelText: 'Trạng thái khách hàng tiềm năng'),
-                      items: leadTypes
-                          .map((type) => DropdownMenuItem<int>(
-                                value: type['id'] as int,
-                                child: Text((type['name'] ?? '').toString()),
-                              ))
-                          .toList(),
-                      onChanged: (value) =>
-                          setSheetState(() => leadTypeId = value),
+                      decoration: const InputDecoration(
+                        labelText: 'Trạng thái khách hàng tiềm năng',
+                      ),
+                      items:
+                          leadTypes
+                              .map(
+                                (type) => DropdownMenuItem<int>(
+                                  value: type['id'] as int,
+                                  child: Text((type['name'] ?? '').toString()),
+                                ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (value) => setSheetState(() => leadTypeId = value),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
@@ -196,20 +214,24 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Phòng ban nhận khách hàng tiềm năng',
                       ),
-                      items: departments
-                          .map((dept) => DropdownMenuItem<int>(
-                                value: dept['id'] as int,
-                                child: Text((dept['name'] ?? '').toString()),
-                              ))
-                          .toList(),
-                      onChanged: (value) =>
-                          setSheetState(() => departmentId = value),
+                      items:
+                          departments
+                              .map(
+                                (dept) => DropdownMenuItem<int>(
+                                  value: dept['id'] as int,
+                                  child: Text((dept['name'] ?? '').toString()),
+                                ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (value) => setSheetState(() => departmentId = value),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: redirectCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Redirect URL'),
+                      decoration: const InputDecoration(
+                        labelText: 'Redirect URL',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -222,8 +244,8 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Kích hoạt form'),
                       value: isActive,
-                      onChanged: (value) =>
-                          setSheetState(() => isActive = value),
+                      onChanged:
+                          (value) => setSheetState(() => isActive = value),
                     ),
                     if (message.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 8),
@@ -253,7 +275,9 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                                 setSheetState(() {});
                               }
                             },
-                            child: Text(editingId == null ? 'Tạo mới' : 'Cập nhật'),
+                            child: Text(
+                              editingId == null ? 'Tạo mới' : 'Cập nhật',
+                            ),
                           ),
                         ),
                       ],
@@ -276,66 +300,75 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
       appBar: AppBar(
         title: const Text('Form tư vấn'),
         actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetch,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _openForm(),
-          ),
+          IconButton(icon: const Icon(Icons.add), onPressed: () => _openForm()),
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Expanded(
-                  child: Text(
-                    'Danh sách form',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+        child: RefreshIndicator(
+          onRefresh: _fetch,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Expanded(
+                    child: Text(
+                      'Danh sách form',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _openForm(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Thêm mới'),
-                ),
-              ],
-            ),
-            if (message.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(message,
-                    style: const TextStyle(color: StitchTheme.textMuted)),
+                  ElevatedButton.icon(
+                    onPressed: () => _openForm(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Thêm mới'),
+                  ),
+                ],
               ),
-            const SizedBox(height: 12),
-            if (loading)
-              const Center(child: CircularProgressIndicator())
-            else ...forms.map((form) {
-              return Card(
-                child: ListTile(
-                  title: Text((form['name'] ?? '').toString()),
-                  subtitle: Text('Slug: ${(form['slug'] ?? '').toString()}'),
-                  trailing: Wrap(
-                    spacing: 8,
-                    children: <Widget>[
-                      IconButton(
-                        icon: const Icon(Icons.edit, size: 18),
-                        onPressed: () => _openForm(form: form),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, size: 18),
-                        onPressed: () => _delete(form['id'] as int),
-                      ),
-                    ],
+              if (message.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    message,
+                    style: const TextStyle(color: StitchTheme.textMuted),
                   ),
                 ),
-              );
-            }),
-          ],
+              const SizedBox(height: 12),
+              if (loading)
+                const Center(child: CircularProgressIndicator())
+              else
+                ...forms.map((form) {
+                  return Card(
+                    child: ListTile(
+                      title: Text((form['name'] ?? '').toString()),
+                      subtitle: Text(
+                        'Slug: ${(form['slug'] ?? '').toString()}',
+                      ),
+                      trailing: Wrap(
+                        spacing: 4,
+                        children: <Widget>[
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 18),
+                            onPressed: () => _openForm(form: form),
+                            tooltip: 'Sửa',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.copy, size: 18),
+                            onPressed: () => _duplicate(form['id'] as int),
+                            tooltip: 'Sao chép',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, size: 18),
+                            onPressed: () => _delete(form['id'] as int),
+                            tooltip: 'Xóa',
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+            ],
+          ),
         ),
       ),
     );

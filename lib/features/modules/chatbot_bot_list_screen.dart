@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_env.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'chatbot_assistant_screen.dart';
@@ -21,6 +22,46 @@ class ChatbotBotListScreen extends StatefulWidget {
 class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _bots = <Map<String, dynamic>>[];
+
+  String _normalizeBotIcon(dynamic value) {
+    final String icon = (value ?? '').toString().trim();
+    if (icon.isEmpty) return '🤖';
+    return icon;
+  }
+
+  Widget _buildBotAvatar({
+    required String avatarUrl,
+    required String fallbackIcon,
+    double radius = 20,
+  }) {
+    final String resolvedAvatarUrl = AppEnv.resolveMediaUrl(avatarUrl);
+    final String safeIcon = _normalizeBotIcon(fallbackIcon);
+    if (resolvedAvatarUrl.isEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: StitchTheme.primary.withValues(alpha: 0.14),
+        child: Text(safeIcon, style: const TextStyle(fontSize: 18)),
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: StitchTheme.primary.withValues(alpha: 0.14),
+      child: ClipOval(
+        child: Image.network(
+          resolvedAvatarUrl,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          errorBuilder:
+              (BuildContext context, Object error, StackTrace? stackTrace) =>
+                  Center(
+                    child: Text(safeIcon, style: const TextStyle(fontSize: 18)),
+                  ),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -55,8 +96,7 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
 
   Future<void> _openBot(Map<String, dynamic> bot) async {
     final dynamic idRaw = bot['id'];
-    final int? botId =
-        idRaw is int ? idRaw : int.tryParse('${idRaw ?? ''}');
+    final int? botId = idRaw is int ? idRaw : int.tryParse('${idRaw ?? ''}');
     if (botId == null || botId <= 0) {
       _showSnack('Bot không hợp lệ.');
       return;
@@ -77,21 +117,15 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Danh sách chatbot'),
-        actions: <Widget>[
-          IconButton(
-            onPressed: _loading ? null : _loadBots,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Danh sách chatbot')),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadBots,
@@ -135,9 +169,11 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
                 final String name = (bot['name'] ?? 'Trợ lý AI').toString();
                 final String description =
                     (bot['description'] ?? '').toString().trim();
-                final String icon = (bot['icon'] ?? '🤖').toString();
-                final String model = (bot['model'] ?? '').toString();
-                final String avatarUrl = (bot['avatar_url'] ?? '').toString().trim();
+                final String icon = _normalizeBotIcon(bot['icon']);
+                final String avatarUrl =
+                    (bot['avatar_url'] ?? bot['avatar'] ?? '')
+                        .toString()
+                        .trim();
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -152,14 +188,9 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
                       horizontal: 14,
                       vertical: 8,
                     ),
-                    leading: CircleAvatar(
-                      backgroundColor: StitchTheme.primary.withValues(alpha: 0.14),
-                      backgroundImage: avatarUrl.isNotEmpty
-                          ? NetworkImage(avatarUrl)
-                          : null,
-                      child: avatarUrl.isNotEmpty
-                          ? null
-                          : Text(icon, style: const TextStyle(fontSize: 18)),
+                    leading: _buildBotAvatar(
+                      avatarUrl: avatarUrl,
+                      fallbackIcon: icon,
                     ),
                     title: Row(
                       children: <Widget>[
@@ -199,7 +230,9 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            description.isEmpty ? 'Model: ${model.isEmpty ? 'chưa cấu hình' : model}' : description,
+                            description.isEmpty
+                                ? 'Trợ lý AI cho hội thoại nội bộ.'
+                                : description,
                             style: const TextStyle(
                               color: StitchTheme.textMuted,
                               height: 1.35,
@@ -221,7 +254,7 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: Text(
-                                  configured ? 'Đã cấu hình' : 'Thiếu key/model',
+                                  configured ? 'Đã cấu hình' : 'Thiếu cấu hình',
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,

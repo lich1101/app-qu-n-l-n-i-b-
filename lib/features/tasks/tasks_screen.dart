@@ -88,7 +88,8 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   bool get _canUpdateStatus {
-    return <String>['admin', 'quan_ly'].contains(widget.currentUserRole);
+    // Web: PUT /tasks/{task} -> role:admin,quan_ly,nhan_vien
+    return <String>['admin', 'quan_ly', 'nhan_vien'].contains(widget.currentUserRole);
   }
 
   bool get _canImportTasks {

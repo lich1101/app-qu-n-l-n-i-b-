@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../config/app_env.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/services/app_firebase.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -873,13 +874,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   String _formatTime(String? raw) {
     if (raw == null || raw.isEmpty) return '';
-    final DateTime? date = DateTime.tryParse(raw);
+    final DateTime? date = VietnamTime.parse(raw);
     if (date == null) return raw;
-    final DateTime local = date.toLocal();
-    return '${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')} '
-        '${local.day.toString().padLeft(2, '0')}/'
-        '${local.month.toString().padLeft(2, '0')}';
+    return '${VietnamTime.formatTime(date)} ${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}';
   }
 
   String _initials(String name) {

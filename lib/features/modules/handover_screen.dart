@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 import '../projects/project_detail_screen.dart';
@@ -112,14 +113,9 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
 
   String _formatDateTime(String raw) {
     if (raw.isEmpty) return '—';
-    final DateTime? dt = DateTime.tryParse(raw);
+    final DateTime? dt = VietnamTime.parse(raw);
     if (dt == null) return raw;
-    final DateTime local = dt.toLocal();
-    return '${local.day.toString().padLeft(2, '0')}/'
-        '${local.month.toString().padLeft(2, '0')}/'
-        '${local.year} '
-        '${local.hour.toString().padLeft(2, '0')}:'
-        '${local.minute.toString().padLeft(2, '0')}';
+    return VietnamTime.formatDateTime(dt);
   }
 
   Future<void> _openProject(Map<String, dynamic> project) async {
@@ -337,12 +333,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
             .length;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Bàn giao dự án'),
-        actions: <Widget>[
-          IconButton(onPressed: _fetch, icon: const Icon(Icons.refresh)),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Bàn giao dự án')),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _fetch,
@@ -406,11 +397,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                       title: 'Bộ lọc bàn giao',
                       subtitle:
                           'Tìm nhanh theo dự án, hợp đồng hoặc người gửi phiếu bàn giao.',
-                      trailing: OutlinedButton.icon(
-                        onPressed: _fetch,
-                        icon: const Icon(Icons.refresh, size: 18),
-                        label: const Text('Tải lại'),
-                      ),
+                      trailing: null,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[

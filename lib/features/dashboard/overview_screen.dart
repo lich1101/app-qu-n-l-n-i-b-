@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../config/app_env.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/stitch_widgets.dart';
+import '../../data/services/mobile_api_service.dart';
+import 'admin_revenue_charts.dart';
 
 class OverviewScreen extends StatelessWidget {
   const OverviewScreen({
@@ -15,6 +18,9 @@ class OverviewScreen extends StatelessWidget {
     this.unreadChats = 0,
     this.onOpenNotifications,
     this.onOpenChat,
+    this.token,
+    this.apiService,
+    this.currentUserRole = '',
   });
 
   final Map<String, dynamic> summary;
@@ -25,6 +31,9 @@ class OverviewScreen extends StatelessWidget {
   final int unreadChats;
   final VoidCallback? onOpenNotifications;
   final VoidCallback? onOpenChat;
+  final String? token;
+  final MobileApiService? apiService;
+  final String currentUserRole;
 
   int _readInt(List<String> keys, {int fallback = 0}) {
     for (final String key in keys) {
@@ -117,7 +126,7 @@ class OverviewScreen extends StatelessWidget {
     final String avatarUrl = AppEnv.resolveMediaUrl(
       (authUser?['avatar_url'] ?? '').toString(),
     );
-    final String dateLabel = _formatDate(DateTime.now());
+    final String dateLabel = _formatDate(VietnamTime.now());
     final bool compact = media.size.width < 380;
     final double bottomInset = media.padding.bottom + (compact ? 94 : 90);
 
@@ -303,6 +312,17 @@ class OverviewScreen extends StatelessWidget {
             },
           ),
           const SizedBox(height: 20),
+          if (token != null &&
+              token!.isNotEmpty &&
+              apiService != null &&
+              currentUserRole.isNotEmpty) ...<Widget>[
+            AdminRevenueCharts(
+              token: token!,
+              apiService: apiService!,
+              currentUserRole: currentUserRole,
+            ),
+            const SizedBox(height: 20),
+          ],
           GridView.count(
             crossAxisCount: 2,
             childAspectRatio: 1.7,

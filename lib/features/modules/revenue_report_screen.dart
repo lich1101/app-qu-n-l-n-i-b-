@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
-import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class RevenueReportScreen extends StatefulWidget {
@@ -24,6 +23,7 @@ class RevenueReportScreen extends StatefulWidget {
 
 class _RevenueReportScreenState extends State<RevenueReportScreen> {
   bool loading = false;
+  bool _filterExpanded = false;
   Map<String, dynamic> report = <String, dynamic>{};
   String availableFrom = '';
   String availableTo = '';
@@ -81,6 +81,12 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
   @override
   void initState() {
     super.initState();
+    // Default to current month
+    final DateTime now = DateTime.now();
+    final DateTime monthStart = DateTime(now.year, now.month, 1);
+    final DateTime monthEnd = DateTime(now.year, now.month + 1, 0);
+    dateFromCtrl.text = _fmtDate(monthStart);
+    dateToCtrl.text = _fmtDate(monthEnd);
     _fetch();
   }
 
@@ -130,19 +136,19 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     _fetch();
   }
 
+  String get _screenTitle {
+    switch (widget.currentUserRole) {
+      case 'admin':
+        return 'Báo cáo doanh thu công ty';
+      case 'quan_ly':
+        return 'Báo cáo doanh thu phòng ban';
+      default:
+        return 'Báo cáo doanh thu cá nhân';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (widget.currentUserRole != 'admin') {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Báo cáo doanh thu công ty')),
-        body: const Center(
-          child: Text(
-            'Chỉ admin được xem báo cáo doanh thu công ty.',
-            style: TextStyle(color: StitchTheme.textMuted),
-          ),
-        ),
-      );
-    }
 
     final Map<String, dynamic> periodTotals =
         (report['period_totals'] as Map<String, dynamic>?) ??
@@ -165,201 +171,310 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
             : 'Toàn thời gian';
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Báo cáo doanh thu công ty'),
-        actions: <Widget>[
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetch),
-        ],
-      ),
+      appBar: AppBar(title: Text(_screenTitle)),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          children: <Widget>[
-            _FilterCard(
-              dateFromCtrl: dateFromCtrl,
-              dateToCtrl: dateToCtrl,
-              targetCtrl: targetCtrl,
-              onPickFrom: () => _pickDate(dateFromCtrl),
-              onPickTo: () => _pickDate(dateToCtrl),
-              onApply: _fetch,
-              onReset: _resetToFullRange,
-              availableFrom: availableFrom,
-              availableTo: availableTo,
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: <Widget>[
-                _SummaryCard(
-                  title: 'Doanh thu trong kỳ',
-                  value: _formatCurrency(_asDouble(periodTotals['revenue'])),
-                  note:
-                      _asDouble(periodTotals['target_revenue']) > 0
-                          ? 'Đạt ${_asDouble(periodTotals['target_rate']).toStringAsFixed(1)}% chỉ tiêu'
-                          : periodLabel,
-                ),
-                _SummaryCard(
-                  title: 'Dòng tiền trong kỳ',
-                  value: _formatCurrency(_asDouble(periodTotals['cashflow'])),
-                  note: 'Tổng thanh toán của các hợp đồng trong giai đoạn lọc',
-                ),
-                _SummaryCard(
-                  title: 'Công nợ còn lại',
-                  value: _formatCurrency(_asDouble(periodTotals['debt'])),
-                  note: 'Phần chưa thanh toán của các hợp đồng đang xem',
-                ),
-                _SummaryCard(
-                  title: 'Chi phí phát sinh',
-                  value: _formatCurrency(_asDouble(periodTotals['costs'])),
-                  note:
-                      '${periodTotals['contracts_total'] ?? 0} hợp đồng đã duyệt trong khoảng lọc',
+        child: RefreshIndicator(
+          onRefresh: _fetch,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            children: <Widget>[
+              // ── Compact period bar ──
+              _CompactPeriodBar(
+                periodLabel: periodLabel,
+                onTapExpand: () => setState(() => _filterExpanded = !_filterExpanded),
+                expanded: _filterExpanded,
+                onReset: _resetToFullRange,
+              ),
+              if (_filterExpanded) ...<Widget>[
+                const SizedBox(height: 10),
+                _CompactFilterPanel(
+                  dateFromCtrl: dateFromCtrl,
+                  dateToCtrl: dateToCtrl,
+                  targetCtrl: targetCtrl,
+                  onPickFrom: () => _pickDate(dateFromCtrl),
+                  onPickTo: () => _pickDate(dateToCtrl),
+                  onApply: () {
+                    setState(() => _filterExpanded = false);
+                    _fetch();
+                  },
                 ),
               ],
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: 'Doanh thu theo sản phẩm',
-              subtitle:
-                  'Biểu đồ tròn tính trên toàn bộ hợp đồng đã duyệt trong khoảng thời gian đang lọc.',
-              child: _ProductPieCard(
-                rows: productBreakdown,
-                formatCompactCurrency: _formatCompactCurrency,
+              const SizedBox(height: 16),
+              // ── 2x2 Summary grid ──
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Doanh thu',
+                      value: _formatCompactCurrency(_asDouble(periodTotals['revenue'])),
+                      icon: Icons.trending_up_rounded,
+                      color: const Color(0xFF3B82F6),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Dòng tiền',
+                      value: _formatCompactCurrency(_asDouble(periodTotals['cashflow'])),
+                      icon: Icons.account_balance_wallet_rounded,
+                      color: const Color(0xFF10B981),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: 'Doanh thu theo nhân viên',
-              subtitle:
-                  'Nhân viên thu theo hợp đồng dùng đúng người thu đang đứng tên trên hợp đồng.',
-              child: _StaffRevenueCard(
-                rows: staffBreakdown,
-                formatCompactCurrency: _formatCompactCurrency,
+              const SizedBox(height: 12),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Công nợ',
+                      value: _formatCompactCurrency(_asDouble(periodTotals['debt'])),
+                      icon: Icons.receipt_long_rounded,
+                      color: const Color(0xFFF59E0B),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Chi phí',
+                      value: _formatCompactCurrency(_asDouble(periodTotals['costs'])),
+                      icon: Icons.payments_rounded,
+                      color: const Color(0xFFEF4444),
+                      subtitle: '${periodTotals['contracts_total'] ?? 0} HĐ',
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: 'Báo cáo chi tiết theo ngày',
-              subtitle:
-                  'Mỗi ngày được tổng hợp theo doanh thu hợp đồng, dòng tiền, công nợ và chi phí phát sinh.',
-              child:
-                  loading
-                      ? const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                      : rows.isEmpty
-                      ? const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                          'Chưa có dữ liệu báo cáo.',
-                          style: TextStyle(color: StitchTheme.textMuted),
-                        ),
-                      )
-                      : SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          columnSpacing: 18,
-                          columns: const <DataColumn>[
-                            DataColumn(label: Text('Ngày')),
-                            DataColumn(label: Text('Doanh thu')),
-                            DataColumn(label: Text('Dòng tiền')),
-                            DataColumn(label: Text('Công nợ')),
-                            DataColumn(label: Text('Chi phí')),
-                            DataColumn(label: Text('Doanh thu TL')),
-                            DataColumn(label: Text('Dòng tiền TL')),
-                            DataColumn(label: Text('Công nợ TL')),
-                            DataColumn(label: Text('Chi phí TL')),
-                          ],
-                          rows:
-                              rows.map((Map<String, dynamic> item) {
-                                final String date =
-                                    (item['date'] ?? '').toString();
-                                return DataRow(
-                                  cells: <DataCell>[
-                                    DataCell(Text(_displayDate(date))),
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(
-                                          _asDouble(item['revenue_daily']),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(
-                                          _asDouble(item['cashflow_daily']),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(
-                                          _asDouble(item['debt_daily']),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(
-                                          _asDouble(item['costs_daily']),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(
-                                          _asDouble(item['revenue_cumulative']),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(
-                                          _asDouble(
-                                            item['cashflow_cumulative'],
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: 'Doanh thu theo sản phẩm',
+                subtitle:
+                    'Biểu đồ tròn tính trên toàn bộ hợp đồng đã duyệt trong khoảng thời gian đang lọc.',
+                child: _ProductPieCard(
+                  rows: productBreakdown,
+                  formatCompactCurrency: _formatCompactCurrency,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: 'Doanh thu theo nhân viên',
+                subtitle:
+                    'Nhân viên thu theo hợp đồng dùng đúng người thu đang đứng tên trên hợp đồng.',
+                child: _StaffRevenueCard(
+                  rows: staffBreakdown,
+                  formatCompactCurrency: _formatCompactCurrency,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: 'Báo cáo chi tiết theo ngày',
+                subtitle:
+                    'Mỗi ngày được tổng hợp theo doanh thu hợp đồng, dòng tiền, công nợ và chi phí phát sinh.',
+                child:
+                    loading
+                        ? const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                        : rows.isEmpty
+                        ? const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'Chưa có dữ liệu báo cáo.',
+                            style: TextStyle(color: StitchTheme.textMuted),
+                          ),
+                        )
+                        : SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            columnSpacing: 18,
+                            columns: const <DataColumn>[
+                              DataColumn(label: Text('Ngày')),
+                              DataColumn(label: Text('Doanh thu')),
+                              DataColumn(label: Text('Dòng tiền')),
+                              DataColumn(label: Text('Công nợ')),
+                              DataColumn(label: Text('Chi phí')),
+                              DataColumn(label: Text('Doanh thu TL')),
+                              DataColumn(label: Text('Dòng tiền TL')),
+                              DataColumn(label: Text('Công nợ TL')),
+                              DataColumn(label: Text('Chi phí TL')),
+                            ],
+                            rows:
+                                rows.map((Map<String, dynamic> item) {
+                                  final String date =
+                                      (item['date'] ?? '').toString();
+                                  return DataRow(
+                                    cells: <DataCell>[
+                                      DataCell(Text(_displayDate(date))),
+                                      DataCell(
+                                        Text(
+                                          _formatCurrency(
+                                            _asDouble(item['revenue_daily']),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(
-                                          _asDouble(item['debt_cumulative']),
+                                      DataCell(
+                                        Text(
+                                          _formatCurrency(
+                                            _asDouble(item['cashflow_daily']),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        _formatCurrency(
-                                          _asDouble(item['costs_cumulative']),
+                                      DataCell(
+                                        Text(
+                                          _formatCurrency(
+                                            _asDouble(item['debt_daily']),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
+                                      DataCell(
+                                        Text(
+                                          _formatCurrency(
+                                            _asDouble(item['costs_daily']),
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          _formatCurrency(
+                                            _asDouble(
+                                              item['revenue_cumulative'],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          _formatCurrency(
+                                            _asDouble(
+                                              item['cashflow_cumulative'],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          _formatCurrency(
+                                            _asDouble(item['debt_cumulative']),
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          _formatCurrency(
+                                            _asDouble(item['costs_cumulative']),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }).toList(),
+                          ),
                         ),
-                      ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _FilterCard extends StatelessWidget {
-  const _FilterCard({
+class _CompactPeriodBar extends StatelessWidget {
+  const _CompactPeriodBar({
+    required this.periodLabel,
+    required this.onTapExpand,
+    required this.expanded,
+    required this.onReset,
+  });
+
+  final String periodLabel;
+  final VoidCallback onTapExpand;
+  final bool expanded;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: <Color>[Color(0xFFF8FAFC), Color(0xFFF1F5F9)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.date_range_rounded, size: 18, color: Color(0xFF64748B)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              periodLabel,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: Color(0xFF334155),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: onReset,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Tất cả',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF3B82F6),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onTapExpand,
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: expanded ? const Color(0xFF3B82F6) : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: const <BoxShadow>[
+                  BoxShadow(
+                    color: Color(0x0A0F172A),
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Icon(
+                expanded ? Icons.close_rounded : Icons.tune_rounded,
+                size: 16,
+                color: expanded ? Colors.white : const Color(0xFF64748B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactFilterPanel extends StatelessWidget {
+  const _CompactFilterPanel({
     required this.dateFromCtrl,
     required this.dateToCtrl,
     required this.targetCtrl,
     required this.onPickFrom,
     required this.onPickTo,
     required this.onApply,
-    required this.onReset,
-    required this.availableFrom,
-    required this.availableTo,
   });
 
   final TextEditingController dateFromCtrl;
@@ -368,68 +483,77 @@ class _FilterCard extends StatelessWidget {
   final VoidCallback onPickFrom;
   final VoidCallback onPickTo;
   final VoidCallback onApply;
-  final VoidCallback onReset;
-  final String availableFrom;
-  final String availableTo;
 
   @override
   Widget build(BuildContext context) {
-    return StitchFilterCard(
-      title: 'Bộ lọc thời gian',
-      subtitle:
-          availableFrom.isNotEmpty && availableTo.isNotEmpty
-              ? 'Mặc định hệ thống lấy toàn bộ dữ liệu từ ${availableFrom.split('-').reversed.join('/')} đến ${availableTo.split('-').reversed.join('/')}.'
-              : 'Mặc định hệ thống lấy toàn bộ dữ liệu từ đầu đến cuối.',
-      trailing: OutlinedButton.icon(
-        onPressed: onReset,
-        icon: const Icon(Icons.restart_alt, size: 18),
-        label: const Text('Toàn thời gian'),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x060F172A),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: <Widget>[
-          StitchFilterField(
-            label: 'Từ ngày',
-            child: TextField(
-              controller: dateFromCtrl,
-              readOnly: true,
-              onTap: onPickFrom,
-              decoration: const InputDecoration(
-                hintText: 'Chọn ngày bắt đầu',
-                suffixIcon: Icon(Icons.event),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _MiniDateField(
+                  label: 'Từ ngày',
+                  controller: dateFromCtrl,
+                  onTap: onPickFrom,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MiniDateField(
+                  label: 'Đến ngày',
+                  controller: dateToCtrl,
+                  onTap: onPickTo,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: targetCtrl,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'Chỉ tiêu doanh thu (VNĐ) — tùy chọn',
+              hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
               ),
             ),
           ),
           const SizedBox(height: 12),
-          StitchFilterField(
-            label: 'Đến ngày',
-            child: TextField(
-              controller: dateToCtrl,
-              readOnly: true,
-              onTap: onPickTo,
-              decoration: const InputDecoration(
-                hintText: 'Chọn ngày kết thúc',
-                suffixIcon: Icon(Icons.event),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          StitchFilterField(
-            label: 'Chỉ tiêu doanh thu (VNĐ)',
-            child: TextField(
-              controller: targetCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                hintText: 'Nhập chỉ tiêu nếu cần so sánh',
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
+            height: 38,
             child: ElevatedButton.icon(
               onPressed: onApply,
-              icon: const Icon(Icons.filter_alt_outlined, size: 18),
-              label: const Text('Áp dụng bộ lọc'),
+              icon: const Icon(Icons.check_rounded, size: 16),
+              label: const Text('Áp dụng', style: TextStyle(fontSize: 13)),
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
             ),
           ),
         ],
@@ -438,58 +562,131 @@ class _FilterCard extends StatelessWidget {
   }
 }
 
+class _MiniDateField extends StatelessWidget {
+  const _MiniDateField({
+    required this.label,
+    required this.controller,
+    required this.onTap,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 4),
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    controller.text.isNotEmpty ? controller.text : '—',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: controller.text.isNotEmpty
+                          ? const Color(0xFF1E293B)
+                          : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+                const Icon(Icons.event, size: 16, color: Color(0xFF94A3B8)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.title,
     required this.value,
-    required this.note,
+    required this.icon,
+    required this.color,
+    this.subtitle,
   });
 
   final String title;
   final String value;
-  final String note;
+  final IconData icon;
+  final Color color;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 170,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: StitchTheme.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: StitchTheme.textSubtle,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 15, color: color),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: StitchTheme.textMain,
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                ),
               ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: color,
             ),
-            const SizedBox(height: 6),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
             Text(
-              note,
+              subtitle!,
               style: const TextStyle(
-                fontSize: 12,
-                color: StitchTheme.textMuted,
+                fontSize: 11,
+                color: Color(0xFF94A3B8),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -611,8 +808,10 @@ class _ProductPieCardState extends State<_ProductPieCard> {
       );
     }
 
-    final int safeSelectedIndex =
-        _selectedIndex.clamp(0, math.max(0, items.length - 1));
+    final int safeSelectedIndex = _selectedIndex.clamp(
+      0,
+      math.max(0, items.length - 1),
+    );
     final _PieItem selectedItem = items[safeSelectedIndex];
     final double selectedPercent =
         total > 0 ? (selectedItem.value / total) * 100 : 0;
@@ -762,10 +961,7 @@ class _StaffRevenueCard extends StatefulWidget {
 class _StaffRevenueCardState extends State<_StaffRevenueCard> {
   final Map<String, String> _selectedSeriesByStaff = <String, String>{};
 
-  _RevenueValue _selectedValueFor(
-    String staffKey,
-    List<_RevenueValue> values,
-  ) {
+  _RevenueValue _selectedValueFor(String staffKey, List<_RevenueValue> values) {
     final String? selectedKey = _selectedSeriesByStaff[staffKey];
     final _RevenueValue? selectedValue =
         selectedKey == null
@@ -773,10 +969,7 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
             : values
                 .where((item) => item.meta.key == selectedKey)
                 .cast<_RevenueValue?>()
-                .firstWhere(
-                  (item) => item != null,
-                  orElse: () => null,
-                );
+                .firstWhere((item) => item != null, orElse: () => null);
 
     if (selectedValue != null) {
       return selectedValue;

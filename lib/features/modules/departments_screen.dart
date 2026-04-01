@@ -42,10 +42,10 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> rows =
-        await widget.apiService.getDepartments(widget.token);
-    final List<Map<String, dynamic>> userRows =
-        await widget.apiService.getUsersAccounts(widget.token);
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getDepartments(widget.token);
+    final List<Map<String, dynamic>> userRows = await widget.apiService
+        .getUsersAccounts(widget.token);
     if (!mounted) return;
     setState(() {
       loading = false;
@@ -69,20 +69,23 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
       setState(() => message = 'Vui lòng nhập tên phòng ban.');
       return false;
     }
-    final bool ok = editingId == null
-        ? await widget.apiService.createDepartment(
-            widget.token,
-            name: nameCtrl.text.trim(),
-            managerId: managerId,
-          )
-        : await widget.apiService.updateDepartment(
-            widget.token,
-            editingId!,
-            name: nameCtrl.text.trim(),
-            managerId: managerId,
-          );
+    final bool ok =
+        editingId == null
+            ? await widget.apiService.createDepartment(
+              widget.token,
+              name: nameCtrl.text.trim(),
+              managerId: managerId,
+            )
+            : await widget.apiService.updateDepartment(
+              widget.token,
+              editingId!,
+              name: nameCtrl.text.trim(),
+              managerId: managerId,
+            );
     if (!mounted) return false;
-    setState(() => message = ok ? 'Đã lưu phòng ban.' : 'Lưu phòng ban thất bại.');
+    setState(
+      () => message = ok ? 'Đã lưu phòng ban.' : 'Lưu phòng ban thất bại.',
+    );
     if (ok) {
       _resetForm();
       await _fetch();
@@ -93,7 +96,9 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
   Future<void> _delete(int id) async {
     final bool ok = await widget.apiService.deleteDepartment(widget.token, id);
     if (!mounted) return;
-    setState(() => message = ok ? 'Đã xóa phòng ban.' : 'Xóa phòng ban thất bại.');
+    setState(
+      () => message = ok ? 'Đã xóa phòng ban.' : 'Xóa phòng ban thất bại.',
+    );
     if (ok) await _fetch();
   }
 
@@ -138,22 +143,25 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                     const SizedBox(height: 10),
                     TextField(
                       controller: nameCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Tên phòng ban'),
+                      decoration: const InputDecoration(
+                        labelText: 'Tên phòng ban',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int>(
                       value: managerId,
                       decoration: const InputDecoration(labelText: 'Quản lý'),
-                      items: users
-                          .map((user) => DropdownMenuItem<int>(
-                                value: user['id'] as int,
-                                child:
-                                    Text((user['name'] ?? '').toString()),
-                              ))
-                          .toList(),
-                      onChanged: (value) =>
-                          setSheetState(() => managerId = value),
+                      items:
+                          users
+                              .map(
+                                (user) => DropdownMenuItem<int>(
+                                  value: user['id'] as int,
+                                  child: Text((user['name'] ?? '').toString()),
+                                ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (value) => setSheetState(() => managerId = value),
                     ),
                     if (message.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 8),
@@ -183,7 +191,9 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                                 setSheetState(() {});
                               }
                             },
-                            child: Text(editingId == null ? 'Tạo mới' : 'Cập nhật'),
+                            child: Text(
+                              editingId == null ? 'Tạo mới' : 'Cập nhật',
+                            ),
                           ),
                         ),
                       ],
@@ -206,10 +216,6 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
       appBar: AppBar(
         title: const Text('Phòng ban'),
         actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetch,
-          ),
           if (widget.canManage)
             IconButton(
               icon: const Icon(Icons.add),
@@ -218,62 +224,70 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Expanded(
-                  child: Text(
-                    'Danh sách phòng ban',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+        child: RefreshIndicator(
+          onRefresh: _fetch,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  const Expanded(
+                    child: Text(
+                      'Danh sách phòng ban',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                ),
-                if (widget.canManage)
-                  ElevatedButton.icon(
-                    onPressed: () => _openForm(),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Thêm mới'),
-                  ),
-              ],
-            ),
-            if (message.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(message,
-                    style: const TextStyle(color: StitchTheme.textMuted)),
+                  if (widget.canManage)
+                    ElevatedButton.icon(
+                      onPressed: () => _openForm(),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Thêm mới'),
+                    ),
+                ],
               ),
-            const SizedBox(height: 12),
-            if (loading)
-              const Center(child: CircularProgressIndicator())
-            else ...departments.map((dept) {
-              final List<dynamic> staff =
-                  (dept['staff'] ?? <dynamic>[]) as List<dynamic>;
-              return Card(
-                child: ListTile(
-                  title: Text((dept['name'] ?? '').toString()),
-                  subtitle: Text(
-                    'Quản lý: ${(dept['manager'] ?? const <String, dynamic>{})['name'] ?? '—'} • Nhân sự: ${staff.length}',
+              if (message.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    message,
+                    style: const TextStyle(color: StitchTheme.textMuted),
                   ),
-                  trailing: widget.canManage
-                      ? Wrap(
-                          spacing: 8,
-                          children: <Widget>[
-                            IconButton(
-                              icon: const Icon(Icons.edit, size: 18),
-                              onPressed: () => _openForm(dept: dept),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, size: 18),
-                              onPressed: () => _delete(dept['id'] as int),
-                            ),
-                          ],
-                        )
-                      : null,
                 ),
-              );
-            }),
-          ],
+              const SizedBox(height: 12),
+              if (loading)
+                const Center(child: CircularProgressIndicator())
+              else
+                ...departments.map((dept) {
+                  final List<dynamic> staff =
+                      (dept['staff'] ?? <dynamic>[]) as List<dynamic>;
+                  return Card(
+                    child: ListTile(
+                      title: Text((dept['name'] ?? '').toString()),
+                      subtitle: Text(
+                        'Quản lý: ${(dept['manager'] ?? const <String, dynamic>{})['name'] ?? '—'} • Nhân sự: ${staff.length}',
+                      ),
+                      trailing:
+                          widget.canManage
+                              ? Wrap(
+                                spacing: 8,
+                                children: <Widget>[
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 18),
+                                    onPressed: () => _openForm(dept: dept),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, size: 18),
+                                    onPressed: () => _delete(dept['id'] as int),
+                                  ),
+                                ],
+                              )
+                              : null,
+                    ),
+                  );
+                }),
+            ],
+          ),
         ),
       ),
     );

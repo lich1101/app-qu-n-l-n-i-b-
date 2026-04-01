@@ -29,7 +29,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
   List<Map<String, dynamic>> categories = <Map<String, dynamic>>[];
 
   int? editingId;
-  final TextEditingController codeCtrl = TextEditingController();
   final TextEditingController nameCtrl = TextEditingController();
   final TextEditingController unitCtrl = TextEditingController();
   final TextEditingController priceCtrl = TextEditingController();
@@ -38,7 +37,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
   bool isActive = true;
 
   int? editingCategoryId;
-  final TextEditingController categoryCodeCtrl = TextEditingController();
   final TextEditingController categoryNameCtrl = TextEditingController();
   final TextEditingController categoryDescCtrl = TextEditingController();
   bool categoryIsActive = true;
@@ -61,12 +59,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   @override
   void dispose() {
-    codeCtrl.dispose();
     nameCtrl.dispose();
     unitCtrl.dispose();
     priceCtrl.dispose();
     descCtrl.dispose();
-    categoryCodeCtrl.dispose();
     categoryNameCtrl.dispose();
     categoryDescCtrl.dispose();
     searchCtrl.dispose();
@@ -106,7 +102,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   void _resetForm() {
     editingId = null;
-    codeCtrl.clear();
     nameCtrl.clear();
     unitCtrl.clear();
     priceCtrl.clear();
@@ -118,7 +113,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   void _resetCategoryForm() {
     editingCategoryId = null;
-    categoryCodeCtrl.clear();
     categoryNameCtrl.clear();
     categoryDescCtrl.clear();
     categoryIsActive = true;
@@ -135,30 +129,29 @@ class _ProductsScreenState extends State<ProductsScreen> {
       return false;
     }
     final double? price = double.tryParse(priceCtrl.text.trim());
-    final bool ok = editingId == null
-        ? await widget.apiService.createProduct(
-            widget.token,
-            code: codeCtrl.text.trim().isEmpty ? null : codeCtrl.text.trim(),
-            name: nameCtrl.text.trim(),
-            categoryId: selectedCategoryId,
-            unit: unitCtrl.text.trim().isEmpty ? null : unitCtrl.text.trim(),
-            unitPrice: price,
-            description:
-                descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-            isActive: isActive,
-          )
-        : await widget.apiService.updateProduct(
-            widget.token,
-            editingId!,
-            code: codeCtrl.text.trim().isEmpty ? null : codeCtrl.text.trim(),
-            name: nameCtrl.text.trim(),
-            categoryId: selectedCategoryId,
-            unit: unitCtrl.text.trim().isEmpty ? null : unitCtrl.text.trim(),
-            unitPrice: price,
-            description:
-                descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-            isActive: isActive,
-          );
+    final bool ok =
+        editingId == null
+            ? await widget.apiService.createProduct(
+              widget.token,
+              name: nameCtrl.text.trim(),
+              categoryId: selectedCategoryId,
+              unit: unitCtrl.text.trim().isEmpty ? null : unitCtrl.text.trim(),
+              unitPrice: price,
+              description:
+                  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+              isActive: isActive,
+            )
+            : await widget.apiService.updateProduct(
+              widget.token,
+              editingId!,
+              name: nameCtrl.text.trim(),
+              categoryId: selectedCategoryId,
+              unit: unitCtrl.text.trim().isEmpty ? null : unitCtrl.text.trim(),
+              unitPrice: price,
+              description:
+                  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+              isActive: isActive,
+            );
     if (!mounted) return false;
     setState(() {
       message = ok ? 'Đã lưu sản phẩm.' : 'Lưu sản phẩm thất bại.';
@@ -179,30 +172,27 @@ class _ProductsScreenState extends State<ProductsScreen> {
       setState(() => message = 'Vui lòng nhập tên danh mục.');
       return false;
     }
-    final bool ok = editingCategoryId == null
-        ? await widget.apiService.createProductCategory(
-            widget.token,
-            code: categoryCodeCtrl.text.trim().isEmpty
-                ? null
-                : categoryCodeCtrl.text.trim(),
-            name: categoryNameCtrl.text.trim(),
-            description: categoryDescCtrl.text.trim().isEmpty
-                ? null
-                : categoryDescCtrl.text.trim(),
-            isActive: categoryIsActive,
-          )
-        : await widget.apiService.updateProductCategory(
-            widget.token,
-            editingCategoryId!,
-            code: categoryCodeCtrl.text.trim().isEmpty
-                ? null
-                : categoryCodeCtrl.text.trim(),
-            name: categoryNameCtrl.text.trim(),
-            description: categoryDescCtrl.text.trim().isEmpty
-                ? null
-                : categoryDescCtrl.text.trim(),
-            isActive: categoryIsActive,
-          );
+    final bool ok =
+        editingCategoryId == null
+            ? await widget.apiService.createProductCategory(
+              widget.token,
+              name: categoryNameCtrl.text.trim(),
+              description:
+                  categoryDescCtrl.text.trim().isEmpty
+                      ? null
+                      : categoryDescCtrl.text.trim(),
+              isActive: categoryIsActive,
+            )
+            : await widget.apiService.updateProductCategory(
+              widget.token,
+              editingCategoryId!,
+              name: categoryNameCtrl.text.trim(),
+              description:
+                  categoryDescCtrl.text.trim().isEmpty
+                      ? null
+                      : categoryDescCtrl.text.trim(),
+              isActive: categoryIsActive,
+            );
     if (!mounted) return false;
     setState(() {
       message = ok ? 'Đã lưu danh mục.' : 'Lưu danh mục thất bại.';
@@ -221,7 +211,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
     final bool ok = await widget.apiService.deleteProduct(widget.token, id);
     if (!mounted) return;
-    setState(() => message = ok ? 'Đã xóa sản phẩm.' : 'Xóa sản phẩm thất bại.');
+    setState(
+      () => message = ok ? 'Đã xóa sản phẩm.' : 'Xóa sản phẩm thất bại.',
+    );
     if (ok) await _fetchProducts();
   }
 
@@ -230,9 +222,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
       setState(() => message = 'Bạn không có quyền xóa danh mục.');
       return;
     }
-    final bool ok = await widget.apiService.deleteProductCategory(widget.token, id);
+    final bool ok = await widget.apiService.deleteProductCategory(
+      widget.token,
+      id,
+    );
     if (!mounted) return;
-    setState(() => message = ok ? 'Đã xóa danh mục.' : 'Xóa danh mục thất bại.');
+    setState(
+      () => message = ok ? 'Đã xóa danh mục.' : 'Xóa danh mục thất bại.',
+    );
     if (ok) {
       await _fetchCategories();
       if (categoryFilterId == id) {
@@ -249,7 +246,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _resetForm();
       } else {
         editingId = _parseId(product['id']);
-        codeCtrl.text = (product['code'] ?? '').toString();
         nameCtrl.text = (product['name'] ?? '').toString();
         unitCtrl.text = (product['unit'] ?? '').toString();
         priceCtrl.text = (product['unit_price'] ?? '').toString();
@@ -286,16 +282,19 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: codeCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Mã sản phẩm'),
+                    const Text(
+                      'Mã sản phẩm sẽ tự sinh theo danh mục khi lưu.',
+                      style: TextStyle(
+                        color: StitchTheme.textMuted,
+                        fontSize: 12,
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     TextField(
                       controller: nameCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Tên sản phẩm'),
+                      decoration: const InputDecoration(
+                        labelText: 'Tên sản phẩm',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<int?>(
@@ -316,8 +315,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       onChanged: (int? value) {
                         setSheetState(() => selectedCategoryId = value);
                       },
-                      decoration:
-                          const InputDecoration(labelText: 'Danh mục sản phẩm'),
+                      decoration: const InputDecoration(
+                        labelText: 'Danh mục sản phẩm',
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -325,16 +325,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
                         Expanded(
                           child: TextField(
                             controller: unitCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Đơn vị'),
+                            decoration: const InputDecoration(
+                              labelText: 'Đơn vị',
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: TextField(
                             controller: priceCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Đơn giá'),
+                            decoration: const InputDecoration(
+                              labelText: 'Đơn giá',
+                            ),
                             keyboardType: TextInputType.number,
                           ),
                         ),
@@ -351,8 +353,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Đang hoạt động'),
                       value: isActive,
-                      onChanged: (bool value) =>
-                          setSheetState(() => isActive = value),
+                      onChanged:
+                          (bool value) => setSheetState(() => isActive = value),
                     ),
                     if (message.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 8),
@@ -383,9 +385,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               }
                             },
                             child: Text(
-                              editingId == null
-                                  ? 'Lưu sản phẩm'
-                                  : 'Cập nhật',
+                              editingId == null ? 'Lưu sản phẩm' : 'Cập nhật',
                             ),
                           ),
                         ),
@@ -410,7 +410,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
         _resetCategoryForm();
       } else {
         editingCategoryId = _parseId(category['id']);
-        categoryCodeCtrl.text = (category['code'] ?? '').toString();
         categoryNameCtrl.text = (category['name'] ?? '').toString();
         categoryDescCtrl.text = (category['description'] ?? '').toString();
         categoryIsActive = (category['is_active'] ?? true) == true;
@@ -447,15 +446,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
-                      controller: categoryCodeCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Mã danh mục'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
                       controller: categoryNameCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Tên danh mục'),
+                      decoration: const InputDecoration(
+                        labelText: 'Tên danh mục',
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Mã danh mục sẽ được hệ thống tự sinh và không trùng nhau.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: StitchTheme.textMuted,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -468,8 +470,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Đang hoạt động'),
                       value: categoryIsActive,
-                      onChanged: (bool value) =>
-                          setSheetState(() => categoryIsActive = value),
+                      onChanged:
+                          (bool value) =>
+                              setSheetState(() => categoryIsActive = value),
                     ),
                     if (message.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 8),
@@ -526,10 +529,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
       appBar: AppBar(
         title: const Text('Sản phẩm & danh mục'),
         actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _fetchAll,
-          ),
           if (widget.canManage)
             IconButton(
               icon: const Icon(Icons.add),
@@ -608,7 +607,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                   value: null,
                                   child: Text('Tất cả'),
                                 ),
-                                ...categories.map((Map<String, dynamic> category) {
+                                ...categories.map((
+                                  Map<String, dynamic> category,
+                                ) {
                                   final int? id = _parseId(category['id']);
                                   return DropdownMenuItem<int?>(
                                     value: id,
@@ -667,8 +668,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           if (widget.canManage)
                             IconButton(
                               icon: const Icon(Icons.edit, size: 18),
-                              onPressed: () =>
-                                  _openCategoryForm(category: category),
+                              onPressed:
+                                  () => _openCategoryForm(category: category),
                             ),
                           if (widget.canDelete)
                             IconButton(

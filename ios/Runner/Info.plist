@@ -34,6 +34,8 @@
 	<string>Ứng dụng cần truy cập thư viện ảnh để bạn chọn ảnh và tệp khi trao đổi công việc.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Ứng dụng cần quyền lưu ảnh/tệp vào thư viện khi bạn tải xuống nội dung công việc.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ứng dụng cần quyền vị trí để đọc Wi-Fi/BSSID hiện tại khi chấm công nội bộ.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
