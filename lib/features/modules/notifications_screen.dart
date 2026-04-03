@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import '../../core/services/notification_router.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/services/app_firebase.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -14,11 +15,13 @@ class NotificationsScreen extends StatefulWidget {
     required this.token,
     required this.apiService,
     this.currentUserId,
+    this.currentUserRole,
   });
 
   final String token;
   final MobileApiService apiService;
   final int? currentUserId;
+  final String? currentUserRole;
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -165,76 +168,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
     }
 
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (BuildContext context) {
-        final String title = (item['title'] ?? 'Thông báo').toString();
-        final String body = (item['body'] ?? '').toString();
-        final String type = (item['type'] ?? 'general').toString();
-        final String createdAt = (item['created_at'] ?? '').toString();
+    final Map<String, dynamic> payload = <String, dynamic>{
+      'type': type,
+      'task_id': item['task_id'],
+      ...((item['data'] is Map<String, dynamic>)
+          ? item['data'] as Map<String, dynamic>
+          : (item['data'] is Map)
+              ? (item['data'] as Map).cast<String, dynamic>()
+              : <String, dynamic>{}),
+    };
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                body.isEmpty ? 'Không có nội dung chi tiết.' : body,
-                style: const TextStyle(color: StitchTheme.textMuted),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: <Widget>[
-                  const Icon(
-                    Icons.info_outline,
-                    size: 16,
-                    color: StitchTheme.textMuted,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Loại: $type',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: StitchTheme.textMuted,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Icon(
-                    Icons.schedule,
-                    size: 16,
-                    color: StitchTheme.textMuted,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      createdAt,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: StitchTheme.textMuted,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+    if (!mounted) return;
+    await NotificationRouter.routePayload(
+      context,
+      payload,
+      token: widget.token,
+      apiService: widget.apiService,
+      currentUserId: widget.currentUserId,
+      currentUserRole: widget.currentUserRole,
     );
 
     if (!isRead) {

@@ -24,6 +24,8 @@ class ModuleCenterScreen extends StatelessWidget {
     this.onOpenServices,
     this.onOpenAttendance,
     this.onOpenProjects,
+    this.onOpenTasks,
+    this.onOpenTaskItems,
     this.onOpenCreateProject,
   });
 
@@ -46,6 +48,8 @@ class ModuleCenterScreen extends StatelessWidget {
   final VoidCallback? onOpenServices;
   final VoidCallback? onOpenAttendance;
   final VoidCallback? onOpenProjects;
+  final VoidCallback? onOpenTasks;
+  final VoidCallback? onOpenTaskItems;
   final VoidCallback? onOpenCreateProject;
 
   @override
@@ -63,9 +67,16 @@ class ModuleCenterScreen extends StatelessWidget {
         onTap: onOpenProjects,
       ),
       _ModuleItem(
-        title: 'Đơn hàng & phân công công việc',
-        subtitle: 'Giao việc theo luồng Quản trị/Quản lý',
+        title: 'Danh sách công việc',
+        subtitle: 'Xem công việc theo quyền của tài khoản',
         icon: Icons.assignment_turned_in_outlined,
+        onTap: onOpenTasks,
+      ),
+      _ModuleItem(
+        title: 'Danh sách đầu việc',
+        subtitle: 'Xem đầu việc theo quyền của tài khoản',
+        icon: Icons.checklist_rtl_outlined,
+        onTap: onOpenTaskItems,
       ),
       _ModuleItem(
         title: 'Bàn giao dự án',

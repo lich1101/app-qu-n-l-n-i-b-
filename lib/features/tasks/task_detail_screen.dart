@@ -1,12 +1,9 @@
-import 'dart:math' as math;
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
+import 'task_item_detail_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
   const TaskDetailScreen({
@@ -25,12 +22,13 @@ class TaskDetailScreen extends StatefulWidget {
 }
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
-  bool loading = true;
-  Map<String, dynamic>? task;
-  List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
-  String message = '';
-  int? currentUserId;
-  String currentUserRole = '';
+  bool _loading = true;
+  String _message = '';
+  Map<String, dynamic>? _task;
+  List<Map<String, dynamic>> _items = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _departments = <Map<String, dynamic>>[];
+  int? _currentUserId;
+  String _currentUserRole = '';
 
   @override
   void initState() {
@@ -40,33 +38,53 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   Future<void> _fetch() async {
     setState(() {
-      loading = true;
-      message = '';
+      _loading = true;
+      _message = '';
     });
-    final List<dynamic> responses =
-        await Future.wait<dynamic>(<Future<dynamic>>[
-          widget.apiService.getTaskDetail(widget.token, widget.taskId),
-          widget.apiService.getTaskItems(widget.token, widget.taskId),
-          widget.apiService.me(widget.token),
-        ]);
-    final Map<String, dynamic>? detail = responses[0] as Map<String, dynamic>?;
-    final List<Map<String, dynamic>> rows =
-        responses[1] as List<Map<String, dynamic>>;
-    final Map<String, dynamic> mePayload = responses[2] as Map<String, dynamic>;
-    final Map<String, dynamic> meBody =
-        (mePayload['body'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-    if (!mounted) return;
-    setState(() {
-      task = detail;
-      items = rows;
-      loading = false;
-      message = detail == null ? 'Không tìm thấy công việc.' : '';
-      currentUserId =
-          meBody['id'] is int
-              ? meBody['id'] as int
-              : int.tryParse('${meBody['id'] ?? ''}');
-      currentUserRole = (meBody['role'] ?? '').toString();
-    });
+
+    try {
+      final List<dynamic> responses =
+          await Future.wait<dynamic>(<Future<dynamic>>[
+            widget.apiService.getTaskDetail(widget.token, widget.taskId),
+            widget.apiService.getTaskItems(
+              widget.token,
+              widget.taskId,
+              perPage: 200,
+            ),
+            widget.apiService.me(widget.token),
+          ]);
+
+      final Map<String, dynamic>? task = responses[0] as Map<String, dynamic>?;
+      final List<Map<String, dynamic>> items =
+          responses[1] as List<Map<String, dynamic>>;
+      final Map<String, dynamic> mePayload =
+          responses[2] as Map<String, dynamic>;
+      final Map<String, dynamic> meBody =
+          (mePayload['body'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+      final dynamic rawId = meBody['id'];
+
+      if (!mounted) return;
+      setState(() {
+        _task = task;
+        _items = items;
+        _currentUserId = rawId is int ? rawId : int.tryParse('${rawId ?? ''}');
+        _currentUserRole = (meBody['role'] ?? '').toString();
+        _loading = false;
+        _message = task == null ? 'Không tìm thấy công việc.' : '';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _message = 'Không tải được dữ liệu công việc.';
+      });
+    }
+  }
+
+  int _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.round();
+    return int.tryParse('${value ?? 0}') ?? 0;
   }
 
   String _statusLabel(String value) {
@@ -80,19 +98,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       case 'blocked':
         return 'Bị chặn';
       default:
-        return value;
+        return value.isEmpty ? '—' : value;
     }
   }
 
-  String _reviewLabel(String value) {
+  String _priorityLabel(String value) {
     switch (value) {
-      case 'approved':
-        return 'Đã duyệt';
-      case 'rejected':
-        return 'Không duyệt';
-      case 'pending':
+      case 'low':
+        return 'Thấp';
+      case 'medium':
+        return 'Trung bình';
+      case 'high':
+        return 'Cao';
+      case 'urgent':
+        return 'Khẩn';
       default:
-        return 'Chờ duyệt';
+        return value.isEmpty ? '—' : value;
     }
   }
 
@@ -101,19 +122,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final DateTime? dt = VietnamTime.parse(raw);
     if (dt == null) return raw.length >= 10 ? raw.substring(0, 10) : raw;
     return VietnamTime.formatDate(dt);
-  }
-
-  String _formatDateTime(String raw) {
-    if (raw.isEmpty) return '—';
-    final DateTime? dt = VietnamTime.parse(raw);
-    if (dt == null) return raw;
-    return VietnamTime.formatDateTime(dt);
-  }
-
-  int _progressValue(Map<String, dynamic> item) {
-    return (item['progress_percent'] ?? 0) is int
-        ? item['progress_percent'] as int
-        : int.tryParse('${item['progress_percent'] ?? 0}') ?? 0;
   }
 
   String _assigneeLabel(Map<String, dynamic> item) {
@@ -125,425 +133,229 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         .toString();
   }
 
-  bool _isProjectOwner() {
-    return currentUserId != null &&
-        currentUserId == (task?['project']?['owner_id'] as int?);
+  bool _isTaskApprovalOwner() {
+    final dynamic rawProject = _task?['project'];
+    final Map<String, dynamic>? project =
+        rawProject is Map<String, dynamic> ? rawProject : null;
+    final int projectOwnerId = _toInt(project?['owner_id']);
+    if (_currentUserRole == 'admin') return true;
+    if (_currentUserId == null) return false;
+    return projectOwnerId > 0 && projectOwnerId == _currentUserId;
   }
 
-  bool _isDepartmentManager() {
-    final dynamic raw = task?['department']?['manager_id'];
-    final int? managerId = raw is int ? raw : int.tryParse('${raw ?? ''}');
-    return currentUserId != null && currentUserId == managerId;
-  }
+  bool get _isAdminRole =>
+      _currentUserRole == 'admin' || _currentUserRole == 'administrator';
 
-  bool _canApproveItemUpdates() {
-    return currentUserRole == 'admin' ||
-        _isProjectOwner() ||
-        _isDepartmentManager();
-  }
-
-  bool _canSubmitReport(Map<String, dynamic> item) {
-    final int? assigneeId =
-        item['assignee_id'] is int
-            ? item['assignee_id'] as int
-            : int.tryParse('${item['assignee_id'] ?? ''}');
-    return _canApproveItemUpdates() ||
-        (currentUserId != null && currentUserId == assigneeId);
-  }
-
-  Future<void> _openItemInsightSheet(Map<String, dynamic> item) async {
-    final Map<String, dynamic>? insight = await widget.apiService
-        .getTaskItemProgressInsight(
-          widget.token,
-          widget.taskId,
-          (item['id'] ?? 0) as int,
-        );
-    if (!mounted) return;
-    if (insight == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không tải được biểu đồ tiến độ đầu việc.'),
-        ),
-      );
-      return;
-    }
-
-    final Map<String, dynamic> summary =
-        (insight['summary'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-    final List<Map<String, dynamic>> chart =
-        ((insight['chart'] ?? <dynamic>[]) as List<dynamic>)
-            .map((dynamic row) => row as Map<String, dynamic>)
-            .toList();
-    final List<Map<String, dynamic>> approvedUpdates =
-        ((insight['approved_updates'] ?? <dynamic>[]) as List<dynamic>)
-            .map((dynamic row) => row as Map<String, dynamic>)
-            .toList();
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext ctx) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          decoration: const BoxDecoration(
-            color: Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    (summary['task_item_title'] ??
-                            item['title'] ??
-                            'Biểu đồ tiến độ')
-                        .toString(),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Công việc: ${(summary['task_title'] ?? task?['title'] ?? '—').toString()}',
-                    style: const TextStyle(color: StitchTheme.textMuted),
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: <Widget>[
-                      _InsightMetric(
-                        label: 'Nhân sự',
-                        value: (summary['assignee_name'] ?? '—').toString(),
-                      ),
-                      _InsightMetric(
-                        label: 'Dự kiến hôm nay',
-                        value: '${summary['expected_progress_today'] ?? 0}%',
-                        tone: const Color(0xFF2563EB),
-                      ),
-                      _InsightMetric(
-                        label: 'Thực tế hôm nay',
-                        value: '${summary['actual_progress_today'] ?? 0}%',
-                        tone: StitchTheme.success,
-                      ),
-                      _InsightMetric(
-                        label: 'Đang chậm',
-                        value: '${summary['lag_percent'] ?? 0}%',
-                        tone:
-                            (summary['is_late'] == true)
-                                ? StitchTheme.danger
-                                : StitchTheme.success,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: StitchTheme.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Row(
-                          children: const <Widget>[
-                            _LegendDot(
-                              color: Color(0xFF2563EB),
-                              label: 'Tiến độ kỳ vọng',
-                            ),
-                            SizedBox(width: 16),
-                            _LegendDot(
-                              color: Color(0xFF16A34A),
-                              label: 'Tiến độ thực tế',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          height: 220,
-                          child: _TaskItemInsightChart(points: chart),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _ReviewInfoRow(
-                    label: 'Bắt đầu',
-                    value: _formatDate(
-                      (summary['start_date'] ?? '').toString(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _ReviewInfoRow(
-                    label: 'Deadline',
-                    value: _formatDate((summary['deadline'] ?? '').toString()),
-                  ),
-                  const SizedBox(height: 8),
-                  _ReviewInfoRow(
-                    label: 'Phòng ban',
-                    value: (summary['department_name'] ?? '—').toString(),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Phiếu duyệt đã được chấp thuận',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  if (approvedUpdates.isEmpty)
-                    const Text(
-                      'Chưa có phiếu duyệt nào được chấp thuận.',
-                      style: TextStyle(
-                        color: StitchTheme.textMuted,
-                        fontSize: 12,
-                      ),
-                    )
-                  else
-                    ...approvedUpdates.map((Map<String, dynamic> update) {
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: StitchTheme.border),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              'Phiếu #${update['id'] ?? ''} • ${update['progress_percent'] ?? '—'}%',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Người gửi: ${(update['submitter']?['name'] ?? '—').toString()} • ${_formatDateTime((update['created_at'] ?? '').toString())}',
-                              style: const TextStyle(
-                                color: StitchTheme.textMuted,
-                                fontSize: 12,
-                              ),
-                            ),
-                            if ((update['note'] ?? '')
-                                .toString()
-                                .trim()
-                                .isNotEmpty) ...<Widget>[
-                              const SizedBox(height: 6),
-                              Text(
-                                (update['note'] ?? '').toString(),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    }),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      child: const Text('Đóng'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  bool _canEditPendingReport(
-    Map<String, dynamic> item,
-    Map<String, dynamic> update,
-  ) {
-    if ((update['review_status'] ?? 'pending').toString() != 'pending') {
-      return false;
-    }
-    if (_canApproveItemUpdates()) {
+  bool get _canManageItems {
+    if (_isAdminRole) return true;
+    final int projectOwnerId = _toInt(_task?['project']?['owner_id']);
+    if (_currentUserId != null &&
+        projectOwnerId > 0 &&
+        projectOwnerId == _currentUserId) {
       return true;
     }
-    final int? assigneeId =
-        item['assignee_id'] is int
-            ? item['assignee_id'] as int
-            : int.tryParse('${item['assignee_id'] ?? ''}');
-    final Map<String, dynamic>? submitter =
-        update['submitter'] is Map<String, dynamic>
-            ? update['submitter'] as Map<String, dynamic>
-            : null;
-    final dynamic submitterRawId = submitter?['id'] ?? update['submitted_by'];
-    final int? submitterId =
-        submitterRawId is int
-            ? submitterRawId
-            : int.tryParse('$submitterRawId');
-    return (currentUserId != null && currentUserId == assigneeId) ||
-        (currentUserId != null && currentUserId == submitterId);
+    return _currentUserId != null &&
+        _toInt(_task?['assignee_id']) == _currentUserId;
   }
 
-  List<_TaskItemGroup> _groupedItems() {
-    final Map<String, List<Map<String, dynamic>>> grouped =
-        <String, List<Map<String, dynamic>>>{};
+  Future<void> _ensureDepartmentsLoaded() async {
+    if (_departments.isNotEmpty) return;
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getDepartments(widget.token);
+    if (!mounted) return;
+    setState(() => _departments = rows);
+  }
 
-    for (final Map<String, dynamic> item in items) {
-      final Map<String, dynamic>? assignee =
-          item['assignee'] is Map<String, dynamic>
-              ? item['assignee'] as Map<String, dynamic>
-              : null;
-      final dynamic assigneeId = assignee?['id'];
-      final String label = _assigneeLabel(item);
-      final String key =
-          assigneeId != null
-              ? 'user_$assigneeId'
-              : 'label_${label.toLowerCase()}';
-      grouped.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(item);
+  String _toDateInput(dynamic value) {
+    final String raw = (value ?? '').toString().trim();
+    if (raw.length >= 10) return raw.substring(0, 10);
+    return raw;
+  }
+
+  Future<void> _pickDate(
+    BuildContext context,
+    TextEditingController controller,
+  ) async {
+    final DateTime now = DateTime.now();
+    DateTime initial = now;
+    if (controller.text.trim().isNotEmpty) {
+      final DateTime? parsed = DateTime.tryParse(controller.text.trim());
+      if (parsed != null) {
+        initial = parsed;
+      }
     }
-
-    final List<_TaskItemGroup> groups =
-        grouped.entries.map((entry) {
-            final List<Map<String, dynamic>> rows =
-                List<Map<String, dynamic>>.from(entry.value)..sort((a, b) {
-                  final String aDeadline = (a['deadline'] ?? '').toString();
-                  final String bDeadline = (b['deadline'] ?? '').toString();
-                  if (aDeadline.isEmpty && bDeadline.isEmpty) return 0;
-                  if (aDeadline.isEmpty) return 1;
-                  if (bDeadline.isEmpty) return -1;
-                  return aDeadline.compareTo(bDeadline);
-                });
-
-            return _TaskItemGroup(
-              assignee: _assigneeLabel(rows.first),
-              items: rows,
-            );
-          }).toList()
-          ..sort((a, b) {
-            if (a.assignee == 'Chưa phân công' &&
-                b.assignee != 'Chưa phân công') {
-              return 1;
-            }
-            if (b.assignee == 'Chưa phân công' &&
-                a.assignee != 'Chưa phân công') {
-              return -1;
-            }
-            return a.assignee.toLowerCase().compareTo(b.assignee.toLowerCase());
-          });
-
-    return groups;
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 10),
+    );
+    if (picked == null) return;
+    controller.text =
+        '${picked.year.toString().padLeft(4, '0')}-'
+        '${picked.month.toString().padLeft(2, '0')}-'
+        '${picked.day.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _openReportEditor(
-    Map<String, dynamic> item, {
-    Map<String, dynamic>? update,
-  }) async {
-    final TextEditingController noteCtrl = TextEditingController(
-      text: (update?['note'] ?? '').toString(),
+  Future<void> _openItemEditor({Map<String, dynamic>? item}) async {
+    if (!_canManageItems) return;
+    await _ensureDepartmentsLoaded();
+    if (!mounted) return;
+    final bool isEdit = item != null;
+
+    final TextEditingController titleCtrl = TextEditingController(
+      text: (item?['title'] ?? '').toString(),
+    );
+    final TextEditingController descCtrl = TextEditingController(
+      text: (item?['description'] ?? '').toString(),
     );
     final TextEditingController progressCtrl = TextEditingController(
-      text: update?['progress_percent']?.toString() ?? '',
+      text: '${item?['progress_percent'] ?? 0}',
     );
-    String statusValue = (update?['status'] ?? '').toString();
-    File? attachment;
-    String localMessage = '';
+    final TextEditingController weightCtrl = TextEditingController(
+      text: isEdit ? '${item['weight_percent'] ?? 0}' : '10',
+    );
+    final TextEditingController startCtrl = TextEditingController(
+      text:
+          isEdit
+              ? _toDateInput(item['start_date'])
+              : _toDateInput(_task?['start_at']),
+    );
+    final TextEditingController deadlineCtrl = TextEditingController(
+      text:
+          isEdit
+              ? _toDateInput(item['deadline'])
+              : _toDateInput(_task?['deadline']),
+    );
+
+    String status = (item?['status'] ?? 'todo').toString();
+    String priority = (item?['priority'] ?? 'medium').toString();
+    int? assigneeId =
+        _toInt(item?['assignee_id']) == 0 ? null : _toInt(item?['assignee_id']);
     bool submitting = false;
+    String localMessage = '';
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (BuildContext ctx) {
-        final double bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+      builder: (BuildContext sheetContext) {
         return StatefulBuilder(
-          builder: (BuildContext ctx, StateSetter setModalState) {
-            Future<void> pickAttachment() async {
-              final FilePickerResult? result =
-                  await FilePicker.platform.pickFiles();
-              final String? path = result?.files.single.path;
-              if (path != null) {
-                setModalState(() => attachment = File(path));
-              }
-            }
+          builder: (BuildContext sheetContext, StateSetter setModalState) {
+            final int taskDepartmentId = _toInt(_task?['department_id']);
+            final List<Map<String, dynamic>> staffOptions =
+                <Map<String, dynamic>>[
+                  for (final Map<String, dynamic> department in _departments)
+                    if (taskDepartmentId == 0 ||
+                        _toInt(department['id']) == taskDepartmentId)
+                      ...((department['staff'] as List<dynamic>? ?? <dynamic>[])
+                          .whereType<Map>()
+                          .map((Map row) => row.cast<String, dynamic>())),
+                ];
 
             Future<void> submit() async {
-              if (submitting) return;
-              if (noteCtrl.text.trim().isEmpty &&
-                  progressCtrl.text.trim().isEmpty &&
-                  statusValue.isEmpty &&
-                  attachment == null) {
+              if (titleCtrl.text.trim().isEmpty) {
                 setModalState(
-                  () =>
-                      localMessage =
-                          'Vui lòng nhập trạng thái, tiến độ, ghi chú hoặc file.',
+                  () => localMessage = 'Vui lòng nhập tiêu đề đầu việc.',
                 );
                 return;
               }
-              final int? progress =
-                  progressCtrl.text.trim().isEmpty
-                      ? null
-                      : int.tryParse(progressCtrl.text.trim());
-              if (progress != null && (progress < 0 || progress > 100)) {
+              final int? progress = int.tryParse(progressCtrl.text.trim());
+              final int? weight = int.tryParse(weightCtrl.text.trim());
+              if (progress == null || progress < 0 || progress > 100) {
                 setModalState(
-                  () => localMessage = 'Tiến độ phải nằm trong khoảng 0-100.',
+                  () => localMessage = 'Tiến độ phải từ 0 đến 100.',
                 );
                 return;
               }
+              if (weight == null || weight < 1 || weight > 100) {
+                setModalState(
+                  () => localMessage = 'Tỷ trọng phải từ 1 đến 100.',
+                );
+                return;
+              }
+
               setModalState(() {
                 submitting = true;
                 localMessage = '';
               });
 
               final bool ok =
-                  update == null
-                      ? await widget.apiService.createTaskItemUpdate(
+                  isEdit
+                      ? await widget.apiService.updateTaskItem(
                         widget.token,
                         widget.taskId,
-                        (item['id'] ?? 0) as int,
-                        status: statusValue.isEmpty ? null : statusValue,
+                        _toInt(item['id']),
+                        title: titleCtrl.text.trim(),
+                        description: descCtrl.text.trim(),
+                        priority: priority,
+                        status: status,
                         progressPercent: progress,
-                        note:
-                            noteCtrl.text.trim().isEmpty
+                        weightPercent: weight,
+                        startDate:
+                            startCtrl.text.trim().isEmpty
                                 ? null
-                                : noteCtrl.text.trim(),
-                        attachment: attachment,
+                                : startCtrl.text.trim(),
+                        deadline:
+                            deadlineCtrl.text.trim().isEmpty
+                                ? null
+                                : deadlineCtrl.text.trim(),
+                        assigneeId: assigneeId,
                       )
-                      : await widget.apiService.updateTaskItemUpdate(
+                      : await widget.apiService.createTaskItem(
                         widget.token,
                         widget.taskId,
-                        (item['id'] ?? 0) as int,
-                        (update['id'] ?? 0) as int,
-                        status: statusValue.isEmpty ? null : statusValue,
+                        title: titleCtrl.text.trim(),
+                        description: descCtrl.text.trim(),
+                        priority: priority,
+                        status: status,
                         progressPercent: progress,
-                        note: noteCtrl.text.trim(),
-                        attachment: attachment,
+                        weightPercent: weight,
+                        startDate:
+                            startCtrl.text.trim().isEmpty
+                                ? null
+                                : startCtrl.text.trim(),
+                        deadline:
+                            deadlineCtrl.text.trim().isEmpty
+                                ? null
+                                : deadlineCtrl.text.trim(),
+                        assigneeId: assigneeId,
                       );
 
-              if (!mounted || !ctx.mounted) return;
+              if (!mounted) return;
               if (ok) {
-                Navigator.of(ctx).pop();
+                Navigator.of(sheetContext).pop();
                 await _fetch();
-                await _openItemUpdateSheet(item);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      isEdit
+                          ? 'Đã cập nhật đầu việc.'
+                          : 'Đã thêm đầu việc mới.',
+                    ),
+                  ),
+                );
               } else {
                 setModalState(() {
                   submitting = false;
                   localMessage =
-                      update == null
-                          ? 'Tạo phiếu duyệt thất bại.'
-                          : 'Cập nhật phiếu duyệt thất bại.';
+                      isEdit
+                          ? 'Cập nhật đầu việc thất bại.'
+                          : 'Tạo đầu việc thất bại.';
                 });
               }
             }
 
             return Container(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + bottomInset),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                24 + MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
               decoration: const BoxDecoration(
-                color: Color(0xFFF8FAFC),
+                color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: SingleChildScrollView(
@@ -551,11 +363,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      update == null
-                          ? 'Tạo phiếu duyệt: ${(item['title'] ?? 'Đầu việc').toString()}'
-                          : 'Sửa phiếu duyệt #${update['id'] ?? ''}',
+                      isEdit ? 'Sửa đầu việc' : 'Thêm đầu việc',
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 17,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -563,106 +373,183 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                       const SizedBox(height: 8),
                       Text(
                         localMessage,
-                        style: const TextStyle(color: Colors.redAccent),
+                        style: TextStyle(color: StitchTheme.danger),
                       ),
                     ],
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: statusValue.isEmpty ? null : statusValue,
-                      items: const <DropdownMenuItem<String>>[
-                        DropdownMenuItem(value: 'todo', child: Text('Cần làm')),
-                        DropdownMenuItem(
-                          value: 'doing',
-                          child: Text('Đang làm'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'done',
-                          child: Text('Hoàn tất'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'blocked',
-                          child: Text('Bị chặn'),
-                        ),
-                      ],
-                      onChanged:
-                          (String? v) =>
-                              setModalState(() => statusValue = v ?? ''),
-                      decoration: const InputDecoration(
-                        labelText: 'Trạng thái báo cáo',
-                      ),
+                    TextField(
+                      controller: titleCtrl,
+                      decoration: const InputDecoration(labelText: 'Tiêu đề'),
                     ),
                     const SizedBox(height: 10),
                     TextField(
-                      controller: progressCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Tiến độ đề xuất (%)',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: noteCtrl,
+                      controller: descCtrl,
+                      minLines: 2,
                       maxLines: 4,
-                      decoration: const InputDecoration(
-                        labelText: 'Nội dung phiếu duyệt',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Mô tả'),
                     ),
                     const SizedBox(height: 10),
                     Row(
                       children: <Widget>[
-                        OutlinedButton.icon(
-                          onPressed: pickAttachment,
-                          icon: const Icon(Icons.attach_file, size: 18),
-                          label: const Text('Chọn file'),
-                        ),
-                        const SizedBox(width: 8),
-                        if (attachment != null)
-                          Expanded(
-                            child: Text(
-                              attachment!.path.split('/').last,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: StitchTheme.textMuted,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: status,
+                            decoration: const InputDecoration(
+                              labelText: 'Trạng thái',
                             ),
+                            items: const <DropdownMenuItem<String>>[
+                              DropdownMenuItem(
+                                value: 'todo',
+                                child: Text('Cần làm'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'doing',
+                                child: Text('Đang làm'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'done',
+                                child: Text('Hoàn tất'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'blocked',
+                                child: Text('Bị chặn'),
+                              ),
+                            ],
+                            onChanged:
+                                (String? value) => setModalState(
+                                  () => status = value ?? 'todo',
+                                ),
                           ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: priority,
+                            decoration: const InputDecoration(
+                              labelText: 'Ưu tiên',
+                            ),
+                            items: const <DropdownMenuItem<String>>[
+                              DropdownMenuItem(
+                                value: 'low',
+                                child: Text('Thấp'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'medium',
+                                child: Text('Trung bình'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'high',
+                                child: Text('Cao'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'urgent',
+                                child: Text('Khẩn'),
+                              ),
+                            ],
+                            onChanged:
+                                (String? value) => setModalState(
+                                  () => priority = value ?? 'medium',
+                                ),
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: TextField(
+                            controller: progressCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Tiến độ (%)',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: weightCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Tỷ trọng (%)',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: TextField(
+                            controller: startCtrl,
+                            readOnly: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Ngày bắt đầu',
+                            ),
+                            onTap: () => _pickDate(sheetContext, startCtrl),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: deadlineCtrl,
+                            readOnly: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Deadline',
+                            ),
+                            onTap: () => _pickDate(sheetContext, deadlineCtrl),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<int>(
+                      value: assigneeId,
+                      decoration: const InputDecoration(
+                        labelText: 'Nhân sự phụ trách',
+                      ),
+                      items:
+                          staffOptions
+                              .map(
+                                (Map<String, dynamic> user) =>
+                                    DropdownMenuItem<int>(
+                                      value: _toInt(user['id']),
+                                      child: Text(
+                                        (user['name'] ??
+                                                user['email'] ??
+                                                'Nhân sự')
+                                            .toString(),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (int? value) =>
+                              setModalState(() => assigneeId = value),
+                    ),
+                    const SizedBox(height: 16),
                     Row(
                       children: <Widget>[
                         Expanded(
                           child: ElevatedButton(
                             onPressed: submitting ? null : submit,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
                             child: Text(
                               submitting
                                   ? 'Đang lưu...'
-                                  : (update == null
-                                      ? 'Gửi phiếu duyệt'
-                                      : 'Cập nhật phiếu'),
+                                  : (isEdit ? 'Lưu thay đổi' : 'Tạo đầu việc'),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: OutlinedButton(
                             onPressed:
                                 submitting
                                     ? null
-                                    : () => Navigator.of(ctx).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
+                                    : () => Navigator.of(sheetContext).pop(),
                             child: const Text('Hủy'),
                           ),
                         ),
@@ -676,727 +563,293 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         );
       },
     );
-
-    noteCtrl.dispose();
-    progressCtrl.dispose();
   }
 
-  Future<void> _openItemUpdateSheet(Map<String, dynamic> item) async {
-    List<Map<String, dynamic>> updates = <Map<String, dynamic>>[];
-    Map<String, dynamic>? selectedUpdate;
-    bool loadingUpdates = true;
-    String localMessage = '';
-    final TextEditingController rejectCtrl = TextEditingController();
-
-    Future<void> fetchUpdates(StateSetter setModalState) async {
-      setModalState(() => loadingUpdates = true);
-      final List<Map<String, dynamic>> rows = await widget.apiService
-          .getTaskItemUpdates(
-            widget.token,
-            widget.taskId,
-            (item['id'] ?? 0) as int,
-          );
-      setModalState(() {
-        updates = rows;
-        selectedUpdate = rows.isNotEmpty ? rows.first : null;
-        loadingUpdates = false;
-        localMessage = '';
-      });
-    }
-
-    await showModalBottomSheet<void>(
+  Future<void> _deleteItem(Map<String, dynamic> item) async {
+    if (!_canManageItems) return;
+    final bool? confirmed = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext ctx) {
-        final double bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
-        return StatefulBuilder(
-          builder: (BuildContext ctx, StateSetter setModalState) {
-            if (loadingUpdates) {
-              fetchUpdates(setModalState);
-            }
-
-            Future<void> approveSelected() async {
-              final Map<String, dynamic>? update = selectedUpdate;
-              if (update == null) return;
-              final bool ok = await widget.apiService.approveTaskItemUpdate(
-                widget.token,
-                widget.taskId,
-                (item['id'] ?? 0) as int,
-                (update['id'] ?? 0) as int,
-                status:
-                    (update['status'] ?? '').toString().isEmpty
-                        ? null
-                        : (update['status'] ?? '').toString(),
-                progressPercent:
-                    update['progress_percent'] is int
-                        ? update['progress_percent'] as int
-                        : int.tryParse('${update['progress_percent'] ?? ''}'),
-                note:
-                    (update['note'] ?? '').toString().trim().isEmpty
-                        ? null
-                        : (update['note'] ?? '').toString(),
-              );
-              if (ok) {
-                await _fetch();
-                await fetchUpdates(setModalState);
-                setModalState(
-                  () => localMessage = 'Đã duyệt phiếu duyệt đầu việc.',
-                );
-              } else {
-                setModalState(
-                  () => localMessage = 'Duyệt phiếu duyệt thất bại.',
-                );
-              }
-            }
-
-            Future<void> rejectSelected() async {
-              final Map<String, dynamic>? update = selectedUpdate;
-              if (update == null) return;
-              final String reason = rejectCtrl.text.trim();
-              if (reason.isEmpty) {
-                setModalState(
-                  () => localMessage = 'Vui lòng nhập lý do từ chối.',
-                );
-                return;
-              }
-              final bool ok = await widget.apiService.rejectTaskItemUpdate(
-                widget.token,
-                widget.taskId,
-                (item['id'] ?? 0) as int,
-                (update['id'] ?? 0) as int,
-                reviewNote: reason,
-              );
-              if (ok) {
-                await fetchUpdates(setModalState);
-                setModalState(() {
-                  localMessage = 'Đã từ chối phiếu duyệt.';
-                  rejectCtrl.clear();
-                });
-              } else {
-                setModalState(
-                  () => localMessage = 'Từ chối phiếu duyệt thất bại.',
-                );
-              }
-            }
-
-            Future<void> deleteSelected() async {
-              final Map<String, dynamic>? update = selectedUpdate;
-              if (update == null) return;
-              final bool? okDelete = await showDialog<bool>(
-                context: context,
-                builder: (BuildContext dialogContext) {
-                  return AlertDialog(
-                    title: const Text('Xóa phiếu duyệt'),
-                    content: const Text(
-                      'Phiếu duyệt đang chờ xử lý sẽ bị xóa. Bạn có chắc không?',
-                    ),
-                    actions: <Widget>[
-                      TextButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(false),
-                        child: const Text('Hủy'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(true),
-                        child: const Text('Xóa'),
-                      ),
-                    ],
-                  );
-                },
-              );
-              if (okDelete != true) return;
-              final bool ok = await widget.apiService.deleteTaskItemUpdate(
-                widget.token,
-                widget.taskId,
-                (item['id'] ?? 0) as int,
-                (update['id'] ?? 0) as int,
-              );
-              if (ok) {
-                await fetchUpdates(setModalState);
-                setModalState(() => localMessage = 'Đã xóa phiếu duyệt.');
-              } else {
-                setModalState(() => localMessage = 'Xóa phiếu duyệt thất bại.');
-              }
-            }
-
-            final bool canSubmit = _canSubmitReport(item);
-            final bool canApprove =
-                selectedUpdate != null &&
-                _canApproveItemUpdates() &&
-                (selectedUpdate!['review_status'] ?? 'pending').toString() ==
-                    'pending';
-            final bool canEdit =
-                selectedUpdate != null &&
-                _canEditPendingReport(item, selectedUpdate!);
-
-            return Container(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + bottomInset),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Xóa đầu việc'),
+          content: Text(
+            'Bạn có chắc muốn xóa đầu việc "${(item['title'] ?? 'Đầu việc').toString()}"?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: StitchTheme.danger,
               ),
-              child: SafeArea(
-                top: false,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  'Phiếu duyệt: ${(item['title'] ?? 'Đầu việc').toString()}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Nhấn vào từng phiếu để xem chi tiết và phản hồi.',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: StitchTheme.textMuted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (canSubmit)
-                            FilledButton(
-                              onPressed: () => _openReportEditor(item),
-                              child: const Text('Tạo phiếu'),
-                            ),
-                        ],
-                      ),
-                      if (localMessage.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 10),
-                        Text(
-                          localMessage,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: StitchTheme.textMuted,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 14),
-                      if (loadingUpdates)
-                        const Center(child: CircularProgressIndicator())
-                      else if (updates.isEmpty)
-                        const Text(
-                          'Chưa có phiếu duyệt nào.',
-                          style: TextStyle(color: StitchTheme.textMuted),
-                        )
-                      else ...<Widget>[
-                        ...updates.map((Map<String, dynamic> update) {
-                          final bool selected =
-                              selectedUpdate?['id'] == update['id'];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(14),
-                              onTap:
-                                  () => setModalState(() {
-                                    selectedUpdate = update;
-                                    rejectCtrl.clear();
-                                    localMessage = '';
-                                  }),
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color:
-                                      selected
-                                          ? StitchTheme.primary.withValues(
-                                            alpha: 0.08,
-                                          )
-                                          : Colors.white,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color:
-                                        selected
-                                            ? StitchTheme.primary
-                                            : StitchTheme.border,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      'Phiếu #${update['id'] ?? ''} • ${update['submitter']?['name'] ?? 'Nhân sự'}',
-                                      style: const TextStyle(
-                                        color: StitchTheme.textMuted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _reviewLabel(
-                                        (update['review_status'] ?? 'pending')
-                                            .toString(),
-                                      ),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Trạng thái: ${_statusLabel((update['status'] ?? '').toString())} • Tiến độ: ${update['progress_percent'] ?? '—'}%',
-                                      style: const TextStyle(
-                                        color: StitchTheme.textMuted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-                        if (selectedUpdate != null) ...<Widget>[
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: StitchTheme.border),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  'Chi tiết phiếu #${selectedUpdate!['id'] ?? ''}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  'Người gửi: ${selectedUpdate!['submitter']?['name'] ?? '—'}',
-                                  style: const TextStyle(
-                                    color: StitchTheme.textMuted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Lúc gửi: ${_formatDateTime((selectedUpdate!['created_at'] ?? '').toString())}',
-                                  style: const TextStyle(
-                                    color: StitchTheme.textMuted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Trạng thái báo cáo: ${_statusLabel((selectedUpdate!['status'] ?? '').toString())}',
-                                  style: const TextStyle(
-                                    color: StitchTheme.textMuted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Tiến độ đề xuất: ${selectedUpdate!['progress_percent'] ?? '—'}%',
-                                  style: const TextStyle(
-                                    color: StitchTheme.textMuted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  (selectedUpdate!['note'] ?? '')
-                                          .toString()
-                                          .trim()
-                                          .isEmpty
-                                      ? 'Không có ghi chú.'
-                                      : (selectedUpdate!['note'] ?? '')
-                                          .toString(),
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                if ((selectedUpdate!['review_note'] ?? '')
-                                    .toString()
-                                    .trim()
-                                    .isNotEmpty) ...<Widget>[
-                                  const SizedBox(height: 10),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFFF7ED),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: const Color(0xFFFED7AA),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'Phản hồi: ${(selectedUpdate!['review_note'] ?? '').toString()}',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                                ],
-                                if ((selectedUpdate!['attachment_path'] ?? '')
-                                    .toString()
-                                    .isNotEmpty) ...<Widget>[
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    'File: ${(selectedUpdate!['attachment_path'] ?? '').toString()}',
-                                    style: const TextStyle(
-                                      color: StitchTheme.textMuted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                                if (canEdit) ...<Widget>[
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: <Widget>[
-                                      OutlinedButton(
-                                        onPressed:
-                                            () => _openReportEditor(
-                                              item,
-                                              update: selectedUpdate,
-                                            ),
-                                        child: const Text('Sửa phiếu'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      OutlinedButton(
-                                        onPressed: deleteSelected,
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: Colors.redAccent,
-                                        ),
-                                        child: const Text('Xóa phiếu'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                                if (canApprove) ...<Widget>[
-                                  const SizedBox(height: 14),
-                                  TextField(
-                                    controller: rejectCtrl,
-                                    maxLines: 2,
-                                    decoration: const InputDecoration(
-                                      labelText:
-                                          'Lý do từ chối (nếu không duyệt)',
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        child: ElevatedButton(
-                                          onPressed: approveSelected,
-                                          child: const Text('Duyệt'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: OutlinedButton(
-                                          onPressed: rejectSelected,
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: Colors.redAccent,
-                                          ),
-                                          child: const Text('Từ chối'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(),
-                          child: const Text('Đóng'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+              child: const Text('Xóa'),
+            ),
+          ],
         );
       },
     );
-
-    rejectCtrl.dispose();
-  }
-
-  Widget _buildItemCard(Map<String, dynamic> item, {bool showAssignee = true}) {
-    final String title = (item['title'] ?? 'Đầu việc').toString();
-    final String status = (item['status'] ?? '').toString();
-    final int progress = _progressValue(item);
-    final String start = (item['start_date'] ?? '').toString();
-    final String deadline = (item['deadline'] ?? '').toString();
-    final String assignee = _assigneeLabel(item);
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => _openItemUpdateSheet(item),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: StitchTheme.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                Icon(
-                  Icons.assignment_outlined,
-                  size: 18,
-                  color: StitchTheme.primary,
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Trạng thái: ${_statusLabel(status)} • Tiến độ: $progress%',
-              style: const TextStyle(
-                color: StitchTheme.textMuted,
-                fontSize: 12,
-              ),
-            ),
-            if (showAssignee) ...<Widget>[
-              const SizedBox(height: 6),
-              Text(
-                'Phụ trách: $assignee',
-                style: const TextStyle(
-                  color: StitchTheme.textMuted,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-            const SizedBox(height: 6),
-            Text(
-              'Bắt đầu: ${_formatDate(start)} • Deadline: ${_formatDate(deadline)}',
-              style: const TextStyle(
-                color: StitchTheme.textMuted,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: (progress.clamp(0, 100)) / 100,
-                minHeight: 6,
-                backgroundColor: StitchTheme.surfaceAlt,
-                valueColor: AlwaysStoppedAnimation<Color>(StitchTheme.primary),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Chạm để xem danh sách phiếu duyệt',
-                    style: TextStyle(
-                      color: StitchTheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (_canApproveItemUpdates())
-                  TextButton.icon(
-                    onPressed: () => _openItemInsightSheet(item),
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: const Icon(Icons.show_chart, size: 16),
-                    label: const Text('Biểu đồ'),
-                  ),
-              ],
-            ),
-          ],
-        ),
+    if (confirmed != true) return;
+    final bool ok = await widget.apiService.deleteTaskItem(
+      widget.token,
+      widget.taskId,
+      _toInt(item['id']),
+    );
+    if (!mounted) return;
+    if (ok) {
+      await _fetch();
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'Đã xóa đầu việc.' : 'Không thể xóa đầu việc.'),
       ),
     );
   }
 
-  Widget _buildItemGroup(_TaskItemGroup group) {
-    final int averageProgress =
-        group.items.isEmpty
-            ? 0
-            : group.items.map(_progressValue).reduce((int a, int b) => a + b) ~/
-                group.items.length;
+  List<_TaskItemGroup> _groupedItems() {
+    final Map<String, List<Map<String, dynamic>>> grouped =
+        <String, List<Map<String, dynamic>>>{};
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: StitchTheme.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                height: 42,
-                width: 42,
-                decoration: BoxDecoration(
-                  color: StitchTheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  group.assignee.isEmpty
-                      ? 'U'
-                      : group.assignee.substring(0, 1).toUpperCase(),
-                  style: TextStyle(
-                    color: StitchTheme.primary,
-                    fontWeight: FontWeight.w700,
+    for (final Map<String, dynamic> item in _items) {
+      final String label = _assigneeLabel(item);
+      grouped.putIfAbsent(label, () => <Map<String, dynamic>>[]).add(item);
+    }
+
+    final List<_TaskItemGroup> groups =
+        grouped.entries
+            .map(
+              (MapEntry<String, List<Map<String, dynamic>>> entry) =>
+                  _TaskItemGroup(
+                    assignee: entry.key,
+                    items: List<Map<String, dynamic>>.from(entry.value)..sort(
+                      (Map<String, dynamic> a, Map<String, dynamic> b) =>
+                          '${a['deadline'] ?? ''}'.compareTo(
+                            '${b['deadline'] ?? ''}',
+                          ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      group.assignee,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${group.items.length} đầu việc • Tiến độ trung bình $averageProgress%',
-                      style: const TextStyle(
-                        color: StitchTheme.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          ...group.items.asMap().entries.map((entry) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: entry.key == group.items.length - 1 ? 0 : 12,
-              ),
-              child: _buildItemCard(entry.value, showAssignee: false),
-            );
-          }),
-        ],
+            )
+            .toList()
+          ..sort((a, b) => a.assignee.compareTo(b.assignee));
+
+    return groups;
+  }
+
+  Future<void> _openItem(Map<String, dynamic> item) async {
+    final int itemId = _toInt(item['id']);
+    if (itemId <= 0) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<Widget>(
+        builder:
+            (_) => TaskItemDetailScreen(
+              token: widget.token,
+              apiService: widget.apiService,
+              taskId: widget.taskId,
+              itemId: itemId,
+            ),
       ),
     );
+    await _fetch();
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<_TaskItemGroup> groupedItems = _groupedItems();
+    final int progress = _toInt(_task?['progress_percent']);
+    final int taskWeight = _toInt(_task?['weight_percent']);
+    final int totalItemWeight = _items.fold<int>(
+      0,
+      (int sum, Map<String, dynamic> item) =>
+          sum + _toInt(item['weight_percent']),
+    );
+    final int remainingWeight = 100 - totalItemWeight;
+    final List<_TaskItemGroup> groups = _groupedItems();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Chi tiết công việc')),
+      backgroundColor: const Color(0xFFF6F8FC),
+      appBar: AppBar(
+        title: const Text('Chi tiết công việc'),
+        backgroundColor: Colors.white,
+        elevation: 0.3,
+      ),
       body: SafeArea(
         child:
-            loading
+            _loading
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
                   onRefresh: _fetch,
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
                     children: <Widget>[
-                      if (message.isNotEmpty)
-                        Text(
-                          message,
-                          style: const TextStyle(color: StitchTheme.textMuted),
-                        ),
-                      if (task != null) ...<Widget>[
+                      if (_message.isNotEmpty)
                         Container(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(18),
                             border: Border.all(color: StitchTheme.border),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                (task?['title'] ?? 'Công việc').toString(),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 18,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Trạng thái: ${_statusLabel((task?['status'] ?? '').toString())}',
-                                style: const TextStyle(
-                                  color: StitchTheme.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Tiến độ: ${(task?['progress_percent'] ?? 0)}%',
-                                style: const TextStyle(
-                                  color: StitchTheme.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Deadline: ${_formatDate((task?['deadline'] ?? '').toString())}',
-                                style: const TextStyle(
-                                  color: StitchTheme.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Phòng ban: ${(task?['department']?['name'] ?? '—').toString()}',
-                                style: const TextStyle(
-                                  color: StitchTheme.textMuted,
-                                ),
-                              ),
-                            ],
+                          child: Text(
+                            _message,
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
+                        ),
+                      if (_task != null) ...<Widget>[
+                        _TaskHeroCard(
+                          title: (_task?['title'] ?? 'Công việc').toString(),
+                          description: (_task?['description'] ?? '').toString(),
+                          progress: progress,
+                          status: _statusLabel(
+                            (_task?['status'] ?? '').toString(),
+                          ),
+                          priority: _priorityLabel(
+                            (_task?['priority'] ?? '').toString(),
+                          ),
+                          department:
+                              (_task?['department']?['name'] ?? '—').toString(),
+                          assignee:
+                              (_task?['assignee']?['name'] ?? 'Chưa phân công')
+                                  .toString(),
+                          deadline: _formatDate(
+                            (_task?['deadline'] ?? '').toString(),
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'Danh sách đầu việc',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: <Widget>[
+                            _MetricCard(
+                              label: 'Tỷ trọng công việc',
+                              value: '$taskWeight%',
+                              tone: StitchTheme.primary,
+                            ),
+                            _MetricCard(
+                              label: 'Số đầu việc',
+                              value: '${_items.length}',
+                              tone: const Color(0xFF0F766E),
+                            ),
+                            _MetricCard(
+                              label: 'Đã phân bổ',
+                              value: '$totalItemWeight%',
+                              tone: const Color(0xFF7C3AED),
+                            ),
+                            _MetricCard(
+                              label: 'Còn lại để chia',
+                              value:
+                                  '${remainingWeight < 0 ? 0 : remainingWeight}%',
+                              tone:
+                                  remainingWeight < 0
+                                      ? StitchTheme.danger
+                                      : StitchTheme.success,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: StitchTheme.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Row(
+                                children: <Widget>[
+                                  const Expanded(
+                                    child: Text(
+                                      'Đầu việc trong công việc',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  if (_canManageItems)
+                                    FilledButton.icon(
+                                      onPressed: () => _openItemEditor(),
+                                      icon: const Icon(Icons.add, size: 18),
+                                      label: const Text('Thêm đầu việc'),
+                                    ),
+                                  if (_canManageItems)
+                                    const SizedBox(width: 10),
+                                  if (_isTaskApprovalOwner())
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: StitchTheme.primary.withValues(
+                                          alpha: 0.12,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Bạn là người duyệt phiếu đầu việc',
+                                        style: TextStyle(
+                                          color: StitchTheme.primary,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                remainingWeight >= 0
+                                    ? 'Tổng tỷ trọng đầu việc hiện là $totalItemWeight%. Hệ thống còn $remainingWeight% để phân bổ.'
+                                    : 'Tổng tỷ trọng đầu việc đang vượt 100%. Cần rà lại dữ liệu để tránh lệch tiến độ.',
+                                style: TextStyle(
+                                  color:
+                                      remainingWeight >= 0
+                                          ? StitchTheme.textMuted
+                                          : StitchTheme.danger,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              if (_items.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  child: Text(
+                                    'Chưa có đầu việc nào trong công việc này.',
+                                    style: TextStyle(
+                                      color: StitchTheme.textMuted,
+                                    ),
+                                  ),
+                                )
+                              else
+                                ...groups.map(
+                                  (_TaskItemGroup group) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 14),
+                                    child: _TaskGroupCard(
+                                      group: group,
+                                      formatDate: _formatDate,
+                                      statusLabel: _statusLabel,
+                                      onOpenItem: _openItem,
+                                      toInt: _toInt,
+                                      canManageItems: _canManageItems,
+                                      onEditItem:
+                                          (Map<String, dynamic> item) =>
+                                              _openItemEditor(item: item),
+                                      onDeleteItem: _deleteItem,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        if (items.isEmpty)
-                          const Text(
-                            'Chưa có đầu việc nào.',
-                            style: TextStyle(color: StitchTheme.textMuted),
-                          )
-                        else
-                          ...groupedItems.map(_buildItemGroup),
                       ],
                     ],
                   ),
@@ -1413,41 +866,107 @@ class _TaskItemGroup {
   final List<Map<String, dynamic>> items;
 }
 
-class _ReviewInfoRow extends StatelessWidget {
-  const _ReviewInfoRow({required this.label, required this.value});
+class _TaskHeroCard extends StatelessWidget {
+  const _TaskHeroCard({
+    required this.title,
+    required this.description,
+    required this.progress,
+    required this.status,
+    required this.priority,
+    required this.department,
+    required this.assignee,
+    required this.deadline,
+  });
 
-  final String label;
-  final String value;
+  final String title;
+  final String description;
+  final int progress;
+  final String status;
+  final String priority;
+  final String department;
+  final String assignee;
+  final String deadline;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        SizedBox(
-          width: 110,
-          child: Text(
-            label,
-            style: const TextStyle(color: StitchTheme.textMuted, fontSize: 12),
-          ),
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: <Color>[Color(0xFFFFFFFF), Color(0xFFF3F8FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 18,
+            offset: Offset(0, 10),
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          if (description.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              description,
+              style: const TextStyle(
+                color: StitchTheme.textMuted,
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0, 100) / 100,
+              minHeight: 10,
+              backgroundColor: StitchTheme.surfaceAlt,
+              valueColor: AlwaysStoppedAnimation<Color>(StitchTheme.primary),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Tiến độ hiện tại: $progress%',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: StitchTheme.textMain,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: <Widget>[
+              _MiniChip(label: 'Trạng thái', value: status),
+              _MiniChip(label: 'Ưu tiên', value: priority),
+              _MiniChip(label: 'Phòng ban', value: department),
+              _MiniChip(label: 'Phụ trách', value: assignee),
+              _MiniChip(label: 'Deadline', value: deadline),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _InsightMetric extends StatelessWidget {
-  const _InsightMetric({
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
     required this.label,
     required this.value,
-    this.tone = StitchTheme.textMain,
+    required this.tone,
   });
 
   final String label;
@@ -1458,10 +977,11 @@ class _InsightMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       constraints: const BoxConstraints(minWidth: 150),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: StitchTheme.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1474,9 +994,9 @@ class _InsightMetric extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
               color: tone,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -1485,158 +1005,265 @@ class _InsightMetric extends StatelessWidget {
   }
 }
 
-class _LegendDot extends StatelessWidget {
-  const _LegendDot({required this.color, required this.label});
+class _MiniChip extends StatelessWidget {
+  const _MiniChip({required this.label, required this.value});
 
-  final Color color;
   final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: const TextStyle(color: StitchTheme.textMuted, fontSize: 12),
-        ),
-      ],
-    );
-  }
-}
-
-class _TaskItemInsightChart extends StatelessWidget {
-  const _TaskItemInsightChart({required this.points});
-
-  final List<Map<String, dynamic>> points;
-
-  @override
-  Widget build(BuildContext context) {
-    if (points.isEmpty) {
-      return const Center(
-        child: Text(
-          'Chưa có dữ liệu tiến độ để hiển thị.',
-          style: TextStyle(color: StitchTheme.textMuted),
-        ),
-      );
-    }
-
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        return Stack(
-          children: <Widget>[
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _TaskItemInsightPainter(points: points),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children:
-                    points.map((Map<String, dynamic> point) {
-                      return Expanded(
-                        child: Text(
-                          (point['label'] ?? '').toString(),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: StitchTheme.textMuted,
-                          ),
-                        ),
-                      );
-                    }).toList(),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+          children: <InlineSpan>[
+            TextSpan(text: '$label: '),
+            TextSpan(
+              text: value,
+              style: const TextStyle(
+                color: StitchTheme.textMain,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 }
 
-class _TaskItemInsightPainter extends CustomPainter {
-  const _TaskItemInsightPainter({required this.points});
+class _TaskGroupCard extends StatelessWidget {
+  const _TaskGroupCard({
+    required this.group,
+    required this.formatDate,
+    required this.statusLabel,
+    required this.onOpenItem,
+    required this.toInt,
+    required this.canManageItems,
+    required this.onEditItem,
+    required this.onDeleteItem,
+  });
 
-  final List<Map<String, dynamic>> points;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double chartHeight = math.max(40, size.height - 28);
-    final Paint gridPaint =
-        Paint()
-          ..color = StitchTheme.border
-          ..strokeWidth = 1;
-    final Paint expectedPaint =
-        Paint()
-          ..color = const Color(0xFF2563EB)
-          ..strokeWidth = 2.5
-          ..style = PaintingStyle.stroke;
-    final Paint actualPaint =
-        Paint()
-          ..color = const Color(0xFF16A34A)
-          ..strokeWidth = 2.5
-          ..style = PaintingStyle.stroke;
-    final Paint pointPaint =
-        Paint()
-          ..color = const Color(0xFF16A34A)
-          ..style = PaintingStyle.fill;
-
-    for (int i = 0; i <= 4; i++) {
-      final double y = (chartHeight / 4) * i;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-
-    if (points.length < 2) {
-      return;
-    }
-
-    final Path expectedPath = Path();
-    final Path actualPath = Path();
-
-    for (int i = 0; i < points.length; i++) {
-      final Map<String, dynamic> point = points[i];
-      final double x =
-          points.length == 1
-              ? size.width / 2
-              : (size.width / (points.length - 1)) * i;
-      final double expected = _clampPercent(point['expected_progress']);
-      final double actual = _clampPercent(point['actual_progress']);
-      final double expectedY = chartHeight - (chartHeight * expected / 100);
-      final double actualY = chartHeight - (chartHeight * actual / 100);
-
-      if (i == 0) {
-        expectedPath.moveTo(x, expectedY);
-        actualPath.moveTo(x, actualY);
-      } else {
-        expectedPath.lineTo(x, expectedY);
-        actualPath.lineTo(x, actualY);
-      }
-
-      canvas.drawCircle(Offset(x, actualY), 3.5, pointPaint);
-    }
-
-    canvas.drawPath(expectedPath, expectedPaint);
-    canvas.drawPath(actualPath, actualPaint);
-  }
-
-  double _clampPercent(dynamic value) {
-    final double parsed =
-        value is num ? value.toDouble() : double.tryParse('${value ?? 0}') ?? 0;
-    return parsed.clamp(0, 100);
-  }
+  final _TaskItemGroup group;
+  final String Function(String raw) formatDate;
+  final String Function(String value) statusLabel;
+  final Future<void> Function(Map<String, dynamic> item) onOpenItem;
+  final int Function(dynamic value) toInt;
+  final bool canManageItems;
+  final Future<void> Function(Map<String, dynamic> item) onEditItem;
+  final Future<void> Function(Map<String, dynamic> item) onDeleteItem;
 
   @override
-  bool shouldRepaint(covariant _TaskItemInsightPainter oldDelegate) {
-    return oldDelegate.points != points;
+  Widget build(BuildContext context) {
+    final int avgProgress =
+        group.items.isEmpty
+            ? 0
+            : group.items
+                    .map(
+                      (Map<String, dynamic> item) =>
+                          toInt(item['progress_percent']),
+                    )
+                    .reduce((int a, int b) => a + b) ~/
+                group.items.length;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: StitchTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  group.assignee.isEmpty
+                      ? 'U'
+                      : group.assignee.substring(0, 1).toUpperCase(),
+                  style: TextStyle(
+                    color: StitchTheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      group.assignee,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${group.items.length} đầu việc • Tiến độ TB $avgProgress%',
+                      style: const TextStyle(
+                        color: StitchTheme.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ...group.items.map(
+            (Map<String, dynamic> item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => onOpenItem(item),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: StitchTheme.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              (item['title'] ?? 'Đầu việc').toString(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: StitchTheme.textMuted,
+                          ),
+                          if (canManageItems)
+                            PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert, size: 18),
+                              onSelected: (String value) {
+                                if (value == 'edit') {
+                                  onEditItem(item);
+                                  return;
+                                }
+                                if (value == 'delete') {
+                                  onDeleteItem(item);
+                                }
+                              },
+                              itemBuilder:
+                                  (BuildContext context) =>
+                                      const <PopupMenuEntry<String>>[
+                                        PopupMenuItem<String>(
+                                          value: 'edit',
+                                          child: Text('Sửa'),
+                                        ),
+                                        PopupMenuItem<String>(
+                                          value: 'delete',
+                                          child: Text('Xóa'),
+                                        ),
+                                      ],
+                            ),
+                        ],
+                      ),
+                      if ((item['description'] ?? '')
+                          .toString()
+                          .trim()
+                          .isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            (item['description'] ?? '').toString(),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 8,
+                        children: <Widget>[
+                          _InlineInfo(
+                            label: 'Trạng thái',
+                            value: statusLabel(
+                              (item['status'] ?? '').toString(),
+                            ),
+                          ),
+                          _InlineInfo(
+                            label: 'Tiến độ',
+                            value: '${toInt(item['progress_percent'])}%',
+                          ),
+                          _InlineInfo(
+                            label: 'Tỷ trọng',
+                            value: '${toInt(item['weight_percent'])}%',
+                          ),
+                          _InlineInfo(
+                            label: 'Deadline',
+                            value: formatDate(
+                              (item['deadline'] ?? '').toString(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineInfo extends StatelessWidget {
+  const _InlineInfo({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+        children: <InlineSpan>[
+          TextSpan(text: '$label: '),
+          TextSpan(
+            text: value,
+            style: const TextStyle(
+              color: StitchTheme.textMain,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

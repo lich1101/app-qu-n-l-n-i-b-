@@ -322,7 +322,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const SizedBox(height: 10),
                     _StatRow(
                       icon: Icons.trending_up,
-                      title: 'Traffic TB',
+                      title: 'Traffic Trung Bình',
                       subtitle: 'Website Care tổng thể',
                       value: websiteTraffic.toString(),
                       trailing: 'Δ $websiteRanking',

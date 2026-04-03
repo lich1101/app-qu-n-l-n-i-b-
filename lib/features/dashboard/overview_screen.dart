@@ -130,22 +130,6 @@ class OverviewScreen extends StatelessWidget {
     final bool compact = media.size.width < 380;
     final double bottomInset = media.padding.bottom + (compact ? 94 : 90);
 
-    final int totalProjects = _readInt(<String>[
-      'projects_total',
-      'projects_in_progress',
-      'projects',
-    ]);
-    final int overdueTasks = _readInt(<String>['tasks_overdue', 'overdue']);
-    final int pendingTasks = _readInt(<String>[
-      'tasks_pending',
-      'tasks_waiting_approval',
-      'tasks_in_review',
-    ]);
-    final int onTimeRate = _readInt(<String>[
-      'on_time_rate',
-      'on_time_percent',
-    ]);
-
     final List<Map<String, dynamic>> progressItems = _extractProgressItems();
     final List<Map<String, dynamic>> activities = _extractActivities();
     final List<Map<String, dynamic>> overloadList = _extractOverloadList();
@@ -323,39 +307,6 @@ class OverviewScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
           ],
-          GridView.count(
-            crossAxisCount: 2,
-            childAspectRatio: 1.7,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            children: <Widget>[
-              StitchMetricCard(
-                icon: Icons.folder_open,
-                label: 'Tổng dự án',
-                value: totalProjects.toString(),
-              ),
-              StitchMetricCard(
-                icon: Icons.calendar_today,
-                label: 'Quá hạn',
-                value: overdueTasks.toString(),
-                accent: StitchTheme.danger,
-              ),
-              StitchMetricCard(
-                icon: Icons.format_list_bulleted,
-                label: 'Chờ duyệt',
-                value: pendingTasks.toString(),
-                accent: StitchTheme.warning,
-              ),
-              StitchMetricCard(
-                icon: Icons.speed,
-                label: 'Hiệu suất',
-                value: '$onTimeRate%',
-                accent: StitchTheme.success,
-              ),
-            ],
-          ),
           if (quickActions.isNotEmpty) ...<Widget>[
             const SizedBox(height: 22),
             const StitchSectionHeader(title: 'Truy cập nhanh'),

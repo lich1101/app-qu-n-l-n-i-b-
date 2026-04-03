@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
+import 'client_detail_screen.dart';
 
 class CrmScreen extends StatefulWidget {
   const CrmScreen({
@@ -31,6 +32,7 @@ class CrmScreen extends StatefulWidget {
 
 class _CrmScreenState extends State<CrmScreen> {
   bool loading = false;
+  bool loadingMore = false;
   String search = '';
   String message = '';
   List<Map<String, dynamic>> clients = <Map<String, dynamic>>[];
@@ -38,6 +40,14 @@ class _CrmScreenState extends State<CrmScreen> {
   List<Map<String, dynamic>> leadTypes = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> departments = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> staffUsers = <Map<String, dynamic>>[];
+  
+  int clientsPage = 1;
+  int clientsLastPage = 1;
+  int clientsTotal = 0;
+  int paymentsPage = 1;
+  int paymentsLastPage = 1;
+  int paymentsTotal = 0;
+
   int? leadTypeId;
   int? assignedDepartmentId;
   int? assignedStaffId;
@@ -52,13 +62,26 @@ class _CrmScreenState extends State<CrmScreen> {
   final TextEditingController leadChannelCtrl = TextEditingController();
   final TextEditingController leadMessageCtrl = TextEditingController();
   final TextEditingController paymentAmountCtrl = TextEditingController();
+  final ScrollController scrollController = ScrollController();
   String paymentStatus = 'pending';
   int? paymentClientId;
 
   @override
   void initState() {
     super.initState();
+    scrollController.addListener(_onScroll);
     _fetch();
+  }
+
+  void _onScroll() {
+    if (scrollController.position.pixels >=
+            scrollController.position.maxScrollExtent - 200 &&
+        !loading &&
+        !loadingMore) {
+      if (clientsPage < clientsLastPage || paymentsPage < paymentsLastPage) {
+        _fetchMore();
+      }
+    }
   }
 
   @override
@@ -71,6 +94,7 @@ class _CrmScreenState extends State<CrmScreen> {
     leadChannelCtrl.dispose();
     leadMessageCtrl.dispose();
     paymentAmountCtrl.dispose();
+    scrollController.dispose();
     super.dispose();
   }
 
@@ -96,8 +120,14 @@ class _CrmScreenState extends State<CrmScreen> {
   }
 
   Future<void> _fetch() async {
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+      clientsPage = 1;
+      paymentsPage = 1;
+    });
     final bool isAdmin = widget.currentUserRole == 'admin';
+    
+    // Metadata can be fetched in parallel if needed, but let's keep it simple
     final List<Map<String, dynamic>> types = await widget.apiService
         .getLeadTypes(widget.token);
     final List<Map<String, dynamic>> deptData =
@@ -108,12 +138,20 @@ class _CrmScreenState extends State<CrmScreen> {
         isAdmin
             ? await widget.apiService.getUsersAccounts(widget.token)
             : <Map<String, dynamic>>[];
-    final List<Map<String, dynamic>> c = await widget.apiService.getClients(
+
+    final Map<String, dynamic> clientPayload = await widget.apiService.getClients(
       widget.token,
+      page: 1,
+      perPage: 20,
     );
-    final List<Map<String, dynamic>> p = await widget.apiService.getPayments(
+    final Map<String, dynamic> paymentPayload = await widget.apiService.getPayments(
       widget.token,
+      page: 1,
+      perPage: 10,
     );
+
+    if (!mounted) return;
+
     setState(() {
       loading = false;
       leadTypes = types;
@@ -122,9 +160,62 @@ class _CrmScreenState extends State<CrmScreen> {
       if (leadTypeId == null && types.isNotEmpty) {
         leadTypeId = types.first['id'] as int?;
       }
-      clients = c;
-      payments = p;
+      
+      final List<dynamic> clientList = (clientPayload['data'] ?? []) as List<dynamic>;
+      clients = clientList.map((e) => e as Map<String, dynamic>).toList();
+      clientsLastPage = (clientPayload['last_page'] ?? 1) as int;
+      clientsTotal = (clientPayload['total'] ?? 0) as int;
+
+      final List<dynamic> paymentList = (paymentPayload['data'] ?? []) as List<dynamic>;
+      payments = paymentList.map((e) => e as Map<String, dynamic>).toList();
+      paymentsLastPage = (paymentPayload['last_page'] ?? 1) as int;
+      paymentsTotal = (paymentPayload['total'] ?? 0) as int;
     });
+  }
+
+  Future<void> _fetchMore() async {
+    if (loadingMore) return;
+    setState(() => loadingMore = true);
+
+    if (clientsPage < clientsLastPage) {
+      final int nextPage = clientsPage + 1;
+      final Map<String, dynamic> payload = await widget.apiService.getClients(
+        widget.token,
+        page: nextPage,
+        perPage: 20,
+      );
+      if (mounted) {
+        final List<dynamic> newList = (payload['data'] ?? []) as List<dynamic>;
+        setState(() {
+          clients.addAll(newList.map((e) => e as Map<String, dynamic>).toList());
+          clientsPage = nextPage;
+          clientsLastPage = (payload['last_page'] ?? 1) as int;
+          clientsTotal = (payload['total'] ?? 0) as int;
+        });
+      }
+    }
+
+    if (paymentsPage < paymentsLastPage) {
+      final int nextPage = paymentsPage + 1;
+      final Map<String, dynamic> payload = await widget.apiService.getPayments(
+        widget.token,
+        page: nextPage,
+        perPage: 10,
+      );
+      if (mounted) {
+        final List<dynamic> newList = (payload['data'] ?? []) as List<dynamic>;
+        setState(() {
+          payments.addAll(newList.map((e) => e as Map<String, dynamic>).toList());
+          paymentsPage = nextPage;
+          paymentsLastPage = (payload['last_page'] ?? 1) as int;
+          paymentsTotal = (payload['total'] ?? 0) as int;
+        });
+      }
+    }
+
+    if (mounted) {
+      setState(() => loadingMore = false);
+    }
   }
 
   Future<void> _importClients() async {
@@ -401,27 +492,51 @@ class _CrmScreenState extends State<CrmScreen> {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
               decoration: const BoxDecoration(
-                color: StitchTheme.bg,
+                color: StitchTheme.surfaceAlt,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      editingClientId == null
-                          ? 'Tạo khách hàng'
-                          : 'Sửa khách hàng',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                     ),
-                    const SizedBox(height: 8),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(editingClientId == null ? 'Tạo Khách Hàng' : 'Sửa Khách Hàng', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                            InkWell(
+                              onTap: () => Navigator.of(context).pop(),
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+                                child: const Icon(Icons.close, size: 20, color: Colors.black54),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
                     TextField(
                       controller: clientNameCtrl,
                       decoration: const InputDecoration(
@@ -683,7 +798,17 @@ class _CrmScreenState extends State<CrmScreen> {
                       Text(message),
                     ],
                     const SizedBox(height: 12),
-                    Row(
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4))],
+                    ),
+                    child: Row(
                       children: <Widget>[
                         Expanded(
                           child: OutlinedButton(
@@ -694,29 +819,22 @@ class _CrmScreenState extends State<CrmScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed:
-                                widget.canManageClients
-                                    ? () async {
-                                      final bool ok = await _saveClient();
-                                      if (!context.mounted) return;
-                                      if (ok) {
-                                        Navigator.of(context).pop();
-                                      } else {
-                                        setSheetState(() {});
-                                      }
-                                    }
-                                    : null,
-                            child: Text(
-                              editingClientId == null
-                                  ? 'Lưu khách hàng'
-                                  : 'Cập nhật khách hàng',
-                            ),
+                            onPressed: widget.canManageClients ? () async {
+                              final bool ok = await _saveClient();
+                              if (!context.mounted) return;
+                              if (ok) {
+                                Navigator.of(context).pop();
+                              } else {
+                                setSheetState(() {});
+                              }
+                            } : null,
+                            child: Text(editingClientId == null ? 'Lưu khách hàng' : 'Cập nhật', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             );
           },
@@ -880,34 +998,12 @@ class _CrmScreenState extends State<CrmScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final int totalClients = clients.length;
-    final int totalPayments = payments.length;
     final int pendingPayments =
         payments.where((Map<String, dynamic> payment) {
           final String status =
               (payment['status'] ?? '').toString().toLowerCase();
           return status.contains('pending') || status.contains('cho');
         }).length;
-
-    final List<Map<String, dynamic>> filteredClients =
-        clients.where((Map<String, dynamic> client) {
-          if (search.isEmpty) return true;
-          final String hay =
-              '${client['company'] ?? ''} ${client['name'] ?? ''} ${client['email'] ?? ''}'
-                  .toLowerCase();
-          return hay.contains(search.toLowerCase());
-        }).toList();
-
-    final List<Map<String, dynamic>> filteredPayments =
-        payments.where((Map<String, dynamic> payment) {
-          if (search.isEmpty) return true;
-          final Map<String, dynamic>? client =
-              payment['client'] as Map<String, dynamic>?;
-          final String hay =
-              '${client?['company'] ?? ''} ${client?['name'] ?? ''} ${payment['status'] ?? ''}'
-                  .toLowerCase();
-          return hay.contains(search.toLowerCase());
-        }).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -923,6 +1019,7 @@ class _CrmScreenState extends State<CrmScreen> {
       body: RefreshIndicator(
         onRefresh: _fetch,
         child: ListView(
+          controller: scrollController,
           padding: const EdgeInsets.all(16),
           children: <Widget>[
             const StitchHeroCard(
@@ -942,13 +1039,13 @@ class _CrmScreenState extends State<CrmScreen> {
                 StitchMetricCard(
                   icon: Icons.people_alt,
                   label: 'Khách hàng',
-                  value: totalClients.toString(),
+                  value: clientsTotal.toString(),
                   accent: StitchTheme.primary,
                 ),
                 StitchMetricCard(
                   icon: Icons.receipt_long,
                   label: 'Giao dịch',
-                  value: totalPayments.toString(),
+                  value: paymentsTotal.toString(),
                   accent: StitchTheme.success,
                 ),
                 StitchMetricCard(
@@ -961,7 +1058,7 @@ class _CrmScreenState extends State<CrmScreen> {
                   icon: Icons.query_stats,
                   label: 'Theo dõi',
                   value:
-                      (filteredClients.length + filteredPayments.length)
+                      (clientsTotal + paymentsTotal)
                           .toString(),
                   accent: StitchTheme.textMuted,
                 ),
@@ -987,6 +1084,7 @@ class _CrmScreenState extends State<CrmScreen> {
                       ),
                       onChanged: (String value) {
                         setState(() => search = value.trim());
+                        _fetch(); // Re-fetch on search
                       },
                     ),
                   ),
@@ -999,7 +1097,7 @@ class _CrmScreenState extends State<CrmScreen> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
-                      'Đang hiển thị ${filteredClients.length} khách hàng và ${filteredPayments.length} giao dịch phù hợp.',
+                      'Đang hiển thị ${clients.length} khách hàng và ${payments.length} giao dịch (Tổng: $clientsTotal KH, $paymentsTotal GD).',
                       style: const TextStyle(
                         color: StitchTheme.textMuted,
                         height: 1.45,
@@ -1032,71 +1130,117 @@ class _CrmScreenState extends State<CrmScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            ...filteredClients.map(
-              (Map<String, dynamic> client) => Card(
-                child: ListTile(
-                  title: Text(
-                    ((client['company'] ?? client['name'] ?? 'Khách hàng'))
-                        .toString(),
-                  ),
-                  subtitle: Builder(
-                    builder: (BuildContext context) {
-                      final Map<String, dynamic>? leadType =
-                          client['lead_type'] as Map<String, dynamic>?;
-                      final Map<String, dynamic>? tier =
-                          client['revenue_tier'] as Map<String, dynamic>?;
-                      final Map<String, dynamic>? dept =
-                          client['assigned_department']
-                              as Map<String, dynamic>?;
-                      final Map<String, dynamic>? staff =
-                          client['assigned_staff'] as Map<String, dynamic>? ??
-                          client['sales_owner'] as Map<String, dynamic>?;
-                      final List<dynamic> careStaffRaw =
-                          (client['care_staff_users'] as List<dynamic>?) ??
-                          <dynamic>[];
-                      final String careStaffLabel = careStaffRaw
-                          .map((dynamic item) {
-                            if (item is Map<String, dynamic>) {
-                              return (item['name'] ?? '').toString();
-                            }
-                            return '';
-                          })
-                          .where((String name) => name.trim().isNotEmpty)
-                          .take(2)
-                          .join(', ');
-                      final List<String> meta = <String>[
-                        (client['email'] ?? 'Chưa có email').toString(),
-                        if (leadType != null)
-                          (leadType['name'] ?? '').toString(),
-                        if (tier != null) (tier['label'] ?? '').toString(),
-                        if (dept != null) (dept['name'] ?? '').toString(),
-                        if (staff != null) (staff['name'] ?? '').toString(),
-                        if (careStaffLabel.isNotEmpty) 'CSKH: $careStaffLabel',
-                      ];
-                      return Text(meta.join(' • '));
-                    },
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      if (widget.canManageClients)
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined),
-                          onPressed: () => _openClientForm(client: client),
-                        ),
-                      if (widget.canDelete)
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.red,
-                          ),
-                          onPressed:
-                              () => _deleteClient((client['id'] ?? 0) as int),
-                        ),
+            ...clients.map(
+              (Map<String, dynamic> client) {
+                final int clientId = (client['id'] ?? 0) as int;
+                final Map<String, dynamic>? leadType = client['lead_type'] as Map<String, dynamic>?;
+                final Map<String, dynamic>? staff = client['assigned_staff'] as Map<String, dynamic>? ?? client['sales_owner'] as Map<String, dynamic>?;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: StitchTheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(color: StitchTheme.textMain.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
                     ],
+                    border: Border.all(color: StitchTheme.border),
                   ),
-                ),
-              ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => ClientDetailScreen(token: widget.token, apiService: widget.apiService, clientId: clientId),
+                      ));
+                    },
+                    child: IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Container(
+                            width: 6,
+                            decoration: BoxDecoration(
+                              color: StitchTheme.primary,
+                              borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), bottomLeft: Radius.circular(16)),
+                            ),
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 20,
+                                        backgroundColor: StitchTheme.primary.withValues(alpha: 0.1),
+                                        child: Text(
+                                          ((client['company'] ?? client['name'] ?? 'K')).toString().isNotEmpty 
+                                            ? ((client['company'] ?? client['name'] ?? 'K')).toString().characters.first.toUpperCase() 
+                                            : 'K',
+                                          style: TextStyle(color: StitchTheme.primary, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              ((client['company'] ?? client['name'] ?? 'Khách hàng')).toString(),
+                                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, height: 1.2),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.email_outlined, size: 13, color: StitchTheme.textMuted),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    (client['email'] ?? 'Chưa có email').toString(),
+                                                    style: const TextStyle(color: StitchTheme.textMuted, fontSize: 12),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (widget.canManageClients)
+                                        PopupMenuButton<String>(
+                                          icon: const Icon(Icons.more_vert, size: 20, color: StitchTheme.textMuted),
+                                          onSelected: (val) {
+                                            if (val == 'edit') _openClientForm(client: client);
+                                            if (val == 'delete' && widget.canDelete) _deleteClient(clientId);
+                                          },
+                                          itemBuilder: (context) => [
+                                            const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_outlined, size: 20), SizedBox(width: 8), Text('Sửa')])),
+                                            if (widget.canDelete) const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, color: Colors.red, size: 20), SizedBox(width: 8), Text('Xóa', style: TextStyle(color: Colors.red))])),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      if (leadType != null) _buildBadge(leadType['name']?.toString() ?? '—', StitchTheme.primary),
+                                      if (staff != null) _buildBadge('Phụ trách: ${staff['name']}', StitchTheme.success),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 10),
             Row(
@@ -1116,40 +1260,97 @@ class _CrmScreenState extends State<CrmScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            ...filteredPayments.map(
-              (Map<String, dynamic> payment) => Card(
-                child: ListTile(
-                  title: Text(
-                    ((payment['client'] as Map<String, dynamic>?)?['company'] ??
-                            (payment['client']
-                                as Map<String, dynamic>?)?['name'] ??
-                            'Khách hàng')
-                        .toString(),
+            ...payments.map(
+              (Map<String, dynamic> payment) {
+                final String pStatus = (payment['status'] ?? '').toString();
+                final Color pColor = pStatus.toLowerCase() == 'paid' ? StitchTheme.success : StitchTheme.warning;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: StitchTheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: StitchTheme.border),
                   ),
-                  subtitle: Text('${payment['status']} • ${payment['amount']}'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      if (widget.canManagePayments)
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined),
-                          onPressed: () => _openPaymentForm(payment: payment),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: pColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+                        child: Icon(Icons.payments_outlined, color: pColor, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              ((payment['client'] as Map<String, dynamic>?)?['company'] ?? (payment['client'] as Map<String, dynamic>?)?['name'] ?? 'Khách hàng').toString(),
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, height: 1.2),
+                            ),
+                            const SizedBox(height: 4),
+                            Text('${payment['amount']?.toString() ?? '0'} • $pStatus', style: const TextStyle(color: StitchTheme.textSubtle, fontSize: 13)),
+                          ],
                         ),
-                      if (widget.canDelete)
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.red,
-                          ),
-                          onPressed:
-                              () => _deletePayment((payment['id'] ?? 0) as int),
+                      ),
+                      if (widget.canManagePayments || widget.canDelete)
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert, size: 20, color: StitchTheme.textMuted),
+                          onSelected: (val) {
+                            if (val == 'edit' && widget.canManagePayments) _openPaymentForm(payment: payment);
+                            if (val == 'delete' && widget.canDelete) _deletePayment((payment['id'] ?? 0) as int);
+                          },
+                          itemBuilder: (context) => [
+                            if (widget.canManagePayments) const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_outlined, size: 20), SizedBox(width: 8), Text('Sửa')])),
+                            if (widget.canDelete) const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, color: Colors.red, size: 20), SizedBox(width: 8), Text('Xóa', style: TextStyle(color: Colors.red))])),
+                          ],
                         ),
                     ],
                   ),
+                );
+              },
+            ),
+            if (loadingMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: CircularProgressIndicator(),
                 ),
               ),
-            ),
+            if (!loadingMore &&
+                clientsPage >= clientsLastPage &&
+                paymentsPage >= paymentsLastPage &&
+                clients.isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    'Đã hiển thị toàn bộ danh sách.',
+                    style: TextStyle(color: StitchTheme.textMuted, fontSize: 13),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 60),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBadge(String text, Color color, {bool outlined = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: outlined ? Colors.transparent : color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: outlined ? Border.all(color: color.withValues(alpha: 0.3)) : null,
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: color,
         ),
       ),
     );

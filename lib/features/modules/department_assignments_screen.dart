@@ -53,21 +53,27 @@ class _DepartmentAssignmentsScreenState
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> rows = await widget.apiService
-        .getDepartmentAssignments(widget.token);
-    final List<Map<String, dynamic>> deptRows = await widget.apiService
-        .getDepartments(widget.token);
-    final List<Map<String, dynamic>> clientRows = await widget.apiService
-        .getClients(widget.token, perPage: 200);
-    final List<Map<String, dynamic>> contractRows = await widget.apiService
-        .getContracts(widget.token, perPage: 200);
+    final List<Map<String, dynamic>> rows =
+        await widget.apiService.getDepartmentAssignments(widget.token);
+    final List<Map<String, dynamic>> deptRows =
+        await widget.apiService.getDepartments(widget.token);
+
+    final Map<String, dynamic> clientPayload =
+        await widget.apiService.getClients(widget.token, perPage: 100);
+    final Map<String, dynamic> contractPayload =
+        await widget.apiService.getContracts(widget.token, perPage: 100);
+
     if (!mounted) return;
+
+    final List<dynamic> clientData = (clientPayload['data'] ?? []) as List<dynamic>;
+    final List<dynamic> contractData = (contractPayload['data'] ?? []) as List<dynamic>;
+
     setState(() {
       loading = false;
       assignments = rows;
       departments = deptRows;
-      clients = clientRows;
-      contracts = contractRows;
+      clients = clientData.map((e) => e as Map<String, dynamic>).toList();
+      contracts = contractData.map((e) => e as Map<String, dynamic>).toList();
     });
   }
 

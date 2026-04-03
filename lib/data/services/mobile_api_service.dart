@@ -341,6 +341,7 @@ class MobileApiService {
     String? deadline,
     String? customerRequirement,
     String? repoUrl,
+    String? websiteUrl,
   }) async {
     final http.Response res = await http.post(
       Uri.parse('${AppEnv.apiBaseUrl}/projects'),
@@ -357,14 +358,16 @@ class MobileApiService {
         if (customerRequirement != null)
           'customer_requirement': customerRequirement,
         if (repoUrl != null) 'repo_url': repoUrl,
+        if (websiteUrl != null) 'website_url': websiteUrl,
       }),
     );
     return res.statusCode == 201;
   }
 
-  Future<List<Map<String, dynamic>>> getContracts(
+  Future<Map<String, dynamic>> getContracts(
     String token, {
     int perPage = 50,
+    int page = 1,
     String search = '',
     String status = '',
     int? clientId,
@@ -373,7 +376,10 @@ class MobileApiService {
     bool availableOnly = false,
     int? projectId,
   }) async {
-    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
+    final Map<String, String> params = <String, String>{
+      'per_page': '$perPage',
+      'page': '$page',
+    };
     if (withItems) {
       params['with_items'] = '1';
     }
@@ -399,11 +405,8 @@ class MobileApiService {
       '${AppEnv.apiBaseUrl}/contracts',
     ).replace(queryParameters: params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
-    if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body =
-        jsonDecode(res.body) as Map<String, dynamic>;
-    final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
-    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> getContractDetail(String token, int id) async {
@@ -1369,16 +1372,14 @@ class MobileApiService {
   Future<Map<String, dynamic>> getProjectSearchConsole(
     String token,
     int projectId, {
-    bool refresh = true,
-    bool force = false,
-    int days = 21,
+    bool validate = true,
+    int days = 3650,
   }) async {
     final Uri uri = Uri.parse(
       '${AppEnv.apiBaseUrl}/projects/$projectId/search-console',
     ).replace(
       queryParameters: <String, String>{
-        'refresh': refresh ? '1' : '0',
-        'force': force ? '1' : '0',
+        'validate': validate ? '1' : '0',
         'days': '$days',
       },
     );
@@ -1396,6 +1397,48 @@ class MobileApiService {
     if (res.statusCode != 200) {
       final String message =
           (body['message'] ?? 'Không tải được dữ liệu Google Search Console.')
+              .toString();
+      return <String, dynamic>{
+        'error': true,
+        'statusCode': res.statusCode,
+        'message': message,
+        'body': body,
+      };
+    }
+
+    return <String, dynamic>{
+      'error': false,
+      'statusCode': res.statusCode,
+      'body': body,
+    };
+  }
+
+  Future<Map<String, dynamic>> updateProjectSearchConsoleNotification(
+    String token,
+    int projectId, {
+    required bool enabled,
+  }) async {
+    final http.Response res = await http.put(
+      Uri.parse(
+        '${AppEnv.apiBaseUrl}/projects/$projectId/search-console/notification',
+      ),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{'enabled': enabled}),
+    );
+
+    Map<String, dynamic> body = <String, dynamic>{};
+    if (res.body.isNotEmpty) {
+      try {
+        body = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {
+        body = <String, dynamic>{};
+      }
+    }
+
+    if (res.statusCode != 200) {
+      final String message =
+          (body['message'] ??
+                  'Không cập nhật được trạng thái thông báo Google Search Console.')
               .toString();
       return <String, dynamic>{
         'error': true,
@@ -1530,6 +1573,22 @@ class MobileApiService {
     return res.statusCode == 201;
   }
 
+  Future<Map<String, dynamic>?> getTaskItemDetail(
+    String token,
+    int itemId,
+  ) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/task-items/$itemId'),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    );
+
+    if (res.statusCode == 200) {
+      final decoded = jsonDecode(res.body);
+      return decoded as Map<String, dynamic>;
+    }
+    return null;
+  }
+
   Future<List<Map<String, dynamic>>> getTaskItems(
     String token,
     int taskId, {
@@ -1555,6 +1614,7 @@ class MobileApiService {
     String status = 'todo',
     int? progressPercent,
     int? weightPercent,
+    String? startDate,
     String? deadline,
     int? assigneeId,
   }) async {
@@ -1569,6 +1629,7 @@ class MobileApiService {
         'status': status,
         if (progressPercent != null) 'progress_percent': progressPercent,
         if (weightPercent != null) 'weight_percent': weightPercent,
+        if (startDate != null && startDate.isNotEmpty) 'start_date': startDate,
         if (deadline != null && deadline.isNotEmpty) 'deadline': deadline,
         if (assigneeId != null) 'assignee_id': assigneeId,
       }),
@@ -1586,6 +1647,7 @@ class MobileApiService {
     String? status,
     int? progressPercent,
     int? weightPercent,
+    String? startDate,
     String? deadline,
     int? assigneeId,
   }) async {
@@ -1599,6 +1661,7 @@ class MobileApiService {
         if (status != null) 'status': status,
         if (progressPercent != null) 'progress_percent': progressPercent,
         if (weightPercent != null) 'weight_percent': weightPercent,
+        if (startDate != null) 'start_date': startDate,
         if (deadline != null) 'deadline': deadline,
         if (assigneeId != null) 'assignee_id': assigneeId,
       }),
@@ -2125,14 +2188,18 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
-  Future<List<Map<String, dynamic>>> getClients(
+  Future<Map<String, dynamic>> getClients(
     String token, {
     int perPage = 50,
+    int page = 1,
     String search = '',
     int? leadTypeId,
     bool leadOnly = false,
   }) async {
-    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
+    final Map<String, String> params = <String, String>{
+      'per_page': '$perPage',
+      'page': '$page',
+    };
     if (search.trim().isNotEmpty) {
       params['search'] = search.trim();
     }
@@ -2146,11 +2213,8 @@ class MobileApiService {
       '${AppEnv.apiBaseUrl}/crm/clients',
     ).replace(queryParameters: params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
-    if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body =
-        jsonDecode(res.body) as Map<String, dynamic>;
-    final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
-    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<bool> createClient(
@@ -2240,16 +2304,25 @@ class MobileApiService {
     return res.statusCode == 200;
   }
 
-  Future<List<Map<String, dynamic>>> getPayments(String token) async {
-    final http.Response res = await http.get(
-      Uri.parse('${AppEnv.apiBaseUrl}/crm/payments?per_page=10'),
-      headers: _jsonHeaders(token),
-    );
-    if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body =
-        jsonDecode(res.body) as Map<String, dynamic>;
-    final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
-    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+  Future<Map<String, dynamic>> getPayments(
+    String token, {
+    int perPage = 10,
+    int page = 1,
+    String status = '',
+  }) async {
+    final Map<String, String> params = <String, String>{
+      'per_page': '$perPage',
+      'page': '$page',
+    };
+    if (status.trim().isNotEmpty) {
+      params['status'] = status.trim();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/crm/payments',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<bool> createPayment(
@@ -2324,10 +2397,7 @@ class MobileApiService {
     final Uri uri = Uri.parse(
       '${AppEnv.apiBaseUrl}/reports/dashboard-summary',
     ).replace(queryParameters: params.isEmpty ? null : params);
-    final http.Response res = await http.get(
-      uri,
-      headers: _jsonHeaders(token),
-    );
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -3235,6 +3305,7 @@ class MobileApiService {
     String? deadline,
     String? customerRequirement,
     String? repoUrl,
+    String? websiteUrl,
   }) async {
     final http.Response res = await http.put(
       Uri.parse('${AppEnv.apiBaseUrl}/projects/$id'),
@@ -3251,6 +3322,7 @@ class MobileApiService {
         if (customerRequirement != null)
           'customer_requirement': customerRequirement,
         if (repoUrl != null) 'repo_url': repoUrl,
+        if (websiteUrl != null) 'website_url': websiteUrl,
       }),
     );
     return res.statusCode == 200;
@@ -3266,7 +3338,10 @@ class MobileApiService {
 
   // ─── Project Flow & Files ─────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> getProjectFlow(String token, int projectId) async {
+  Future<Map<String, dynamic>> getProjectFlow(
+    String token,
+    int projectId,
+  ) async {
     final http.Response res = await http.get(
       Uri.parse('${AppEnv.apiBaseUrl}/projects/$projectId/flow'),
       headers: _jsonHeaders(token),
@@ -3289,8 +3364,50 @@ class MobileApiService {
     ).replace(queryParameters: params.isEmpty ? null : params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final List<dynamic> rows = jsonDecode(res.body) as List<dynamic>;
+    final dynamic decoded = jsonDecode(res.body);
+    final List<dynamic> rows =
+        decoded is Map<String, dynamic>
+            ? ((decoded['data'] ?? <dynamic>[]) as List<dynamic>)
+            : ((decoded is List<dynamic>) ? decoded : <dynamic>[]);
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<Map<String, dynamic>> getTaskItemsGlobal(
+    String token, {
+    int perPage = 30,
+    int page = 1,
+    int? projectId,
+    int? taskId,
+    int? assigneeId,
+    String status = '',
+    String search = '',
+  }) async {
+    final Map<String, String> params = <String, String>{
+      'per_page': '$perPage',
+      'page': '$page',
+    };
+    if (projectId != null && projectId > 0) {
+      params['project_id'] = '$projectId';
+    }
+    if (taskId != null && taskId > 0) {
+      params['task_id'] = '$taskId';
+    }
+    if (assigneeId != null && assigneeId > 0) {
+      params['assignee_id'] = '$assigneeId';
+    }
+    if (status.trim().isNotEmpty) {
+      params['status'] = status.trim();
+    }
+    if (search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/task-items',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   // ─── Task Full Update & Delete ────────────────────────────────────────
@@ -3359,10 +3476,7 @@ class MobileApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  Future<bool> markTaskChatRead(
-    String token, {
-    required int taskId,
-  }) async {
+  Future<bool> markTaskChatRead(String token, {required int taskId}) async {
     final http.Response res = await http.post(
       Uri.parse('${AppEnv.apiBaseUrl}/notifications/in-app/read-task-chat'),
       headers: _jsonHeaders(token),
@@ -3373,14 +3487,18 @@ class MobileApiService {
 
   // ─── Opportunities CRUD ───────────────────────────────────────────────
 
-  Future<List<Map<String, dynamic>>> getOpportunities(
+  Future<Map<String, dynamic>> getOpportunities(
     String token, {
     int perPage = 50,
+    int page = 1,
     String search = '',
     String? status,
     int? clientId,
   }) async {
-    final Map<String, String> params = <String, String>{'per_page': '$perPage'};
+    final Map<String, String> params = <String, String>{
+      'per_page': '$perPage',
+      'page': '$page',
+    };
     if (search.trim().isNotEmpty) {
       params['search'] = search.trim();
     }
@@ -3394,11 +3512,8 @@ class MobileApiService {
       '${AppEnv.apiBaseUrl}/opportunities',
     ).replace(queryParameters: params);
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
-    if (res.statusCode != 200) return <Map<String, dynamic>>[];
-    final Map<String, dynamic> body =
-        jsonDecode(res.body) as Map<String, dynamic>;
-    final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
-    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>?> getOpportunityDetail(
@@ -3498,10 +3613,7 @@ class MobileApiService {
 
   // ─── Client Flow & Care Notes ─────────────────────────────────────────
 
-  Future<Map<String, dynamic>> getClientFlow(
-    String token,
-    int clientId,
-  ) async {
+  Future<Map<String, dynamic>> getClientFlow(String token, int clientId) async {
     final http.Response res = await http.get(
       Uri.parse('${AppEnv.apiBaseUrl}/crm/clients/$clientId/flow'),
       headers: _jsonHeaders(token),

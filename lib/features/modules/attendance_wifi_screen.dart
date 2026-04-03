@@ -67,6 +67,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
   AttendanceWifiPermissionState? _wifiPermissionState;
 
   bool get _canManage => _managerRoles.contains(widget.currentUserRole);
+  bool get _canManualAdjust => widget.currentUserRole == 'administrator';
   bool get _canGetCurrentBssid =>
       <String>['admin', 'administrator'].contains(widget.currentUserRole);
   bool get _canTrack => widget.currentUserRole != 'administrator';
@@ -354,16 +355,17 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     return <Map<String, dynamic>>[];
   }
 
-  String _statusLabel(String status) {
+  String _statusLabel(String status, {int minutesLate = 0}) {
     switch (status) {
       case 'present':
         return 'Đúng công';
       case 'late_pending':
-        return 'Đi muộn chờ duyệt';
+      case 'late':
+        return 'Đi muộn${minutesLate > 0 ? ' $minutesLate phút' : ''}';
       case 'approved_full':
         return 'Duyệt đủ công';
       case 'approved_partial':
-        return 'Duyệt công thủ công';
+        return 'Duyệt công';
       case 'holiday_auto':
         return 'Ngày lễ tự động';
       case 'pending':
@@ -422,6 +424,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       case 'holiday_auto':
         return StitchTheme.successStrong;
       case 'late_pending':
+      case 'late':
       case 'pending':
       case 'approved_partial':
         return StitchTheme.warningStrong;
@@ -807,9 +810,6 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
   Future<void> _showRequestReviewSheet(Map<String, dynamic> item) async {
     String reviewStatus = 'approved';
     String approvalMode = 'full_work';
-    double approvedUnits =
-        ((item['approved_work_units'] as num?) ?? _defaultUnitsForItem(item))
-            .toDouble();
     final TextEditingController noteCtrl = TextEditingController();
 
     await showModalBottomSheet<void>(
@@ -865,67 +865,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                             setSheetState(() => approvalMode = 'no_change');
                           },
                         ),
-                        _buildChoice(
-                          label: 'Nhập công',
-                          selected: approvalMode == 'manual',
-                          onTap: () {
-                            setSheetState(() => approvalMode = 'manual');
-                          },
-                        ),
                       ],
-                    ),
-                  ],
-                  if (reviewStatus == 'approved' &&
-                      approvalMode == 'manual') ...<Widget>[
-                    const SizedBox(height: 12),
-                    _FieldLabel(label: 'Số công duyệt'),
-                    Row(
-                      children: <Widget>[
-                        IconButton(
-                          onPressed: () {
-                            setSheetState(() {
-                              approvedUnits =
-                                  ((approvedUnits - 0.1) * 10).roundToDouble() /
-                                  10;
-                              approvedUnits = approvedUnits.clamp(0.0, 1.0);
-                            });
-                          },
-                          icon: const Icon(Icons.remove_circle_outline),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: Text(
-                              approvedUnits.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () {
-                            setSheetState(() {
-                              approvedUnits =
-                                  ((approvedUnits + 0.1) * 10).roundToDouble() /
-                                  10;
-                              approvedUnits = approvedUnits.clamp(0.0, 1.0);
-                            });
-                          },
-                          icon: const Icon(Icons.add_circle_outline),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (reviewStatus == 'approved' &&
-                      approvalMode == 'manual') ...<Widget>[
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Nhập công theo bước 0.1. 1.0 là đủ ngày, 0.5 là nửa buổi.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: StitchTheme.textMuted,
-                      ),
                     ),
                   ],
                   const SizedBox(height: 12),
@@ -954,11 +894,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                                   reviewStatus == 'approved'
                                       ? approvalMode
                                       : null,
-                              approvedWorkUnits:
-                                  reviewStatus == 'approved' &&
-                                          approvalMode == 'manual'
-                                      ? approvedUnits
-                                      : null,
+                              approvedWorkUnits: null,
                               decisionNote: noteCtrl.text.trim(),
                             );
                         if (!mounted) return;
@@ -1341,10 +1277,11 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
   }
 
   double _roundWorkUnits(double value) {
-    return ((value * 10).roundToDouble() / 10).clamp(0.0, 1.0);
+    return ((value * 2).roundToDouble() / 2).clamp(0.0, 1.0);
   }
 
   Future<void> _showManualRecordSheet({Map<String, dynamic>? item}) async {
+    if (!_canManualAdjust) return;
     final List<Map<String, dynamic>> selectableStaff = <Map<String, dynamic>>[
       ..._staffRows,
     ];
@@ -1451,7 +1388,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                       IconButton(
                         onPressed: () {
                           setSheetState(() {
-                            workUnits = _roundWorkUnits(workUnits - 0.1);
+                            workUnits = _roundWorkUnits(workUnits - 0.5);
                           });
                         },
                         icon: const Icon(Icons.remove_circle_outline),
@@ -1470,7 +1407,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                       IconButton(
                         onPressed: () {
                           setSheetState(() {
-                            workUnits = _roundWorkUnits(workUnits + 0.1);
+                            workUnits = _roundWorkUnits(workUnits + 0.5);
                           });
                         },
                         icon: const Icon(Icons.add_circle_outline),
@@ -1479,7 +1416,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Nhập công theo bước 0.1. 1.0 là đủ ngày, 0.5 là nửa buổi. Có thể đặt 0.0 nếu cần điều chỉnh vắng mặt.',
+                    'Nhập công theo bước 0.5. 1.0 là đủ ngày, 0.5 là nửa buổi. Có thể đặt 0.0 nếu cần điều chỉnh vắng mặt.',
                     style: TextStyle(
                       fontSize: 12,
                       color: StitchTheme.textMuted,
@@ -1576,6 +1513,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
             : _formatDateTimeLabel(checkInAt).split(' ').last;
     final String statusLabel = _statusLabel(
       (record['status'] ?? '').toString(),
+      minutesLate: ((record['minutes_late'] as num?) ?? 0).toInt(),
     );
     final String schedule = '$_workStartTime - $_workEndTime';
 
@@ -1588,84 +1526,145 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x1A000000),
+                blurRadius: 20,
+                offset: Offset(0, -5),
+              ),
+            ],
           ),
           child: SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: <Widget>[
-                  Center(
-                    child: Container(
-                      width: 48,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: StitchTheme.border,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: StitchTheme.border,
+                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 32),
                   Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
+                    width: 80,
+                    height: 80,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: <Color>[Color(0xFFF97316), Color(0xFFFB923C)],
-                      ),
-                      borderRadius: BorderRadius.circular(28),
+                      shape: BoxShape.circle,
+                      color: StitchTheme.success.withValues(alpha: 0.1),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Text(
-                          'Chấm công thành công',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Lịch làm việc hôm nay: $schedule',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _SuccessStat(
-                                label: 'Giờ vào làm',
-                                value: checkInTime,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _SuccessStat(
-                                label: 'Trạng thái',
-                                value: statusLabel,
-                              ),
+                    child: Center(
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: StitchTheme.success,
+                          boxShadow: [
+                            BoxShadow(
+                              color: StitchTheme.success,
+                              blurRadius: 16,
+                              offset: Offset(0, 4),
                             ),
                           ],
                         ),
-                      ],
+                        child: const Icon(Icons.check_rounded, color: Colors.white, size: 36),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Chấm công thành công',
+                    style: TextStyle(
+                      color: StitchTheme.textMain,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Lịch làm việc hôm nay: $schedule',
+                    style: const TextStyle(
+                      color: StitchTheme.textMuted,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: StitchTheme.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.schedule_rounded, size: 16, color: StitchTheme.textMuted),
+                                  SizedBox(width: 6),
+                                  Text('Giờ vào làm', style: TextStyle(color: StitchTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w500)),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(checkInTime, style: const TextStyle(color: StitchTheme.textMain, fontSize: 22, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: StitchTheme.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.fact_check_outlined, size: 16, color: StitchTheme.textMuted),
+                                  SizedBox(width: 6),
+                                  Text('Trạng thái', style: TextStyle(color: StitchTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w500)),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(statusLabel, style: TextStyle(color: _statusColor((record['status'] ?? '').toString()), fontSize: 16, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: StitchTheme.primaryStrong,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
                       onPressed: () {
                         Navigator.of(context).pop();
                         setState(() => _activeTab = 'timesheet');
                       },
-                      child: const Text('Xem bảng công'),
+                      child: const Text('Xem bảng công', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                     ),
                   ),
                 ],
@@ -1862,11 +1861,16 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         ((todayRecord?['work_units'] as num?) ?? 0).toDouble();
 
     String formatUnits(double value) {
-      final double normalized = double.parse(value.toStringAsFixed(1));
+      final double normalized = double.parse(value.toStringAsFixed(2));
       if ((normalized - normalized.roundToDouble()).abs() < 0.001) {
         return normalized.toStringAsFixed(0);
       }
-      return normalized.toStringAsFixed(1);
+      // Nếu phần thập phân 2 chữ số thì hiện 2
+      final double oneDecimal = double.parse(value.toStringAsFixed(1));
+      if ((normalized - oneDecimal).abs() < 0.001) {
+        return oneDecimal.toStringAsFixed(1);
+      }
+      return normalized.toStringAsFixed(2);
     }
 
     final Color heroColor =
@@ -1883,11 +1887,15 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
             : canCheckInNow
             ? Icons.how_to_reg_rounded
             : Icons.phonelink_lock_outlined;
+    final int todayMinutesLate =
+        ((todayRecord?['minutes_late'] as num?) ?? 0).toInt();
     final String heroSubtitle =
         !_attendanceEnabled
             ? 'Quản trị đang tạm khóa chức năng chấm công Wi‑Fi trên toàn hệ thống.'
             : alreadyCheckedIn
-            ? 'Giờ vào làm của bạn đã được ghi nhận.'
+            ? (todayMinutesLate > 0
+                ? 'Bạn đi muộn $todayMinutesLate phút. Hệ thống đã tự tính ${formatUnits(todayWorkUnits)} công.'
+                : 'Giờ vào làm của bạn đã được ghi nhận.')
             : 'Khi bắt đầu vào làm, bạn chỉ cần bấm nút bên dưới. Hệ thống sẽ tự kiểm tra Wi‑Fi công ty và trạng thái thiết bị trước khi ghi nhận công.';
 
     return <Widget>[
@@ -1907,6 +1915,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                         ? 'Chưa chấm công'
                         : _statusLabel(
                           (todayRecord['status'] ?? '').toString(),
+                          minutesLate: ((todayRecord['minutes_late'] as num?) ?? 0).toInt(),
                         )),
             color:
                 alreadyCheckedIn
@@ -1940,11 +1949,15 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     );
 
     String formatUnits(double value) {
-      final double normalized = double.parse(value.toStringAsFixed(1));
+      final double normalized = double.parse(value.toStringAsFixed(2));
       if ((normalized - normalized.roundToDouble()).abs() < 0.001) {
         return normalized.toStringAsFixed(0);
       }
-      return normalized.toStringAsFixed(1);
+      final double oneDecimal = double.parse(value.toStringAsFixed(1));
+      if ((normalized - oneDecimal).abs() < 0.001) {
+        return oneDecimal.toStringAsFixed(1);
+      }
+      return normalized.toStringAsFixed(2);
     }
 
     return <Widget>[
@@ -2061,7 +2074,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                   subtitle:
                       'Giờ vào: ${_formatDateTimeLabel((item['check_in_at'] ?? '').toString())}',
                   trailing: _StatusPill(
-                    label: _statusLabel((item['status'] ?? '').toString()),
+                    label: _statusLabel((item['status'] ?? '').toString(), minutesLate: ((item['minutes_late'] as num?) ?? 0).toInt()),
                     color: _statusColor((item['status'] ?? '').toString()),
                   ),
                   details: <Widget>[
@@ -2727,7 +2740,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       _SectionCard(
         title: 'Báo cáo công',
         subtitle:
-            'Lọc theo khoảng ngày để tổng hợp số công, ngày đi muộn và ngày lễ tự động. Số công được tính theo bước 0.1 và 1.0 là đủ ngày công.',
+            'Lọc theo khoảng ngày để tổng hợp số công, ngày đi muộn và ngày lễ tự động. Số công được tính theo bước 0.5 và 1.0 là đủ ngày công.',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -2771,12 +2784,13 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                 spacing: 10,
                 runSpacing: 10,
                 children: <Widget>[
-                  OutlinedButton.icon(
-                    onPressed:
-                        _submitting ? null : () => _showManualRecordSheet(),
-                    icon: const Icon(Icons.edit_calendar_outlined),
-                    label: const Text('Sửa công tay'),
-                  ),
+                  if (_canManualAdjust)
+                    OutlinedButton.icon(
+                      onPressed:
+                          _submitting ? null : () => _showManualRecordSheet(),
+                      icon: const Icon(Icons.edit_calendar_outlined),
+                      label: const Text('Sửa công tay'),
+                    ),
                   FilledButton.icon(
                     onPressed:
                         _submitting
@@ -2801,44 +2815,17 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                 SizedBox(
                   width: 160,
                   child: StitchMetricCard(
-                    icon: Icons.fact_check_outlined,
-                    label: 'Tổng dòng',
-                    value: '${_reportSummary['total_rows'] ?? 0}',
+                    icon: Icons.groups_2_outlined,
+                    label: 'Tổng nhân viên',
+                    value: '${_reportSummary['total_staff'] ?? 0}',
                   ),
                 ),
                 SizedBox(
                   width: 160,
                   child: StitchMetricCard(
                     icon: Icons.work_history_outlined,
-                    label: 'Tổng công',
-                    value: '${_reportSummary['total_work_units'] ?? 0}',
-                    accent: StitchTheme.successStrong,
-                  ),
-                ),
-                SizedBox(
-                  width: 160,
-                  child: StitchMetricCard(
-                    icon: Icons.schedule_outlined,
-                    label: 'Đi muộn',
-                    value: '${_reportSummary['late_count'] ?? 0}',
-                    accent: StitchTheme.warningStrong,
-                  ),
-                ),
-                SizedBox(
-                  width: 160,
-                  child: StitchMetricCard(
-                    icon: Icons.beenhere_outlined,
-                    label: 'Duyệt đủ công',
-                    value: '${_reportSummary['approved_full_count'] ?? 0}',
-                    accent: StitchTheme.primaryStrong,
-                  ),
-                ),
-                SizedBox(
-                  width: 160,
-                  child: StitchMetricCard(
-                    icon: Icons.event_available_outlined,
-                    label: 'Ngày lễ auto',
-                    value: '${_reportSummary['holiday_count'] ?? 0}',
+                    label: 'Công ngày hiện tại',
+                    value: '${_reportSummary['today_work_units'] ?? 0}',
                     accent: StitchTheme.successStrong,
                   ),
                 ),
@@ -2866,17 +2853,17 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                   ),
                   dataRowMinHeight: 62,
                   dataRowMaxHeight: 72,
-                  columns: const <DataColumn>[
-                    DataColumn(label: Text('Ngày')),
-                    DataColumn(label: Text('Nhân sự')),
-                    DataColumn(label: Text('Vai trò')),
-                    DataColumn(label: Text('Phòng ban')),
-                    DataColumn(label: Text('Giờ vào')),
-                    DataColumn(label: Text('Công')),
-                    DataColumn(label: Text('Đi muộn')),
-                    DataColumn(label: Text('Trạng thái')),
-                    DataColumn(label: Text('Nguồn')),
-                    DataColumn(label: Text('')),
+                  columns: <DataColumn>[
+                    const DataColumn(label: Text('Ngày')),
+                    const DataColumn(label: Text('Nhân sự')),
+                    const DataColumn(label: Text('Vai trò')),
+                    const DataColumn(label: Text('Phòng ban')),
+                    const DataColumn(label: Text('Giờ vào')),
+                    const DataColumn(label: Text('Công')),
+                    const DataColumn(label: Text('Đi muộn')),
+                    const DataColumn(label: Text('Trạng thái')),
+                    const DataColumn(label: Text('Nguồn')),
+                    if (_canManualAdjust) const DataColumn(label: Text('')),
                   ],
                   rows:
                       _reportRows.map((Map<String, dynamic> item) {
@@ -2914,16 +2901,17 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                             DataCell(
                               Text((item['source_label'] ?? '—').toString()),
                             ),
-                            DataCell(
-                              OutlinedButton(
-                                onPressed:
-                                    _submitting
-                                        ? null
-                                        : () =>
-                                            _showManualRecordSheet(item: item),
-                                child: const Text('Sửa công'),
+                            if (_canManualAdjust)
+                              DataCell(
+                                OutlinedButton(
+                                  onPressed:
+                                      _submitting
+                                          ? null
+                                          : () =>
+                                              _showManualRecordSheet(item: item),
+                                  child: const Text('Sửa công'),
+                                ),
                               ),
-                            ),
                           ],
                         );
                       }).toList(),
@@ -3135,24 +3123,35 @@ class _AttendancePrimaryCard extends StatelessWidget {
       child: Column(
         children: <Widget>[
           Container(
-            width: 116,
-            height: 116,
+            width: 120,
+            height: 120,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[accent.withValues(alpha: 0.88), accent],
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.24),
-                  blurRadius: 24,
-                  offset: const Offset(0, 14),
-                ),
-              ],
+              color: accent.withValues(alpha: 0.12),
+              border: Border.all(color: accent.withValues(alpha: 0.2), width: 2),
             ),
-            child: Icon(icon, color: Colors.white, size: 48),
+            child: Center(
+              child: Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[accent.withValues(alpha: 0.8), accent],
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Icon(icon, color: Colors.white, size: 44),
+              ),
+            ),
           ),
           const SizedBox(height: 18),
           Text(
@@ -3269,16 +3268,17 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: StitchTheme.textMain,
-          fontSize: 12,
+          color: color,
+          fontSize: 13,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -3461,42 +3461,6 @@ class _AttendanceCheckInDock extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SuccessStat extends StatelessWidget {
-  const _SuccessStat({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
       ),
     );
   }

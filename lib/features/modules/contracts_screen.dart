@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
+import '../projects/create_project_screen.dart';
 
 class ContractsScreen extends StatefulWidget {
   const ContractsScreen({
@@ -49,12 +50,18 @@ class _ContractsScreenState extends State<ContractsScreen> {
   final TextEditingController careNoteDetailCtrl = TextEditingController();
 
   bool loading = false;
+  bool loadingMore = false;
   String message = '';
   String filterStatus = '';
   int? filterClientId;
   int? formClientId;
   int? editingId;
   String status = 'draft';
+  
+  int currentPage = 1;
+  int lastPage = 1;
+  int totalContracts = 0;
+  final ScrollController scrollController = ScrollController();
 
   List<Map<String, dynamic>> contracts = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> clients = <Map<String, dynamic>>[];
@@ -71,7 +78,18 @@ class _ContractsScreenState extends State<ContractsScreen> {
   @override
   void initState() {
     super.initState();
+    scrollController.addListener(_onScroll);
     _fetch();
+  }
+
+  void _onScroll() {
+    if (scrollController.position.pixels >=
+            scrollController.position.maxScrollExtent - 200 &&
+        !loading &&
+        !loadingMore &&
+        currentPage < lastPage) {
+      _fetchMore();
+    }
   }
 
   @override
@@ -86,13 +104,19 @@ class _ContractsScreenState extends State<ContractsScreen> {
     notesCtrl.dispose();
     careNoteTitleCtrl.dispose();
     careNoteDetailCtrl.dispose();
+    scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _fetch() async {
-    setState(() => loading = true);
-    final List<Map<String, dynamic>> clientRows =
-        await widget.apiService.getClients(widget.token);
+    setState(() {
+      loading = true;
+      currentPage = 1;
+    });
+    
+    // Clients might also be paginated now, let's take a reasonable amount for the dropdown
+    final Map<String, dynamic> clientPayload =
+        await widget.apiService.getClients(widget.token, perPage: 100);
     final List<Map<String, dynamic>> productRows =
         await widget.apiService.getProducts(widget.token);
     final List<Map<String, dynamic>> collectorRows =
@@ -105,24 +129,60 @@ class _ContractsScreenState extends State<ContractsScreen> {
       widget.token,
       purpose: 'contract_care_staff',
     );
-    final List<Map<String, dynamic>> contractRows =
+    
+    final Map<String, dynamic> contractPayload =
         await widget.apiService.getContracts(
       widget.token,
-      perPage: 100,
+      page: 1,
+      perPage: 20,
       search: searchCtrl.text.trim(),
       status: filterStatus,
       clientId: filterClientId,
       withItems: true,
     );
+
     if (!mounted) return;
+    
+    final List<dynamic> clientData = (clientPayload['data'] ?? []) as List<dynamic>;
+    final List<dynamic> contractData = (contractPayload['data'] ?? []) as List<dynamic>;
+
     setState(() {
       loading = false;
-      clients = clientRows;
+      clients = clientData.map((e) => e as Map<String, dynamic>).toList();
       products = productRows;
       collectors = collectorRows;
       careStaffUsers = careStaffRows;
-      contracts = contractRows;
+      contracts = contractData.map((e) => e as Map<String, dynamic>).toList();
+      lastPage = (contractPayload['last_page'] ?? 1) as int;
+      totalContracts = (contractPayload['total'] ?? 0) as int;
     });
+  }
+
+  Future<void> _fetchMore() async {
+    if (loadingMore || currentPage >= lastPage) return;
+    setState(() => loadingMore = true);
+
+    final int nextPage = currentPage + 1;
+    final Map<String, dynamic> payload = await widget.apiService.getContracts(
+      widget.token,
+      page: nextPage,
+      perPage: 20,
+      search: searchCtrl.text.trim(),
+      status: filterStatus,
+      clientId: filterClientId,
+      withItems: true,
+    );
+
+    if (mounted) {
+      final List<dynamic> newData = (payload['data'] ?? []) as List<dynamic>;
+      setState(() {
+        loadingMore = false;
+        contracts.addAll(newData.map((e) => e as Map<String, dynamic>).toList());
+        currentPage = nextPage;
+        lastPage = (payload['last_page'] ?? 1) as int;
+        totalContracts = (payload['total'] ?? 0) as int;
+      });
+    }
   }
 
   Future<void> _importContracts() async {
@@ -617,24 +677,51 @@ class _ContractsScreenState extends State<ContractsScreen> {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
               decoration: const BoxDecoration(
-                color: StitchTheme.bg,
+                color: StitchTheme.surfaceAlt,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      editingId == null ? 'Tạo hợp đồng' : 'Sửa hợp đồng',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                     ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(editingId == null ? 'Tạo Hợp Đồng' : 'Sửa Hợp Đồng', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                            InkWell(
+                              onTap: () => Navigator.of(context).pop(),
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+                                child: const Icon(Icons.close, size: 20, color: Colors.black54),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
                     const SizedBox(height: 12),
                     const Text(
                       'Mã hợp đồng sẽ tự sinh khi lưu, người dùng không cần nhập thủ công.',
@@ -1232,54 +1319,67 @@ class _ContractsScreenState extends State<ContractsScreen> {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4))],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('Hủy'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  final NavigatorState navigator = Navigator.of(context);
+                                  final bool ok = await _save();
+                                  if (!mounted) return;
+                                  if (ok) {
+                                    navigator.pop();
+                                  } else {
+                                    setSheetState(() {});
+                                  }
+                                },
+                                child: Text(editingId == null ? 'Lưu hợp đồng' : 'Cập nhật', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final NavigatorState navigator = Navigator.of(context);
-                              final bool ok = await _save();
-                              if (!mounted) return;
-                              if (ok) {
-                                navigator.pop();
-                              } else {
-                                setSheetState(() {});
-                              }
-                            },
-                            child: Text(editingId == null ? 'Lưu hợp đồng' : 'Cập nhật'),
+                        if (editingId == null && widget.canApprove) ...<Widget>[
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonal(
+                              onPressed: () async {
+                                final NavigatorState navigator = Navigator.of(context);
+                                final bool ok = await _save(createAndApprove: true);
+                                if (!mounted) return;
+                                if (ok) {
+                                  navigator.pop();
+                                } else {
+                                  setSheetState(() {});
+                                }
+                              },
+                              child: const Text('Tạo và duyệt', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
-                    if (editingId == null && widget.canApprove) ...<Widget>[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.tonal(
-                          onPressed: () async {
-                            final NavigatorState navigator = Navigator.of(context);
-                            final bool ok =
-                                await _save(createAndApprove: true);
-                            if (!mounted) return;
-                            if (ok) {
-                              navigator.pop();
-                            } else {
-                              setSheetState(() {});
-                            }
-                          },
-                          child: const Text('Tạo và duyệt'),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                ],
               ),
             );
           },
@@ -1769,292 +1869,341 @@ class _ContractsScreenState extends State<ContractsScreen> {
             final bool canAddCareNote =
                 _readBool(detailData['can_add_care_note']) ?? false;
 
+            final bool canCreateProject =
+                _readBool(detailData['can_create_project']) ?? false;
+            final bool showCreateProjectBtn = canCreateProject &&
+                detailData['approval_status'] == 'approved' &&
+                (detailData['project_id'] == null || detailData['project_id'].toString().isEmpty || detailData['project_id'].toString() == 'null');
+
             return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
+              height: MediaQuery.of(context).size.height * 0.9,
               decoration: const BoxDecoration(
                 color: StitchTheme.bg,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      (detailData['title'] ?? 'Chi tiết hợp đồng').toString(),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 18,
+              child: Column(
+                children: [
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: StitchTheme.border,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${(detailData['code'] ?? '').toString()} • ${((detailData['client'] as Map<String, dynamic>?)?['name'] ?? 'Khách hàng').toString()}',
-                      style: const TextStyle(color: StitchTheme.textMuted),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: <Widget>[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _statusColor(
-                              (detailData['status'] ?? 'draft').toString(),
-                            ).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            _statusLabel(
-                              (detailData['status'] ?? 'draft').toString(),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.only(
+                        left: 20,
+                        right: 20,
+                        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          // Header
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: StitchTheme.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: StitchTheme.textMain.withValues(alpha: 0.04),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                )
+                              ],
+                              border: Border.all(color: StitchTheme.border),
                             ),
-                            style: TextStyle(
-                              color: _statusColor(
-                                (detailData['status'] ?? 'draft').toString(),
-                              ),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                              (detailData['approval_status'] == 'approved'
-                                      ? StitchTheme.success
-                                      : StitchTheme.warning)
-                                  .withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            _approvalLabel(
-                              (detailData['approval_status'] ?? 'pending')
-                                  .toString(),
-                            ),
-                            style: TextStyle(
-                              color:
-                              detailData['approval_status'] == 'approved'
-                                  ? StitchTheme.success
-                                  : StitchTheme.warning,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    _buildInfoTile(
-                      'Nhân viên thu',
-                      ((detailData['collector'] as Map<String, dynamic>?)?['name'] ??
-                              '—')
-                          .toString(),
-                    ),
-                    _buildInfoTile('Giá trị', _money(detailData['value'])),
-                    _buildInfoTile('Đã thu', _money(detailData['payments_total'])),
-                    _buildInfoTile(
-                      'Công nợ',
-                      _money(detailData['debt_outstanding']),
-                    ),
-                    _buildInfoTile('Chi phí', _money(detailData['costs_total'])),
-                    _buildInfoTile(
-                      'Hiệu lực',
-                      '${_safeDate(detailData['start_date'])} → ${_safeDate(detailData['end_date'])}',
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Nhân viên chăm sóc',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 8),
-                    if (careStaffRows.isEmpty)
-                      const Text(
-                        'Chưa gắn nhân viên chăm sóc riêng cho hợp đồng này.',
-                        style: TextStyle(color: StitchTheme.textMuted),
-                      )
-                    else
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: careStaffRows
-                            .map(
-                              (Map<String, dynamic> row) => FilterChip(
-                                selected: true,
-                                onSelected: (_) {},
-                                label: Text(
-                                  (row['name'] ?? 'Nhân sự').toString(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  (detailData['title'] ?? 'Chi tiết hợp đồng').toString(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 20,
+                                    height: 1.2,
+                                  ),
                                 ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Nhật ký chăm sóc hợp đồng',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Nhân viên chăm sóc cập nhật tiêu đề và nội dung để người phụ trách nắm tiến độ hợp đồng.',
-                      style: TextStyle(
-                        color: StitchTheme.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    if (canAddCareNote) ...<Widget>[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: careNoteTitleCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Tiêu đề chăm sóc',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: careNoteDetailCtrl,
-                        minLines: 3,
-                        maxLines: 5,
-                        decoration: const InputDecoration(
-                          labelText: 'Nội dung chăm sóc',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: savingCareNote
-                              ? null
-                              : () async {
-                                  final String title =
-                                      careNoteTitleCtrl.text.trim();
-                                  final String detailText =
-                                      careNoteDetailCtrl.text.trim();
-                                  if (title.isEmpty || detailText.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Vui lòng nhập tiêu đề và nội dung chăm sóc.',
-                                        ),
-                                      ),
-                                    );
-                                    return;
-                                  }
-
-                                  setSheetState(() => savingCareNote = true);
-                                  final Map<String, dynamic>? note =
-                                      await widget.apiService
-                                          .createContractCareNote(
-                                    widget.token,
-                                    id,
-                                    title: title,
-                                    detail: detailText,
-                                  );
-                                  if (!context.mounted) return;
-                                  setSheetState(() => savingCareNote = false);
-
-                                  if (note == null) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Không thể cập nhật nhật ký chăm sóc.',
-                                        ),
-                                      ),
-                                    );
-                                    return;
-                                  }
-
-                                  setSheetState(() {
-                                    final List<dynamic> nextNotes =
-                                        List<dynamic>.from(
-                                      (detailData['care_notes'] ?? <dynamic>[])
-                                          as List<dynamic>,
-                                    );
-                                    nextNotes.insert(0, note);
-                                    detailData['care_notes'] = nextNotes;
-                                  });
-                                  careNoteTitleCtrl.clear();
-                                  careNoteDetailCtrl.clear();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Đã cập nhật nhật ký chăm sóc.',
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.business_center_outlined, size: 16, color: StitchTheme.textMuted),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        '${(detailData['code'] ?? '').toString()} • ${((detailData['client'] as Map<String, dynamic>?)?['name'] ?? 'Khách hàng').toString()}',
+                                        style: const TextStyle(color: StitchTheme.textMuted, fontSize: 13),
                                       ),
                                     ),
-                                  );
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _buildBadge(
+                                      _statusLabel((detailData['status'] ?? 'draft').toString()),
+                                      _statusColor((detailData['status'] ?? 'draft').toString()),
+                                    ),
+                                    _buildBadge(
+                                      _approvalLabel((detailData['approval_status'] ?? 'pending').toString()),
+                                      detailData['approval_status'] == 'approved' ? StitchTheme.success : StitchTheme.warning,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          const Text('Thông tin Tài chính', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: StitchTheme.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: Column(
+                              children: [
+                                _buildDetailRow('Giá trị hợp đồng', _money(detailData['value']), bold: true),
+                                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),
+                                _buildDetailRow('Đã thu', _money(detailData['payments_total']), textColor: StitchTheme.successStrong),
+                                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),
+                                _buildDetailRow('Công nợ', _money(detailData['debt_outstanding']), textColor: StitchTheme.dangerStrong),
+                                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),
+                                _buildDetailRow('Chi phí', _money(detailData['costs_total'])),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          const Text('Thông tin Chung', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: StitchTheme.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: Column(
+                              children: [
+                                _buildDetailRow('Nhân viên thu', ((detailData['collector'] as Map<String, dynamic>?)?['name'] ?? '—').toString()),
+                                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),
+                                _buildDetailRow('Dự án', ((detailData['project'] as Map<String, dynamic>?)?['name'] ?? 'Chưa liên kết').toString()),
+                                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),
+                                _buildDetailRow('Ngày ký', _safeDate(detailData['signed_at'])),
+                                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),
+                                _buildDetailRow('Thời gian', '${_safeDate(detailData['start_date'])} → ${_safeDate(detailData['end_date'])}'),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          
+                          if (showCreateProjectBtn) ...<Widget>[
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CreateProjectScreen(
+                                        token: widget.token,
+                                        apiService: widget.apiService,
+                                        initialContractId: detailData['id'].toString(),
+                                        initialContractTitle: detailData['title']?.toString(),
+                                      ),
+                                    ),
+                                  ).then((_) => _fetch());
                                 },
-                          child: Text(
-                            savingCareNote
-                                ? 'Đang lưu...'
-                                : 'Thêm nhật ký chăm sóc',
+                                icon: const Icon(Icons.rocket_launch, size: 18),
+                                label: const Text('Tạo Dự án Triển khai'),
+                                style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+
+                          const Text('Nhân sự CSKH', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          const SizedBox(height: 12),
+                          if (careStaffRows.isEmpty)
+                            const Text('Chưa phân công nhân sự CSKH.', style: TextStyle(color: StitchTheme.textMuted))
+                          else
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: careStaffRows.map((row) {
+                                final n = (row['name'] ?? 'U').toString();
+                                return Chip(
+                                  avatar: CircleAvatar(
+                                    backgroundColor: StitchTheme.primary.withValues(alpha: 0.1),
+                                    child: Text(n.isNotEmpty ? n.substring(0, 1).toUpperCase() : 'U', style: TextStyle(color: StitchTheme.primary, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ),
+                                  label: Text(n),
+                                  backgroundColor: StitchTheme.surface,
+                                  side: const BorderSide(color: StitchTheme.border),
+                                );
+                              }).toList(),
+                            ),
+                          const SizedBox(height: 24),
+
+                          const Text('Nhật ký chăm sóc', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Ghi lại các tương tác, tiến độ và yêu cầu để nhóm cùng nắm được.',
+                            style: TextStyle(color: StitchTheme.textMuted, fontSize: 13),
                           ),
-                        ),
+                          if (canAddCareNote) ...<Widget>[
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: StitchTheme.surface,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: StitchTheme.border),
+                              ),
+                              child: Column(
+                                children: [
+                                  TextField(
+                                    controller: careNoteTitleCtrl,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Tiêu đề ngắn',
+                                      border: InputBorder.none,
+                                    ),
+                                  ),
+                                  const Divider(height: 1),
+                                  TextField(
+                                    controller: careNoteDetailCtrl,
+                                    minLines: 2,
+                                    maxLines: 4,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Nội dung chi tiết...',
+                                      border: InputBorder.none,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: FilledButton(
+                                      onPressed: savingCareNote
+                                          ? null
+                                          : () async {
+                                              final String title = careNoteTitleCtrl.text.trim();
+                                              final String detailText = careNoteDetailCtrl.text.trim();
+                                              if (title.isEmpty || detailText.isEmpty) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Vui lòng nhập tiêu đề và nội dung.')),
+                                                );
+                                                return;
+                                              }
+                                              setSheetState(() => savingCareNote = true);
+                                              final Map<String, dynamic>? note = await widget.apiService.createContractCareNote(widget.token, id, title: title, detail: detailText);
+                                              if (!context.mounted) return;
+                                              setSheetState(() => savingCareNote = false);
+                                              if (note == null) {
+                                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lưu thất bại.')));
+                                                return;
+                                              }
+                                              setSheetState(() {
+                                                final List<dynamic> nextNotes = List<dynamic>.from((detailData['care_notes'] ?? <dynamic>[]) as List<dynamic>);
+                                                nextNotes.insert(0, note);
+                                                detailData['care_notes'] = nextNotes;
+                                              });
+                                              careNoteTitleCtrl.clear();
+                                              careNoteDetailCtrl.clear();
+                                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã cập nhật nhật ký.')));
+                                            },
+                                      child: Text(savingCareNote ? 'Đang lưu...' : 'Gửi nhật ký'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          if (careNotes.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Text('Chưa có lịch sử chăm sóc.', style: TextStyle(color: StitchTheme.textSubtle, fontStyle: FontStyle.italic)),
+                              ),
+                            )
+                          else
+                            ...careNotes.map((Map<String, dynamic> note) {
+                              final Map<String, dynamic>? user = note['user'] as Map<String, dynamic>?;
+                              final String uName = (user?['name'] ?? 'Ẩn danh').toString();
+                              final String initial = uName.isNotEmpty ? uName.substring(0, 1).toUpperCase() : '?';
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 18,
+                                      backgroundColor: StitchTheme.primary.withValues(alpha: 0.1),
+                                      child: Text(initial, style: TextStyle(color: StitchTheme.primary, fontSize: 14, fontWeight: FontWeight.bold)),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: StitchTheme.surface,
+                                          borderRadius: const BorderRadius.only(
+                                            topRight: Radius.circular(16),
+                                            bottomLeft: Radius.circular(16),
+                                            bottomRight: Radius.circular(16),
+                                          ),
+                                          border: Border.all(color: StitchTheme.border),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(uName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                                                ),
+                                                Text(_safeDateTime(note['created_at']), style: const TextStyle(color: StitchTheme.textSubtle, fontSize: 11)),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              (note['title'] ?? '').toString(),
+                                              style: const TextStyle(fontWeight: FontWeight.w600),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text((note['detail'] ?? '').toString(), style: const TextStyle(color: StitchTheme.textMuted)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                        ],
                       ),
-                    ],
-                    const SizedBox(height: 12),
-                    if (careNotes.isEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: StitchTheme.surfaceAlt,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: StitchTheme.border),
-                        ),
-                        child: const Text(
-                          'Chưa có nhật ký chăm sóc nào.',
-                          style: TextStyle(color: StitchTheme.textMuted),
-                        ),
-                      )
-                    else
-                      ...careNotes.map((Map<String, dynamic> note) {
-                        final Map<String, dynamic>? user =
-                            note['user'] as Map<String, dynamic>?;
-                        return Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: StitchTheme.surfaceAlt,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: StitchTheme.border),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                (note['title'] ?? 'Cập nhật chăm sóc')
-                                    .toString(),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${(user?['name'] ?? 'Không rõ người cập nhật').toString()} • ${_safeDateTime(note['created_at'])}',
-                                style: const TextStyle(
-                                  color: StitchTheme.textMuted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text((note['detail'] ?? '').toString()),
-                            ],
-                          ),
-                        );
-                      }),
-                  ],
-                ),
-              ),
+                    ),
+                  ),
+                ],
+              )
             );
           },
         );
@@ -2062,33 +2211,26 @@ class _ContractsScreenState extends State<ContractsScreen> {
     );
   }
 
-  Widget _buildInfoTile(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(color: StitchTheme.textMuted),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
+  Widget _buildBadge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, {bool bold = false, Color? textColor}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: StitchTheme.textMuted)),
+        Text(value, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w600, color: textColor ?? StitchTheme.textMain)),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final int total = contracts.length;
     final int active =
         contracts.where((Map<String, dynamic> c) => c['status'] == 'active').length;
     final int signed =
@@ -2113,6 +2255,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
         ],
       ),
       body: ListView(
+        controller: scrollController,
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         children: <Widget>[
           const StitchHeroCard(
@@ -2128,7 +2271,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
               StitchMetricCard(
                 icon: Icons.description_outlined,
                 label: 'Tổng hợp đồng',
-                value: total.toString(),
+                value: totalContracts.toString(),
               ),
               StitchMetricCard(
                 icon: Icons.verified_outlined,
@@ -2243,22 +2386,14 @@ class _ContractsScreenState extends State<ContractsScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 18),
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Text(
-                  'Danh sách hợp đồng',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-              if (widget.canCreate || widget.canManage)
-                ElevatedButton.icon(
-                  onPressed: () => _openForm(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Thêm'),
-                ),
-            ],
+          const SizedBox(height: 12),
+          Text(
+            'Đang hiển thị ${contracts.length} trên tổng số $totalContracts hợp đồng.',
+            style: const TextStyle(
+              color: StitchTheme.textMuted,
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+            ),
           ),
           const SizedBox(height: 12),
           if (loading)
@@ -2269,183 +2404,261 @@ class _ContractsScreenState extends State<ContractsScreen> {
               style: TextStyle(color: StitchTheme.textMuted),
             )
           else
-            ...contracts.map((Map<String, dynamic> c) {
-              final Color statusColor = _statusColor((c['status'] ?? '').toString());
-              final Map<String, dynamic>? client =
-                  c['client'] as Map<String, dynamic>?;
-              final Map<String, dynamic>? project =
-                  c['project'] as Map<String, dynamic>?;
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: statusColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              _statusLabel((c['status'] ?? 'draft').toString()),
-                              style: TextStyle(
-                                color: statusColor,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if ((c['approval_status'] ?? '').toString().isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: (c['approval_status'] == 'approved'
-                                  ? StitchTheme.success
-                                  : StitchTheme.warning)
-                                    .withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                _approvalLabel(
-                                  (c['approval_status'] ?? 'pending').toString(),
-                                ),
-                                style: TextStyle(
-                                  color: c['approval_status'] == 'approved'
-                                      ? StitchTheme.success
-                                      : StitchTheme.warning,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                            ),
-                          ),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () => _openDetail(contract: c),
-                            child: const Text('Xem'),
-                          ),
-                          if (_canManageContract(c))
-                            TextButton(
-                              onPressed: () => _openForm(contract: c),
-                              child: const Text('Sửa'),
-                            ),
-                          if (widget.canApprove &&
-                              (c['approval_status'] ?? '') != 'approved')
-                            TextButton(
-                              onPressed: () => widget.apiService
-                                  .approveContract(widget.token, _readInt(c['id']) ?? 0)
-                                  .then((bool ok) async {
-                                if (!mounted) return;
-                                setState(() {
-                                  message = ok
-                                      ? 'Đã duyệt hợp đồng.'
-                                      : 'Duyệt hợp đồng thất bại.';
-                                });
-                                if (ok) await _fetch();
-                              }),
-                              child: Text(
-                                'Duyệt',
-                                style: TextStyle(color: StitchTheme.success),
-                              ),
-                            ),
-                          if (_canDeleteContract(c))
-                            TextButton(
-                              onPressed: () => _delete(_readInt(c['id']) ?? 0),
-                              child: Text(
-                                'Xóa',
-                                style: TextStyle(color: StitchTheme.danger),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        (c['title'] ?? 'Hợp đồng').toString(),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${c['code'] ?? ''} • ${(client?['name'] ?? 'Khách hàng').toString()}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      Text(
-                        'Nhân viên thu: ${((c['collector'] as Map<String, dynamic>?)?['name'] ?? '—').toString()}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      if (((c['care_staff_users'] ?? <dynamic>[]) as List<dynamic>)
-                          .isNotEmpty)
-                        Text(
-                          'CSKH: ${((c['care_staff_users'] as List<dynamic>)
-                                  .map(
-                                    (dynamic row) =>
-                                        ((row as Map<String, dynamic>)['name'] ??
-                                                'Nhân sự')
-                                            .toString(),
-                                  )
-                                  .toList())
-                              .join(', ')}',
-                          style: const TextStyle(color: StitchTheme.textMuted),
-                        ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Dự án: ${(project?['name'] ?? 'Chưa liên kết').toString()}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      Text(
-                        'Giá trị: ${_money(c['value'])}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      Text(
-                        'Đã thu: ${_money(c['payments_total'])}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      Text(
-                        'Công nợ: ${_money(c['debt_outstanding'])}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      Text(
-                        'Chi phí: ${_money(c['costs_total'])}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      Text(
-                        'Thanh toán: ${(c['payments_count'] ?? 0)}/${c['payment_times'] ?? 1}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      Text(
-                        'Ký: ${_safeDate(c['signed_at'])}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      Text(
-                        'Hiệu lực: ${_safeDate(c['start_date'])} → ${_safeDate(c['end_date'])}',
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                      if ((c['notes'] ?? '').toString().isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 6),
-                        Text(
-                          'Ghi chú: ${(c['notes'] ?? '').toString()}',
-                          style: const TextStyle(color: StitchTheme.textMuted),
-                        ),
-                      ],
-                    ],
-                  ),
+            ...contracts.map((Map<String, dynamic> c) => _buildContractItem(c)),
+          if (loadingMore)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          if (!loadingMore && currentPage >= lastPage && contracts.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  'Đã hiển thị toàn bộ hợp đồng.',
+                  style: TextStyle(color: StitchTheme.textMuted, fontSize: 13),
                 ),
-              );
-            }),
+              ),
+            ),
+          const SizedBox(height: 80),
         ],
       ),
+    );
+  }
+
+  Widget _buildContractItem(Map<String, dynamic> c) {
+    final Color statusColor = _statusColor((c['status'] ?? '').toString());
+    final Map<String, dynamic>? client = c['client'] as Map<String, dynamic>?;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: StitchTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: StitchTheme.textMain.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Container(width: 5, color: statusColor), // Vạch màu bên trái
+              Expanded(
+                child: InkWell(
+                  onTap: () => _openDetail(contract: c), // Bấm cả thẻ để Xem details
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    (c['title'] ?? 'Hợp đồng').toString(),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '${c['code'] ?? ''} • ${(client?['name'] ?? 'Khách hàng').toString()}',
+                                    style: const TextStyle(
+                                      color: StitchTheme.textMuted,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (widget.canManage || _canDeleteContract(c)) ...<Widget>[
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                height: 32,
+                                width: 32,
+                                child: PopupMenuButton<String>(
+                                  icon: const Icon(Icons.more_vert, size: 20, color: StitchTheme.textMuted),
+                                  padding: EdgeInsets.zero,
+                                  position: PopupMenuPosition.under,
+                                  onSelected: (String val) {
+                                    if (val == 'edit') _openForm(contract: c);
+                                    if (val == 'delete') _delete((c['id'] ?? 0) as int);
+                                  },
+                                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                    if (widget.canManage)
+                                      const PopupMenuItem<String>(
+                                        value: 'edit',
+                                        child: Text('Sửa hợp đồng'),
+                                      ),
+                                    if (_canDeleteContract(c))
+                                      PopupMenuItem<String>(
+                                        value: 'delete',
+                                        child: Text('Xóa', style: TextStyle(color: StitchTheme.danger)),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ]
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: <Widget>[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: statusColor.withValues(alpha: 0.2)),
+                              ),
+                              child: Text(
+                                _statusLabel((c['status'] ?? '').toString()),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: statusColor,
+                                ),
+                              ),
+                            ),
+                            if (c['approval_status'] == 'pending')
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: StitchTheme.warning.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  'Chờ duyệt',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: StitchTheme.warning,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: StitchTheme.surfaceAlt,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: StitchTheme.border.withValues(alpha: 0.5)),
+                          ),
+                          child: Column(
+                            children: <Widget>[
+                              Row(
+                                children: <Widget>[
+                                  Expanded(child: _buildMetricCol(Icons.monetization_on_outlined, 'Giá trị', _money(c['value']))),
+                                  Expanded(child: _buildMetricCol(Icons.account_balance_wallet_outlined, 'Đã thu', _money(c['payments_total']), highlight: true)),
+                                ],
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: Divider(height: 1),
+                              ),
+                              Row(
+                                children: <Widget>[
+                                  Expanded(child: _buildMetricCol(Icons.warning_amber_rounded, 'Công nợ', _money(c['debt_outstanding']), color: StitchTheme.danger)),
+                                  Expanded(child: _buildMetricCol(Icons.calendar_month_outlined, 'Hiệu lực', '${_safeDate(c['start_date'])} -> ${_safeDate(c['end_date'])}')),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: <Widget>[
+                            const Icon(Icons.person_outline, size: 14, color: StitchTheme.textSubtle),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Thu tiền: ${((c['collector'] as Map<String, dynamic>?)?['name'] ?? '—').toString()}',
+                                style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (c['approval_status'] == 'pending' && widget.canApprove) ...<Widget>[
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                final bool ok = await widget.apiService.approveContract(widget.token, (c['id'] ?? 0) as int);
+                                if (!mounted) return;
+                                setState(() {
+                                  message = ok ? 'Đã duyệt hợp đồng.' : 'Duyệt hợp đồng thất bại.';
+                                });
+                                if (ok) await _fetch();
+                              },
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: StitchTheme.success),
+                                foregroundColor: StitchTheme.success,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: const Text('Duyệt ngang'),
+                            ),
+                          ),
+                        ]
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricCol(IconData icon, String label, String value, {bool highlight = false, Color? color}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Icon(icon, size: 12, color: color ?? StitchTheme.textSubtle),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: color ?? StitchTheme.textMuted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
+            color: color ?? StitchTheme.textMain,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 }

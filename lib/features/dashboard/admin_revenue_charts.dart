@@ -32,6 +32,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
   List<Map<String, dynamic>> _serviceBreakdown = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _staffSales = <Map<String, dynamic>>[];
   double _totalRevenue = 0;
+  double _totalCashflow = 0;
   int? _selectedPieIndex;
 
   static const List<Color> _palette = <Color>[
@@ -46,9 +47,18 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
   ];
 
   static const List<String> _monthNames = <String>[
-    'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4',
-    'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8',
-    'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
+    'Tháng 1',
+    'Tháng 2',
+    'Tháng 3',
+    'Tháng 4',
+    'Tháng 5',
+    'Tháng 6',
+    'Tháng 7',
+    'Tháng 8',
+    'Tháng 9',
+    'Tháng 10',
+    'Tháng 11',
+    'Tháng 12',
   ];
 
   @override
@@ -57,28 +67,37 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
     _fetch();
   }
 
-  String _monthLabel(DateTime d) =>
-      '${_monthNames[d.month - 1]}, ${d.year}';
+  String _monthLabel(DateTime d) => '${_monthNames[d.month - 1]}, ${d.year}';
 
   String _roleTitle(String section) {
     switch (widget.currentUserRole) {
       case 'admin':
-        return section == 'pie' ? 'Doanh số theo sản phẩm' : 'Doanh số theo nhân viên';
+        return section == 'pie'
+            ? 'Doanh số theo sản phẩm'
+            : 'Doanh số theo nhân viên';
       case 'quan_ly':
         return section == 'pie'
             ? 'Doanh số phòng ban – Sản phẩm'
             : 'Doanh số phòng ban – Nhân viên';
       default:
-        return section == 'pie' ? 'Doanh số của tôi – Sản phẩm' : 'Doanh số của tôi';
+        return section == 'pie'
+            ? 'Doanh số của tôi – Sản phẩm'
+            : 'Doanh số của tôi';
     }
   }
 
   Future<void> _fetch() async {
     setState(() => _loading = true);
-    final DateTime start =
-        DateTime(_selectedMonth.year, _selectedMonth.month, 1);
-    final DateTime end =
-        DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
+    final DateTime start = DateTime(
+      _selectedMonth.year,
+      _selectedMonth.month,
+      1,
+    );
+    final DateTime end = DateTime(
+      _selectedMonth.year,
+      _selectedMonth.month + 1,
+      0,
+    );
     final String from =
         '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
     final String to =
@@ -90,30 +109,31 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
     );
     if (!mounted) return;
     final List<dynamic> rawService =
-        (data['product_breakdown'] ?? data['service_breakdown'] ?? <dynamic>[]) as List<dynamic>;
+        (data['product_breakdown'] ?? data['service_breakdown'] ?? <dynamic>[])
+            as List<dynamic>;
     final List<dynamic> rawStaff =
         (data['staff_sales_breakdown'] ?? <dynamic>[]) as List<dynamic>;
     setState(() {
       _loading = false;
       _selectedPieIndex = null;
-      _serviceBreakdown = rawService
-          .map((dynamic e) => e as Map<String, dynamic>)
-          .where(
-              (Map<String, dynamic> e) => (e['value'] as num? ?? 0).toDouble() > 0)
-          .toList();
-      _staffSales = rawStaff
-          .map((dynamic e) => e as Map<String, dynamic>)
-          .toList();
+      _serviceBreakdown =
+          rawService
+              .map((dynamic e) => e as Map<String, dynamic>)
+              .where(
+                (Map<String, dynamic> e) =>
+                    (e['value'] as num? ?? 0).toDouble() > 0,
+              )
+              .toList();
+      _staffSales =
+          rawStaff.map((dynamic e) => e as Map<String, dynamic>).toList();
       _totalRevenue = (data['period_revenue_total'] ?? 0).toDouble();
+      _totalCashflow = (data['period_cashflow_total'] ?? 0).toDouble();
     });
   }
 
   void _prevMonth() {
     setState(() {
-      _selectedMonth = DateTime(
-        _selectedMonth.year,
-        _selectedMonth.month - 1,
-      );
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
     });
     _fetch();
   }
@@ -138,7 +158,8 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isCurrentMonth = _selectedMonth.year == DateTime.now().year &&
+    final bool isCurrentMonth =
+        _selectedMonth.year == DateTime.now().year &&
         _selectedMonth.month == DateTime.now().month;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,9 +216,10 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
                       Icon(
                         Icons.calendar_month_rounded,
                         size: 18,
-                        color: isCurrentMonth
-                            ? const Color(0xFF3B82F6)
-                            : const Color(0xFF94A3B8),
+                        color:
+                            isCurrentMonth
+                                ? const Color(0xFF3B82F6)
+                                : const Color(0xFF94A3B8),
                       ),
                       const SizedBox(width: 8),
                       Text(
@@ -205,9 +227,10 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
-                          color: isCurrentMonth
-                              ? const Color(0xFF1E293B)
-                              : const Color(0xFF475569),
+                          color:
+                              isCurrentMonth
+                                  ? const Color(0xFF1E293B)
+                                  : const Color(0xFF475569),
                         ),
                       ),
                       if (isCurrentMonth) ...[
@@ -218,7 +241,9 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                            color: const Color(
+                              0xFF3B82F6,
+                            ).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Text(
@@ -258,9 +283,10 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
                     child: Icon(
                       Icons.chevron_right_rounded,
                       size: 22,
-                      color: _canGoNext()
-                          ? const Color(0xFF64748B)
-                          : const Color(0xFFCBD5E1),
+                      color:
+                          _canGoNext()
+                              ? const Color(0xFF64748B)
+                              : const Color(0xFFCBD5E1),
                     ),
                   ),
                 ),
@@ -288,7 +314,10 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
 
   bool _canGoNext() {
     final DateTime now = DateTime.now();
-    final DateTime next = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+    final DateTime next = DateTime(
+      _selectedMonth.year,
+      _selectedMonth.month + 1,
+    );
     return !next.isAfter(DateTime(now.year, now.month + 1, 0));
   }
 
@@ -344,7 +373,10 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
               const SizedBox(width: 10),
               Text(
                 _roleTitle('pie'),
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
             ],
           ),
@@ -512,13 +544,16 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
               const SizedBox(width: 10),
               Text(
                 _roleTitle('staff'),
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            'Tổng: ${_fmtCurrency(_totalRevenue)}',
+            'Doanh thu: ${_fmtCurrency(_totalRevenue)} • Dòng tiền: ${_fmtCurrency(_totalCashflow)}',
             style: const TextStyle(
               fontSize: 12,
               color: StitchTheme.textMuted,
@@ -538,9 +573,9 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
             )
           else
             ..._staffSales.asMap().entries.map(
-                  (MapEntry<int, Map<String, dynamic>> entry) =>
-                      _buildStaffBar(entry.key, entry.value),
-                ),
+              (MapEntry<int, Map<String, dynamic>> entry) =>
+                  _buildStaffBar(entry.key, entry.value),
+            ),
         ],
       ),
     );
@@ -549,13 +584,27 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
   Widget _buildStaffBar(int index, Map<String, dynamic> staff) {
     final String name = (staff['staff_name'] ?? 'Nhân sự').toString();
     final double revenue = (staff['revenue'] as num? ?? 0).toDouble();
-    final double maxRevenue = _staffSales.isEmpty
-        ? 1
-        : _staffSales
-            .map((Map<String, dynamic> s) =>
-                (s['revenue'] as num? ?? 0).toDouble())
-            .reduce(math.max);
-    final double ratio = maxRevenue > 0 ? revenue / maxRevenue : 0;
+    final double cashflow = (staff['cashflow'] as num? ?? 0).toDouble();
+    final double maxRevenue =
+        _staffSales.isEmpty
+            ? 1
+            : _staffSales
+                .map(
+                  (Map<String, dynamic> s) =>
+                      (s['revenue'] as num? ?? 0).toDouble(),
+                )
+                .reduce(math.max);
+    final double maxCashflow =
+        _staffSales.isEmpty
+            ? 1
+            : _staffSales
+                .map(
+                  (Map<String, dynamic> s) =>
+                      (s['cashflow'] as num? ?? 0).toDouble(),
+                )
+                .reduce(math.max);
+    final double revenueRatio = maxRevenue > 0 ? revenue / maxRevenue : 0;
+    final double cashflowRatio = maxCashflow > 0 ? cashflow / maxCashflow : 0;
 
     final List<Color> barColors = <Color>[
       const Color(0xFF3B82F6),
@@ -604,30 +653,81 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
                   ),
                 ),
               ),
-              Text(
-                _fmtCurrency(revenue),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: barColor,
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 5),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: SizedBox(
-              height: 8,
-              child: LinearProgressIndicator(
-                value: ratio,
-                backgroundColor: StitchTheme.surfaceAlt,
-                valueColor: AlwaysStoppedAnimation<Color>(barColor),
-              ),
-            ),
+          _MetricProgressLine(
+            label: 'Doanh thu',
+            valueLabel: _fmtCurrency(revenue),
+            ratio: revenueRatio,
+            barColor: barColor,
+          ),
+          const SizedBox(height: 6),
+          _MetricProgressLine(
+            label: 'Dòng tiền',
+            valueLabel: _fmtCurrency(cashflow),
+            ratio: cashflowRatio,
+            barColor: const Color(0xFF10B981),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MetricProgressLine extends StatelessWidget {
+  const _MetricProgressLine({
+    required this.label,
+    required this.valueLabel,
+    required this.ratio,
+    required this.barColor,
+  });
+
+  final String label;
+  final String valueLabel;
+  final double ratio;
+  final Color barColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final double clampedRatio = ratio.isNaN ? 0 : ratio.clamp(0, 1).toDouble();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                color: StitchTheme.textMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              valueLabel,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: barColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(
+            height: 7,
+            child: LinearProgressIndicator(
+              value: clampedRatio,
+              backgroundColor: StitchTheme.surfaceAlt,
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -663,39 +763,41 @@ class _PieChartPainter extends CustomPainter {
       final double sweepAngle = (value / total) * 2 * math.pi;
       final bool isSelected = selectedIndex == i;
 
-      final Paint paint = Paint()
-        ..color = palette[i % palette.length]
-        ..style = PaintingStyle.fill;
+      final Paint paint =
+          Paint()
+            ..color = palette[i % palette.length]
+            ..style = PaintingStyle.fill;
 
       final double drawRadius = isSelected ? radius + 4 : radius;
 
       // Draw arc segment
-      final Path path = Path()
-        ..moveTo(
-          cx + innerRadius * math.cos(startAngle),
-          cy + innerRadius * math.sin(startAngle),
-        )
-        ..lineTo(
-          cx + drawRadius * math.cos(startAngle),
-          cy + drawRadius * math.sin(startAngle),
-        )
-        ..arcTo(
-          Rect.fromCircle(center: Offset(cx, cy), radius: drawRadius),
-          startAngle,
-          sweepAngle,
-          false,
-        )
-        ..lineTo(
-          cx + innerRadius * math.cos(startAngle + sweepAngle),
-          cy + innerRadius * math.sin(startAngle + sweepAngle),
-        )
-        ..arcTo(
-          Rect.fromCircle(center: Offset(cx, cy), radius: innerRadius),
-          startAngle + sweepAngle,
-          -sweepAngle,
-          false,
-        )
-        ..close();
+      final Path path =
+          Path()
+            ..moveTo(
+              cx + innerRadius * math.cos(startAngle),
+              cy + innerRadius * math.sin(startAngle),
+            )
+            ..lineTo(
+              cx + drawRadius * math.cos(startAngle),
+              cy + drawRadius * math.sin(startAngle),
+            )
+            ..arcTo(
+              Rect.fromCircle(center: Offset(cx, cy), radius: drawRadius),
+              startAngle,
+              sweepAngle,
+              false,
+            )
+            ..lineTo(
+              cx + innerRadius * math.cos(startAngle + sweepAngle),
+              cy + innerRadius * math.sin(startAngle + sweepAngle),
+            )
+            ..arcTo(
+              Rect.fromCircle(center: Offset(cx, cy), radius: innerRadius),
+              startAngle + sweepAngle,
+              -sweepAngle,
+              false,
+            )
+            ..close();
 
       canvas.drawPath(path, paint);
 

@@ -8,10 +8,14 @@ class CreateProjectScreen extends StatefulWidget {
     super.key,
     required this.token,
     required this.apiService,
+    this.initialContractId,
+    this.initialContractTitle,
   });
 
   final String token;
   final MobileApiService apiService;
+  final String? initialContractId;
+  final String? initialContractTitle;
 
   @override
   State<CreateProjectScreen> createState() => _CreateProjectScreenState();
@@ -35,6 +39,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       'Website Care',
       Icons.public,
     ),
+    _ServiceOptionData('noi_bo', 'Dự án nội bộ', Icons.corporate_fare),
     _ServiceOptionData('khac', 'Khác', Icons.more_horiz),
   ];
   String selectedService = 'backlinks';
@@ -63,34 +68,44 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         (meta['service_types'] ?? <dynamic>[]) as List<dynamic>;
     List<_ServiceOptionData> mapped = serviceOptions;
     if (services.isNotEmpty) {
-      mapped = services.map((dynamic e) {
-        final String value = e.toString();
-        return _ServiceOptionData(
-          value,
-          _serviceLabel(value),
-          _serviceIcon(value),
-        );
-      }).toList();
+      mapped =
+          services.map((dynamic e) {
+            final String value = e.toString();
+            return _ServiceOptionData(
+              value,
+              _serviceLabel(value),
+              _serviceIcon(value),
+            );
+          }).toList();
     }
-    final List<Map<String, dynamic>> contractRows =
-        await widget.apiService.getContracts(
-      widget.token,
-      perPage: 200,
-      availableOnly: true,
-    );
-    final List<Map<String, dynamic>> ownerRows =
-        await widget.apiService.getUsersLookup(widget.token);
+    final Map<String, dynamic> contractPayload = await widget.apiService
+        .getContracts(widget.token, perPage: 200, availableOnly: true);
+    final List<Map<String, dynamic>> ownerRows = await widget.apiService
+        .getUsersLookup(widget.token);
     if (!mounted) return;
+    final List<dynamic> contractData =
+        (contractPayload['data'] ?? []) as List<dynamic>;
     setState(() {
       serviceOptions = mapped;
-      if (mapped.isNotEmpty && !mapped.any((item) => item.value == selectedService)) {
+      if (mapped.isNotEmpty &&
+          !mapped.any((item) => item.value == selectedService)) {
         selectedService = mapped.first.value;
       }
-      contracts = contractRows;
-      owners = ownerRows;
-      if (contractRows.isEmpty) {
-        message = 'Chưa có hợp đồng nào. Vui lòng tạo hợp đồng trước.';
+      contracts = contractData.map((e) => e as Map<String, dynamic>).toList();
+
+      if (widget.initialContractId != null &&
+          widget.initialContractId!.isNotEmpty) {
+        if (!contracts.any((c) => '${c['id']}' == widget.initialContractId)) {
+          contracts.insert(0, <String, dynamic>{
+            'id': int.tryParse(widget.initialContractId!) ?? 0,
+            'code': 'CTR',
+            'title': widget.initialContractTitle ?? 'Hợp đồng được chọn',
+          });
+        }
+        selectedContractId = widget.initialContractId!;
       }
+
+      owners = ownerRows;
     });
   }
 
@@ -104,6 +119,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         return 'Audit Content';
       case 'cham_soc_website_tong_the':
         return 'Website Care';
+      case 'noi_bo':
+        return 'Dự án nội bộ';
       case 'khac':
         return 'Khác';
       default:
@@ -121,6 +138,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         return Icons.fact_check;
       case 'cham_soc_website_tong_the':
         return Icons.public;
+      case 'noi_bo':
+        return Icons.corporate_fare;
       case 'khac':
         return Icons.more_horiz;
       default:
@@ -150,10 +169,6 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       setState(() => message = 'Vui lòng nhập loại dịch vụ khác.');
       return;
     }
-    if (selectedContractId.isEmpty) {
-      setState(() => message = 'Vui lòng chọn hợp đồng trước khi tạo dự án.');
-      return;
-    }
     setState(() {
       saving = true;
       message = '';
@@ -166,14 +181,16 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           selectedService == 'khac' ? serviceOtherCtrl.text.trim() : null,
       contractId: int.tryParse(selectedContractId),
       ownerId: selectedOwnerId.isEmpty ? null : int.tryParse(selectedOwnerId),
-      deadline: deadline == null
-          ? null
-          : '${deadline!.year.toString().padLeft(4, '0')}-'
-              '${deadline!.month.toString().padLeft(2, '0')}-'
-              '${deadline!.day.toString().padLeft(2, '0')}',
-      customerRequirement: requirementCtrl.text.trim().isEmpty
-          ? null
-          : requirementCtrl.text.trim(),
+      deadline:
+          deadline == null
+              ? null
+              : '${deadline!.year.toString().padLeft(4, '0')}-'
+                  '${deadline!.month.toString().padLeft(2, '0')}-'
+                  '${deadline!.day.toString().padLeft(2, '0')}',
+      customerRequirement:
+          requirementCtrl.text.trim().isEmpty
+              ? null
+              : requirementCtrl.text.trim(),
       repoUrl: repoUrl.trim().isEmpty ? null : repoUrl.trim(),
     );
     if (!mounted) return;
@@ -182,209 +199,320 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       message = ok ? 'Tạo dự án thành công.' : 'Tạo dự án thất bại.';
     });
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tạo dự án thành công.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Tạo dự án thành công.')));
       Navigator.of(context).maybePop();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final String deadlineLabel = deadline == null
-        ? 'Chọn ngày'
-        : '${deadline!.day.toString().padLeft(2, '0')}/'
-            '${deadline!.month.toString().padLeft(2, '0')}/'
-            '${deadline!.year}';
+    final String deadlineLabel =
+        deadline == null
+            ? 'Chọn ngày'
+            : '${deadline!.day.toString().padLeft(2, '0')}/'
+                '${deadline!.month.toString().padLeft(2, '0')}/'
+                '${deadline!.year}';
+    final ThemeData theme = Theme.of(context);
+
+    InputDecoration fieldDecoration(
+      String label, {
+      String? hint,
+      IconData? prefixIcon,
+      Widget? suffixIcon,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon:
+            prefixIcon == null
+                ? null
+                : Icon(prefixIcon, size: 18, color: StitchTheme.textSubtle),
+        suffixIcon: suffixIcon,
+      );
+    }
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Tạo dự án'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: saving ? null : () => Navigator.of(context).maybePop(),
+            child: const Text('Đóng'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: <Widget>[
-            Row(
-              children: <Widget>[
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.arrow_back_ios_new),
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                gradient: LinearGradient(
+                  colors: <Color>[
+                    StitchTheme.primary.withValues(alpha: 0.18),
+                    Colors.white,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                const Expanded(
-                  child: Text(
-                    'Tạo Dự án',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                border: Border.all(color: StitchTheme.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const <Widget>[
+                  Text(
+                    'Khởi tạo dự án triển khai',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                   ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  child: const Text(
-                    'Hủy',
-                    style: TextStyle(color: StitchTheme.textMuted),
+                  SizedBox(height: 6),
+                  Text(
+                    'Điền thông tin chính xác để hệ thống tự liên kết hợp đồng, nhân sự triển khai và luồng công việc.',
+                    style: TextStyle(color: StitchTheme.textMuted, height: 1.4),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Thông tin dự án',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Khởi tạo dự án mới cho đội ngũ nội bộ theo quy trình dịch vụ.',
-              style: TextStyle(color: StitchTheme.textMuted),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Tên dự án',
-                hintText: 'Ví dụ: Chiến dịch SEO Q4',
+                ],
               ),
-            ),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              value: selectedContractId.isEmpty ? null : selectedContractId,
-              decoration: const InputDecoration(labelText: 'Chọn hợp đồng *'),
-              items: contracts
-                  .map(
-                    (Map<String, dynamic> c) => DropdownMenuItem<String>(
-                      value: '${c['id']}',
-                      child: Text('${c['code'] ?? 'CTR'} • ${c['title'] ?? ''}'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (String? value) {
-                if (value == null) return;
-                setState(() => selectedContractId = value);
-              },
-            ),
-            if (contracts.isEmpty) ...<Widget>[
-              const SizedBox(height: 8),
-              const Text(
-                'Chưa có hợp đồng để chọn. Hãy tạo hợp đồng trước.',
-                style: TextStyle(color: StitchTheme.textMuted, fontSize: 12),
-              ),
-            ],
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              value: selectedOwnerId.isEmpty ? null : selectedOwnerId,
-              decoration: const InputDecoration(
-                labelText: 'Người phụ trách triển khai',
-              ),
-              items: owners
-                  .map(
-                    (Map<String, dynamic> u) => DropdownMenuItem<String>(
-                      value: '${u['id']}',
-                      child: Text('${u['name'] ?? ''} (${u['role'] ?? ''})'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (String? value) {
-                setState(() => selectedOwnerId = value ?? '');
-              },
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Loại dịch vụ',
-              style: TextStyle(
-                fontSize: 12,
-                color: StitchTheme.textMuted,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.6,
-              children: serviceOptions
-                  .map(
-                    (option) => _ServiceOption(
-                      label: option.label,
-                      icon: option.icon,
-                      selected: selectedService == option.value,
-                      onTap: () => setState(() => selectedService = option.value),
-                    ),
-                  )
-                  .toList(),
-            ),
-            if (selectedService == 'khac') ...<Widget>[
-              const SizedBox(height: 12),
-              TextField(
-                controller: serviceOtherCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Loại dịch vụ khác',
-                  hintText: 'Nhập tên dịch vụ',
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
-            GestureDetector(
-              onTap: _pickDeadline,
-              child: AbsorbPointer(
-                child: TextField(
-                  decoration: InputDecoration(
-                    labelText: 'Hạn chót tổng',
-                    prefixIcon: const Icon(Icons.calendar_today),
-                    hintText: deadlineLabel,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: requirementCtrl,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Yêu cầu của khách hàng',
-                hintText: 'Mô tả chi tiết các yêu cầu và mong muốn từ khách hàng...',
-              ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              decoration: const InputDecoration(
-                labelText: 'Link kho dự án (tuỳ chọn)',
-                hintText: 'https://drive.google.com/...',
-              ),
-              onChanged: (value) => repoUrl = value,
             ),
             const SizedBox(height: 14),
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: StitchTheme.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Thông tin cơ bản',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: fieldDecoration(
+                      'Tên dự án',
+                      hint: 'Ví dụ: Chiến dịch SEO Q4',
+                      prefixIcon: Icons.work_outline,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value:
+                        contracts.any((c) => '${c['id']}' == selectedContractId)
+                            ? selectedContractId
+                            : null,
+                    decoration: fieldDecoration(
+                      'Hợp đồng liên kết',
+                      prefixIcon: Icons.description_outlined,
+                    ),
+                    menuMaxHeight: 360,
+                    items: <DropdownMenuItem<String>>[
+                      const DropdownMenuItem<String>(
+                        value: '',
+                        child: Text(
+                          'Không liên kết hợp đồng (dự án nội bộ)',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      ...contracts
+                          .map(
+                            (
+                              Map<String, dynamic> c,
+                            ) => DropdownMenuItem<String>(
+                              value: '${c['id']}',
+                              child: Text(
+                                '${c['code'] ?? 'CTR'} • ${c['title'] ?? ''}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ],
+                    onChanged: (String? value) {
+                      setState(() => selectedContractId = value ?? '');
+                    },
+                  ),
+                  if (contracts.isEmpty) ...<Widget>[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Chưa có hợp đồng để chọn. Bạn vẫn có thể tạo dự án nội bộ.',
+                      style: TextStyle(
+                        color: StitchTheme.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedOwnerId.isEmpty ? null : selectedOwnerId,
+                    decoration: fieldDecoration(
+                      'Người phụ trách triển khai',
+                      prefixIcon: Icons.person_outline,
+                    ),
+                    menuMaxHeight: 360,
+                    items:
+                        owners
+                            .map(
+                              (Map<String, dynamic> u) =>
+                                  DropdownMenuItem<String>(
+                                    value: '${u['id']}',
+                                    child: Text(
+                                      '${u['name'] ?? ''} (${u['role'] ?? ''})',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                            )
+                            .toList(),
+                    onChanged: (String? value) {
+                      setState(() => selectedOwnerId = value ?? '');
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: StitchTheme.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Loại dịch vụ',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Chọn loại dịch vụ chính cho dự án.',
+                    style: TextStyle(
+                      color: StitchTheme.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 1.8,
+                    children:
+                        serviceOptions
+                            .map(
+                              (option) => _ServiceOption(
+                                label: option.label,
+                                icon: option.icon,
+                                selected: selectedService == option.value,
+                                onTap:
+                                    () => setState(
+                                      () => selectedService = option.value,
+                                    ),
+                              ),
+                            )
+                            .toList(),
+                  ),
+                  if (selectedService == 'khac') ...<Widget>[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: serviceOtherCtrl,
+                      decoration: fieldDecoration(
+                        'Loại dịch vụ khác',
+                        hint: 'Nhập tên dịch vụ',
+                        prefixIcon: Icons.edit_note_outlined,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: StitchTheme.border),
               ),
               child: Column(
                 children: <Widget>[
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: StitchTheme.primary,
-                      borderRadius: BorderRadius.circular(999),
+                  GestureDetector(
+                    onTap: _pickDeadline,
+                    child: AbsorbPointer(
+                      child: TextField(
+                        decoration: fieldDecoration(
+                          'Hạn chót tổng',
+                          hint: deadlineLabel,
+                          prefixIcon: Icons.event_outlined,
+                        ),
+                      ),
                     ),
-                    child: const Icon(Icons.upload_file, color: Colors.white),
                   ),
                   const SizedBox(height: 12),
+                  TextField(
+                    controller: requirementCtrl,
+                    maxLines: 4,
+                    decoration: fieldDecoration(
+                      'Yêu cầu của khách hàng',
+                      hint:
+                          'Mô tả chi tiết các yêu cầu và mong muốn từ khách hàng...',
+                      prefixIcon: Icons.notes_outlined,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    decoration: fieldDecoration(
+                      'Link dự án (tuỳ chọn)',
+                      hint: 'https://drive.google.com/...',
+                      prefixIcon: Icons.folder_open_outlined,
+                    ),
+                    onChanged: (value) => repoUrl = value,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: StitchTheme.border),
+              ),
+              child: Column(
+                children: <Widget>[
+                  const Icon(Icons.attach_file, color: StitchTheme.textMuted),
+                  const SizedBox(height: 8),
                   const Text(
-                    'Chọn tệp tin để tải lên',
+                    'Tệp đính kèm dự án',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   const Text(
                     'PDF, DOC, PNG, JPG (Tối đa 10MB)',
-                    style: TextStyle(color: StitchTheme.textSubtle, fontSize: 12),
+                    style: TextStyle(
+                      color: StitchTheme.textSubtle,
+                      fontSize: 12,
+                    ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () {},
-                    icon: const Icon(Icons.attach_file, size: 18),
+                    icon: const Icon(Icons.upload_file_outlined, size: 18),
                     label: const Text('Chọn file'),
                   ),
                 ],
@@ -395,29 +523,41 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
               Text(
                 message,
                 style: TextStyle(
-                  color: message.contains('thành công')
-                      ? StitchTheme.success
-                      : StitchTheme.danger,
+                  color:
+                      message.contains('thành công')
+                          ? StitchTheme.success
+                          : StitchTheme.danger,
                 ),
               ),
             ],
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: saving ? null : _submit,
-              icon: saving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.rocket_launch, size: 18),
-              label: Text(saving ? 'Đang tạo...' : 'Tạo Dự án Ngay'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+            const SizedBox(height: 18),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        saving ? null : () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    label: const Text('Hủy'),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: saving ? null : _submit,
+                    icon:
+                        saving
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Icon(Icons.rocket_launch, size: 18),
+                    label: Text(saving ? 'Đang tạo...' : 'Tạo dự án ngay'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -455,10 +595,7 @@ class _ServiceOption extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Icon(
-              icon,
-              color: selected ? Colors.white : StitchTheme.textSubtle,
-            ),
+            Icon(icon, color: selected ? Colors.white : StitchTheme.textSubtle),
             const SizedBox(height: 6),
             Text(
               label,

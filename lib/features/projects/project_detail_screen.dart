@@ -26,12 +26,16 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   bool loading = true;
   bool submittingHandover = false;
   bool gscLoading = false;
-  bool gscSyncing = false;
+  bool gscNotifySaving = false;
+  bool taskActionLoading = false;
   Map<String, dynamic>? project;
   Map<String, dynamic>? gsc;
   List<Map<String, dynamic>> tasks = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> departments = <Map<String, dynamic>>[];
   String message = '';
   String gscMessage = '';
+  int? currentUserId;
+  String currentUserRole = '';
 
   @override
   void initState() {
@@ -45,15 +49,25 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       message = '';
       gscMessage = '';
     });
-    final Map<String, dynamic>? proj = await widget.apiService.getProject(
-      widget.token,
-      widget.projectId,
-    );
-    final List<Map<String, dynamic>> rows = await widget.apiService.getTasks(
-      widget.token,
-      projectId: widget.projectId,
-      perPage: 200,
-    );
+    final List<dynamic> responses =
+        await Future.wait<dynamic>(<Future<dynamic>>[
+          widget.apiService.getProject(widget.token, widget.projectId),
+          widget.apiService.getTasks(
+            widget.token,
+            projectId: widget.projectId,
+            perPage: 200,
+          ),
+          widget.apiService.me(widget.token),
+        ]);
+
+    final Map<String, dynamic>? proj = responses[0] as Map<String, dynamic>?;
+    final List<Map<String, dynamic>> rows =
+        responses[1] as List<Map<String, dynamic>>;
+    final Map<String, dynamic> mePayload = responses[2] as Map<String, dynamic>;
+    final Map<String, dynamic> meBody =
+        (mePayload['body'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final dynamic meRawId = meBody['id'];
+
     Map<String, dynamic>? gscPayload;
     String gscError = '';
     final String websiteUrl = (proj?['website_url'] ?? '').toString().trim();
@@ -75,12 +89,475 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       tasks = rows;
       gsc = gscPayload;
       gscMessage = gscError;
+      currentUserId =
+          meRawId is int ? meRawId : int.tryParse('${meRawId ?? ''}');
+      currentUserRole = (meBody['role'] ?? '').toString();
       loading = false;
       message = proj == null ? 'Không tìm thấy dự án.' : '';
     });
   }
 
-  Future<void> _fetchGsc({bool force = false, bool refresh = true}) async {
+  int _toId(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse('${value ?? ''}') ?? 0;
+  }
+
+  bool get _isAdminRole =>
+      currentUserRole == 'admin' || currentUserRole == 'administrator';
+
+  bool get _canManageProjectTasks {
+    if (_isAdminRole) return true;
+    final int ownerId = _toId(project?['owner_id'] ?? project?['owner']?['id']);
+    return currentUserId != null && ownerId > 0 && ownerId == currentUserId;
+  }
+
+  Future<void> _ensureDepartmentsLoaded() async {
+    if (departments.isNotEmpty) return;
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getDepartments(widget.token);
+    if (!mounted) return;
+    setState(() => departments = rows);
+  }
+
+  String _toDateInput(dynamic value) {
+    final String raw = (value ?? '').toString().trim();
+    if (raw.length >= 10) return raw.substring(0, 10);
+    return raw;
+  }
+
+  Future<void> _pickDate(
+    BuildContext context,
+    TextEditingController controller,
+  ) async {
+    final DateTime now = DateTime.now();
+    DateTime initial = now;
+    if (controller.text.trim().isNotEmpty) {
+      final DateTime? parsed = DateTime.tryParse(controller.text.trim());
+      if (parsed != null) {
+        initial = parsed;
+      }
+    }
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 10),
+    );
+    if (picked == null) return;
+    controller.text =
+        '${picked.year.toString().padLeft(4, '0')}-'
+        '${picked.month.toString().padLeft(2, '0')}-'
+        '${picked.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _openTaskSheet({Map<String, dynamic>? editingTask}) async {
+    if (!_canManageProjectTasks) return;
+    await _ensureDepartmentsLoaded();
+    if (!mounted) return;
+
+    final bool isEdit = editingTask != null;
+    final TextEditingController titleCtrl = TextEditingController(
+      text: isEdit ? (editingTask['title'] ?? '').toString() : '',
+    );
+    final TextEditingController descCtrl = TextEditingController(
+      text: isEdit ? (editingTask['description'] ?? '').toString() : '',
+    );
+    final TextEditingController startCtrl = TextEditingController(
+      text:
+          isEdit
+              ? _toDateInput(editingTask['start_at'])
+              : _toDateInput(project?['start_date']),
+    );
+    final TextEditingController deadlineCtrl = TextEditingController(
+      text:
+          isEdit
+              ? _toDateInput(editingTask['deadline'])
+              : _toDateInput(project?['deadline']),
+    );
+    final TextEditingController weightCtrl = TextEditingController(
+      text:
+          isEdit
+              ? '${editingTask['weight_percent'] ?? 0}'
+              : '${math.max(1, 100 - tasks.fold<int>(0, (int sum, Map<String, dynamic> row) => sum + _toInt(row['weight_percent'])))}',
+    );
+
+    int? departmentId = _toId(editingTask?['department_id']);
+    int? assigneeId = _toId(editingTask?['assignee_id']);
+    String status = (editingTask?['status'] ?? 'todo').toString();
+    String priority = (editingTask?['priority'] ?? 'medium').toString();
+    bool submitting = false;
+    String localMessage = '';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder: (BuildContext sheetContext, StateSetter setModalState) {
+            final List<Map<String, dynamic>> staffOptions =
+                <Map<String, dynamic>>[
+                  for (final Map<String, dynamic> department in departments)
+                    if (departmentId == null ||
+                        _toId(department['id']) == departmentId)
+                      ...((department['staff'] as List<dynamic>? ?? <dynamic>[])
+                          .whereType<Map>()
+                          .map((Map row) => row.cast<String, dynamic>())),
+                ];
+
+            Future<void> submit() async {
+              if (titleCtrl.text.trim().isEmpty) {
+                setModalState(
+                  () => localMessage = 'Vui lòng nhập tiêu đề công việc.',
+                );
+                return;
+              }
+              final int? weight = int.tryParse(weightCtrl.text.trim());
+              if (weight == null || weight < 1 || weight > 100) {
+                setModalState(
+                  () => localMessage = 'Tỷ trọng phải từ 1 đến 100.',
+                );
+                return;
+              }
+              setModalState(() {
+                submitting = true;
+                localMessage = '';
+              });
+
+              final bool ok =
+                  isEdit
+                      ? await widget.apiService.updateTask(
+                        widget.token,
+                        _toId(editingTask['id']),
+                        projectId: widget.projectId,
+                        departmentId: departmentId,
+                        assigneeId: assigneeId,
+                        title: titleCtrl.text.trim(),
+                        description: descCtrl.text.trim(),
+                        priority: priority,
+                        status: status,
+                        startAt:
+                            startCtrl.text.trim().isEmpty
+                                ? null
+                                : startCtrl.text.trim(),
+                        deadline:
+                            deadlineCtrl.text.trim().isEmpty
+                                ? null
+                                : deadlineCtrl.text.trim(),
+                        weightPercent: weight,
+                      )
+                      : await widget.apiService.createTask(
+                        widget.token,
+                        projectId: widget.projectId,
+                        departmentId: departmentId,
+                        assigneeId: assigneeId,
+                        title: titleCtrl.text.trim(),
+                        description: descCtrl.text.trim(),
+                        priority: priority,
+                        status: status,
+                        deadline:
+                            deadlineCtrl.text.trim().isEmpty
+                                ? null
+                                : deadlineCtrl.text.trim(),
+                        weightPercent: weight,
+                      );
+
+              if (!mounted) return;
+              if (ok) {
+                Navigator.of(sheetContext).pop();
+                await _fetch();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      isEdit
+                          ? 'Đã cập nhật công việc.'
+                          : 'Đã tạo công việc mới trong dự án.',
+                    ),
+                  ),
+                );
+              } else {
+                setModalState(() {
+                  submitting = false;
+                  localMessage =
+                      isEdit
+                          ? 'Cập nhật công việc thất bại.'
+                          : 'Tạo công việc thất bại.';
+                });
+              }
+            }
+
+            return Container(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                24 + MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      isEdit ? 'Sửa công việc' : 'Thêm công việc mới',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (localMessage.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(
+                        localMessage,
+                        style: TextStyle(color: StitchTheme.danger),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: titleCtrl,
+                      decoration: const InputDecoration(labelText: 'Tiêu đề'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: descCtrl,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: const InputDecoration(labelText: 'Mô tả'),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: status,
+                            decoration: const InputDecoration(
+                              labelText: 'Trạng thái',
+                            ),
+                            items: const <DropdownMenuItem<String>>[
+                              DropdownMenuItem(
+                                value: 'todo',
+                                child: Text('Cần làm'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'doing',
+                                child: Text('Đang làm'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'done',
+                                child: Text('Hoàn tất'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'blocked',
+                                child: Text('Bị chặn'),
+                              ),
+                            ],
+                            onChanged:
+                                (String? value) => setModalState(
+                                  () => status = value ?? 'todo',
+                                ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: priority,
+                            decoration: const InputDecoration(
+                              labelText: 'Ưu tiên',
+                            ),
+                            items: const <DropdownMenuItem<String>>[
+                              DropdownMenuItem(
+                                value: 'low',
+                                child: Text('Thấp'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'medium',
+                                child: Text('Trung bình'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'high',
+                                child: Text('Cao'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'urgent',
+                                child: Text('Khẩn'),
+                              ),
+                            ],
+                            onChanged:
+                                (String? value) => setModalState(
+                                  () => priority = value ?? 'medium',
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: TextField(
+                            controller: startCtrl,
+                            readOnly: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Ngày bắt đầu',
+                            ),
+                            onTap: () => _pickDate(sheetContext, startCtrl),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: deadlineCtrl,
+                            readOnly: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Deadline',
+                            ),
+                            onTap: () => _pickDate(sheetContext, deadlineCtrl),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: weightCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Tỷ trọng (%)',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<int>(
+                      value: departmentId == 0 ? null : departmentId,
+                      decoration: const InputDecoration(labelText: 'Phòng ban'),
+                      items:
+                          departments
+                              .map(
+                                (Map<String, dynamic> d) =>
+                                    DropdownMenuItem<int>(
+                                      value: _toId(d['id']),
+                                      child: Text(
+                                        (d['name'] ?? 'Phòng ban').toString(),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (int? value) => setModalState(() {
+                            departmentId = value;
+                            assigneeId = null;
+                          }),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<int>(
+                      value: assigneeId == 0 ? null : assigneeId,
+                      decoration: const InputDecoration(
+                        labelText: 'Nhân sự phụ trách',
+                      ),
+                      items:
+                          staffOptions
+                              .map(
+                                (Map<String, dynamic> user) =>
+                                    DropdownMenuItem<int>(
+                                      value: _toId(user['id']),
+                                      child: Text(
+                                        (user['name'] ??
+                                                user['email'] ??
+                                                'Nhân sự')
+                                            .toString(),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                              )
+                              .toList(),
+                      onChanged:
+                          (int? value) =>
+                              setModalState(() => assigneeId = value),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: submitting ? null : submit,
+                            child: Text(
+                              submitting
+                                  ? 'Đang lưu...'
+                                  : (isEdit ? 'Lưu thay đổi' : 'Tạo công việc'),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed:
+                                submitting
+                                    ? null
+                                    : () => Navigator.of(sheetContext).pop(),
+                            child: const Text('Hủy'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteTask(Map<String, dynamic> task) async {
+    if (!_canManageProjectTasks || taskActionLoading) return;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Xóa công việc'),
+          content: Text(
+            'Bạn có chắc muốn xóa công việc "${(task['title'] ?? 'Công việc').toString()}"?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: StitchTheme.danger,
+              ),
+              child: const Text('Xóa'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    setState(() => taskActionLoading = true);
+    final bool ok = await widget.apiService.deleteTask(
+      widget.token,
+      _toId(task['id']),
+    );
+    if (!mounted) return;
+    setState(() => taskActionLoading = false);
+    if (ok) {
+      await _fetch();
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(ok ? 'Đã xóa công việc.' : 'Không thể xóa công việc.'),
+      ),
+    );
+  }
+
+  Future<void> _fetchGsc() async {
     final Map<String, dynamic>? currentProject = project;
     if (currentProject == null) return;
     final String websiteUrl =
@@ -95,13 +572,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
     setState(() => gscLoading = true);
     final Map<String, dynamic> gscRes = await widget.apiService
-        .getProjectSearchConsole(
-          widget.token,
-          widget.projectId,
-          refresh: refresh,
-          force: force,
-          days: 21,
-        );
+        .getProjectSearchConsole(widget.token, widget.projectId);
     if (!mounted) return;
 
     if (gscRes['error'] == true) {
@@ -124,40 +595,68 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     });
   }
 
-  Future<void> _syncGscNow() async {
-    if (gscSyncing) return;
-    final String websiteUrl = (project?['website_url'] ?? '').toString().trim();
-    if (websiteUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Dự án chưa có website để đồng bộ Search Console.'),
-        ),
-      );
-      return;
-    }
+  Future<void> _toggleGscNotification(bool enabled) async {
+    if (gscNotifySaving) return;
+    setState(() => gscNotifySaving = true);
 
-    setState(() => gscSyncing = true);
-    final Map<String, dynamic> syncRes = await widget.apiService
-        .syncProjectSearchConsole(widget.token, widget.projectId);
+    final Map<String, dynamic> res = await widget.apiService
+        .updateProjectSearchConsoleNotification(
+          widget.token,
+          widget.projectId,
+          enabled: enabled,
+        );
     if (!mounted) return;
 
-    if (syncRes['error'] == true) {
-      final String err = (syncRes['message'] ?? 'Đồng bộ thất bại.').toString();
+    if (res['error'] == true) {
+      final String err =
+          (res['message'] ?? 'Không cập nhật được thông báo GSC.').toString();
+      final Map<String, dynamic>? body =
+          res['body'] is Map
+              ? (res['body'] as Map).cast<String, dynamic>()
+              : null;
+      final Map<String, dynamic>? payload =
+          body != null && body['data'] is Map
+              ? (body['data'] as Map).cast<String, dynamic>()
+              : null;
       setState(() {
-        gscSyncing = false;
+        gscNotifySaving = false;
         gscMessage = err;
-        gsc = _appendSyncError(gsc, err);
+        gsc = payload ?? _appendSyncError(gsc, err);
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
       return;
     }
 
-    await _fetchGsc(force: true, refresh: true);
-    if (!mounted) return;
-    setState(() => gscSyncing = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Đã đồng bộ dữ liệu Search Console.')),
-    );
+    final Map<String, dynamic>? body =
+        res['body'] is Map
+            ? (res['body'] as Map).cast<String, dynamic>()
+            : null;
+    final Map<String, dynamic>? payload =
+        body != null && body['data'] is Map
+            ? (body['data'] as Map).cast<String, dynamic>()
+            : null;
+    final String okMessage =
+        (body?['message'] ??
+                (enabled
+                    ? 'Đã bật thông báo Google Search Console.'
+                    : 'Đã tắt thông báo Google Search Console.'))
+            .toString();
+
+    setState(() {
+      gscNotifySaving = false;
+      gscMessage = '';
+      if (payload != null) {
+        gsc = payload;
+      }
+    });
+    if (payload == null) {
+      await _fetchGsc();
+      if (!mounted) return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(okMessage)));
   }
 
   String _statusLabel(String value) {
@@ -279,9 +778,102 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     }
   }
 
+  Future<void> _reviewHandover(String decision) async {
+    final Map<String, dynamic>? currentProject = project;
+    if (currentProject == null || submittingHandover) return;
+
+    String reason = '';
+    if (decision == 'rejected') {
+      final String? input = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          final TextEditingController c = TextEditingController();
+          return AlertDialog(
+            title: const Text('Từ chối bàn giao'),
+            content: TextField(
+              controller: c,
+              decoration: const InputDecoration(hintText: 'Nhập lý do từ chối'),
+              maxLines: 3,
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text(
+                  'Hủy',
+                  style: TextStyle(color: StitchTheme.textMuted),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, c.text),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: StitchTheme.danger,
+                ),
+                child: const Text('Xác nhận'),
+              ),
+            ],
+          );
+        },
+      );
+      if (input == null || input.trim().isEmpty) return;
+      reason = input.trim();
+    } else {
+      final bool? confirm = await showDialog<bool>(
+        context: context,
+        builder:
+            (BuildContext context) => AlertDialog(
+              title: const Text('Duyệt bàn giao'),
+              content: const Text(
+                'Bạn có chắc chắn muốn chấp thuận bàn giao dự án này không?',
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text(
+                    'Hủy',
+                    style: TextStyle(color: StitchTheme.textMuted),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: StitchTheme.success,
+                  ),
+                  child: const Text('Đồng ý duyệt'),
+                ),
+              ],
+            ),
+      );
+      if (confirm != true) return;
+    }
+
+    setState(() => submittingHandover = true);
+    final bool ok = await widget.apiService.reviewProjectHandover(
+      widget.token,
+      widget.projectId,
+      decision: decision,
+      reason: reason,
+    );
+    if (!mounted) return;
+    setState(() => submittingHandover = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? 'Đã xử lý phiếu bàn giao.' : 'Xử lý thất bại. Vui lòng thử lại.',
+        ),
+      ),
+    );
+    if (ok) {
+      await _fetch();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final String websiteUrl = (project?['website_url'] ?? '').toString().trim();
+    final bool hasLinkedContract =
+        project?['contract_id'] != null ||
+        ((project?['contract'] is Map) &&
+            ((project?['contract'] as Map)['id'] != null));
     final Map<String, dynamic> gscStatus = <String, dynamic>{
       ...((gsc?['status'] is Map)
           ? (gsc?['status'] as Map).cast<String, dynamic>()
@@ -298,15 +890,55 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                 .map((Map row) => row.cast<String, dynamic>())
                 .toList()
             : <Map<String, dynamic>>[];
+    final List<Map<String, dynamic>> gscTrendChart =
+        gscTrend.isNotEmpty
+            ? gscTrend
+            : <Map<String, dynamic>>[
+              if (gscLatest != null &&
+                  ((gscLatest['prior_date'] ?? '')
+                      .toString()
+                      .trim()
+                      .isNotEmpty))
+                <String, dynamic>{
+                  'date': (gscLatest['prior_date'] ?? '').toString(),
+                  'clicks': _toInt(gscLatest['prior_clicks']),
+                  'delta_clicks': 0,
+                },
+              if (gscLatest != null &&
+                  ((gscLatest['metric_date'] ?? '')
+                      .toString()
+                      .trim()
+                      .isNotEmpty))
+                <String, dynamic>{
+                  'date': (gscLatest['metric_date'] ?? '').toString(),
+                  'clicks': _toInt(gscLatest['last_clicks']),
+                  'delta_clicks': _toInt(gscLatest['delta_clicks']),
+                },
+            ];
     final Map<String, dynamic>? gscSummary =
         gsc?['summary'] is Map
             ? (gsc?['summary'] as Map).cast<String, dynamic>()
             : null;
-    final int gscMaxClicks = gscTrend.fold<int>(
+    final int gscMaxClicks = gscTrendChart.fold<int>(
       1,
       (int prev, Map<String, dynamic> row) =>
           math.max(prev, _toInt(row['clicks'])),
     );
+    final bool gscNotifyEnabled =
+        (gscStatus['project_notify_enabled'] ?? false) == true;
+    final bool gscCanManageNotification =
+        (gscStatus['can_manage_notification'] ?? false) == true;
+    final bool gscCanEnableNotification =
+        (gscStatus['can_enable_notification'] ?? false) == true;
+    final String gscEnableBlockReason =
+        (gscStatus['enable_block_reason'] ?? '').toString().trim();
+    final String gscTrackingStartedAt =
+        (gscStatus['tracking_started_at'] ?? '').toString().trim();
+    final String gscLastSyncedAt =
+        (gscStatus['last_synced_at'] ?? '').toString().trim();
+    final bool gscCanToggleNotification =
+        gscCanManageNotification &&
+        (gscNotifyEnabled || gscCanEnableNotification);
     final String syncError =
         (gscStatus['sync_error'] ?? gscMessage).toString().trim();
 
@@ -375,7 +1007,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Bàn giao: ${_handoverLabel((project?['handover_status'] ?? '').toString())}',
+                                'Bàn giao: ${hasLinkedContract ? _handoverLabel((project?['handover_status'] ?? '').toString()) : 'Không yêu cầu (dự án nội bộ)'}',
                                 style: const TextStyle(
                                   color: StitchTheme.textMuted,
                                 ),
@@ -439,6 +1071,54 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                   ),
                                 ),
                               ],
+                              if (project?['permissions']?['can_review_handover'] ==
+                                      true &&
+                                  (project?['handover_status'] ?? '')
+                                          .toString() ==
+                                      'pending') ...<Widget>[
+                                const SizedBox(height: 14),
+                                const Text(
+                                  'Phê duyệt bàn giao',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: ElevatedButton(
+                                        onPressed:
+                                            submittingHandover
+                                                ? null
+                                                : () =>
+                                                    _reviewHandover('rejected'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: StitchTheme.danger,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: const Text('Từ chối'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: ElevatedButton(
+                                        onPressed:
+                                            submittingHandover
+                                                ? null
+                                                : () =>
+                                                    _reviewHandover('approved'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: StitchTheme.success,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: const Text('Duyệt'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -464,28 +1144,48 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                       ),
                                     ),
                                   ),
-                                  if (websiteUrl.isNotEmpty)
-                                    TextButton(
-                                      onPressed:
-                                          gscSyncing || gscLoading
-                                              ? null
-                                              : _syncGscNow,
-                                      child: Text(
-                                        gscSyncing
-                                            ? 'Đang sync...'
-                                            : 'Đồng bộ ngay',
-                                      ),
+                                  Text(
+                                    gscNotifyEnabled ? 'Đang bật' : 'Đang tắt',
+                                    style: TextStyle(
+                                      color:
+                                          gscNotifyEnabled
+                                              ? StitchTheme.success
+                                              : StitchTheme.textMuted,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
                                     ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Switch(
+                                    value: gscNotifyEnabled,
+                                    onChanged:
+                                        (gscNotifySaving ||
+                                                gscLoading ||
+                                                !gscCanToggleNotification)
+                                            ? null
+                                            : _toggleGscNotification,
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              const Text(
-                                'Tự cập nhật theo ngày và hiển thị so sánh clicks/impressions trong chi tiết dự án.',
+                              Text(
+                                'Tự cập nhật theo ngày theo giờ admin cấu hình (${(gscStatus['sync_time'] ?? '11:17').toString()}).',
                                 style: TextStyle(
                                   color: StitchTheme.textMuted,
                                   fontSize: 12,
                                 ),
                               ),
+                              if (gscTrackingStartedAt.isNotEmpty) ...<Widget>[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Biểu đồ tính từ ngày thêm website: ${_formatDate(gscTrackingStartedAt)}'
+                                  '${gscLastSyncedAt.isNotEmpty ? ' • Đồng bộ gần nhất: ${_formatDate(gscLastSyncedAt)}' : ''}',
+                                  style: const TextStyle(
+                                    color: StitchTheme.textMuted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
                               if (websiteUrl.isEmpty) ...<Widget>[
                                 const SizedBox(height: 10),
                                 Container(
@@ -500,6 +1200,27 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                   child: const Text(
                                     'Dự án chưa có website_url. Hãy cập nhật URL website để bật thống kê Search Console.',
                                     style: TextStyle(
+                                      color: StitchTheme.textMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (gscEnableBlockReason.isNotEmpty &&
+                                  !gscNotifyEnabled) ...<Widget>[
+                                const SizedBox(height: 10),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: StitchTheme.warning.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Text(
+                                    gscEnableBlockReason,
+                                    style: const TextStyle(
                                       color: StitchTheme.textMuted,
                                       fontSize: 12,
                                     ),
@@ -613,13 +1334,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                     ),
                                   ],
                                 ),
-                                if (gscTrend.isNotEmpty) ...<Widget>[
+                                if (gscTrendChart.isNotEmpty) ...<Widget>[
                                   const SizedBox(height: 14),
                                   Row(
                                     children: <Widget>[
                                       Expanded(
                                         child: Text(
-                                          'Biểu đồ cột clicks (${_toInt(gscSummary?['days'] ?? gscTrend.length)} ngày)',
+                                          'Biểu đồ tăng trưởng clicks (${_toInt(gscSummary?['days'] ?? gscTrendChart.length)} mốc)',
                                           style: const TextStyle(
                                             fontWeight: FontWeight.w600,
                                             fontSize: 13,
@@ -642,7 +1363,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.end,
                                       children:
-                                          gscTrend.map((
+                                          gscTrendChart.map((
                                             Map<String, dynamic> item,
                                           ) {
                                             final int clicks = _toInt(
@@ -743,12 +1464,27 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'Công việc trong dự án',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
+                        Row(
+                          children: <Widget>[
+                            const Expanded(
+                              child: Text(
+                                'Công việc trong dự án',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            if (_canManageProjectTasks)
+                              FilledButton.icon(
+                                onPressed:
+                                    taskActionLoading
+                                        ? null
+                                        : () => _openTaskSheet(),
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Thêm công việc'),
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 10),
                         ...tasks.map((Map<String, dynamic> task) {
@@ -789,12 +1525,44 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
-                                  Text(
-                                    title,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                    ),
+                                  Row(
+                                    children: <Widget>[
+                                      Expanded(
+                                        child: Text(
+                                          title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      if (_canManageProjectTasks)
+                                        PopupMenuButton<String>(
+                                          tooltip: 'Quản lý công việc',
+                                          onSelected: (String value) {
+                                            if (value == 'edit') {
+                                              _openTaskSheet(editingTask: task);
+                                              return;
+                                            }
+                                            if (value == 'delete') {
+                                              _deleteTask(task);
+                                            }
+                                          },
+                                          itemBuilder:
+                                              (BuildContext context) => const <
+                                                PopupMenuEntry<String>
+                                              >[
+                                                PopupMenuItem<String>(
+                                                  value: 'edit',
+                                                  child: Text('Sửa'),
+                                                ),
+                                                PopupMenuItem<String>(
+                                                  value: 'delete',
+                                                  child: Text('Xóa'),
+                                                ),
+                                              ],
+                                        ),
+                                    ],
                                   ),
                                   const SizedBox(height: 6),
                                   Text(

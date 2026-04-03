@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../config/app_env.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/services/app_permission_bootstrap_service.dart';
+import '../../core/services/notification_router.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -38,7 +39,7 @@ import '../modules/revenue_tiers_screen.dart';
 import '../modules/departments_screen.dart';
 import '../projects/create_project_screen.dart';
 import '../projects/projects_screen.dart';
-import '../tasks/tasks_screen.dart';
+import '../tasks/task_items_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -84,6 +85,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  RemoteMessage? _pendingInitialMessage;
 
   @override
   void initState() {
@@ -92,6 +94,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _loadSavedAccounts();
     _bootstrap();
     if (AppFirebase.isConfigured) {
+      _setupPushNotificationInteractions();
       AppFirebase.ensureForegroundMessaging().then((_) {
         _foregroundSub?.cancel();
         _foregroundSub = AppFirebase.foregroundMessages.listen((_) async {
@@ -99,6 +102,41 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         });
       });
     }
+  }
+
+  Future<void> _setupPushNotificationInteractions() async {
+    if (!AppFirebase.isConfigured) return;
+
+    // 1. Handle message when app is in background but still running
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _handlePushNavigation(message);
+    });
+
+    // 2. Handle message when app was terminated
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      _pendingInitialMessage = initialMessage;
+    }
+  }
+
+  void _handlePushNavigation(RemoteMessage message) {
+    if (authToken == null || authToken!.isEmpty) {
+      _pendingInitialMessage = message;
+      return;
+    }
+
+    final dynamic rawId = authUser?['id'];
+    final int? currentUserId =
+        rawId is int ? rawId : int.tryParse('${rawId ?? ''}');
+
+    NotificationRouter.routeMessage(
+      context,
+      message,
+      token: authToken!,
+      apiService: _api,
+      currentUserId: currentUserId,
+      currentUserRole: (authUser?['role'] ?? '').toString(),
+    );
   }
 
   @override
@@ -273,6 +311,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
     await _refreshNotificationBadge();
     _scheduleEssentialPermissionPrompt();
+    if (_pendingInitialMessage != null) {
+      final msg = _pendingInitialMessage!;
+      _pendingInitialMessage = null;
+      _handlePushNavigation(msg);
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -519,6 +562,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       await fetchTasks(silent: true);
       await _refreshNotificationBadge();
       _scheduleEssentialPermissionPrompt();
+      if (_pendingInitialMessage != null) {
+        final msg = _pendingInitialMessage!;
+        _pendingInitialMessage = null;
+        _handlePushNavigation(msg);
+      }
     } else {
       setState(() {
         _isLoggingIn = false;
@@ -993,6 +1041,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         token: authToken!,
         apiService: _api,
         currentUserId: currentUserId,
+        currentUserRole: (authUser?['role'] ?? '').toString(),
       );
     }).then((_) => _refreshNotificationBadge());
     void openMeetings() => openScreen(
@@ -1082,6 +1131,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         currentUserRole: currentUserRole,
       ),
     );
+    void openProjectsTab() {
+      Navigator.of(context).maybePop();
+      setState(() => _tabIndex = 1);
+    }
+
+    void openTaskItems() =>
+        openScreen(() => TaskItemsScreen(token: authToken!, apiService: _api));
     void openCreateProject() => openScreen(
       () => CreateProjectScreen(token: authToken!, apiService: _api),
     );
@@ -1093,7 +1149,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenActivityLogs: canViewLogs ? openActivityLogs : null,
       onOpenNotifications: openNotifications,
       onOpenCreateProject: canCreateProject ? openCreateProject : null,
-      onOpenMeetings: canViewMeetings ? openMeetings : null,
+      onOpenMeetings: openMeetings,
       onOpenCrm: canManageCrm ? openCrm : null,
       onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
       onOpenContracts: canViewContracts ? openContracts : null,
@@ -1108,6 +1164,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenReports: canViewReports ? openReports : null,
       onOpenServices: canViewProjects ? openServices : null,
       onOpenAttendance: canViewAttendance ? openAttendance : null,
+      onOpenTasks: openProjectsTab,
+      onOpenTaskItems: openTaskItems,
     );
 
     final List<OverviewQuickAction> quickActions = <OverviewQuickAction>[
@@ -1192,19 +1250,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         apiService: _api,
         currentUserRole: currentUserRole,
       ),
-      TasksScreen(
-        tasks: tasks,
-        statuses: taskStatuses,
-        currentFilter: taskStatusFilter,
-        loading: taskLoading,
-        message: taskMessage,
-        isAuthenticated: isAuthenticated,
-        onRefresh: fetchTasks,
-        onUpdateStatus: updateTaskStatus,
-        token: authToken,
+      ProjectsScreen(
+        token: authToken ?? '',
         apiService: _api,
-        currentUserRole: (authUser?['role'] ?? '').toString(),
-        currentUserId: resolvedUserId,
+        canCreate: canCreateProject,
       ),
       CrmHubScreen(
         onOpenCrm: canManageCrm ? openCrm : null,
@@ -1301,9 +1350,9 @@ class _BottomNavBar extends StatelessWidget {
               ),
               Expanded(
                 child: _NavItem(
-                  label: 'Công việc',
-                  icon: Icons.event_note_outlined,
-                  activeIcon: Icons.event_note,
+                  label: 'Dự án',
+                  icon: Icons.account_tree_outlined,
+                  activeIcon: Icons.account_tree,
                   isActive: currentIndex == 1,
                   onTap: () => onTap(1),
                   compact: compact,
