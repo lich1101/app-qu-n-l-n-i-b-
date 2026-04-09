@@ -8,9 +8,14 @@ class StitchTheme {
   static const Color surface = Color(0xFFFFFFFF);
   static const Color surfaceAlt = Color(0xFFEAF1F5);
   static const Color border = Color(0xFFD9E4EA);
+  /// Viền ô nhập / chip — đậm hơn [border] để dễ nhìn.
+  static const Color borderStrong = Color(0xFF94A3B8);
+  static const Color inputBorder = Color(0xFFCBD5E1);
   static const Color textMain = Color(0xFF0F172A);
   static const Color textMuted = Color(0xFF5F7285);
   static const Color textSubtle = Color(0xFF90A0B0);
+  /// Nhãn form (đậm, dễ đọc — tránh nhãn quá nhạt).
+  static const Color labelEmphasis = Color(0xFF334155);
   static Color successStrong = const Color(0xFF16A34A);
   static Color warningStrong = const Color(0xFFF59E0B);
   static Color dangerStrong = const Color(0xFFEF4444);
@@ -38,6 +43,9 @@ class StitchTheme {
       onSecondary: Colors.white,
       surface: surface,
       onSurface: textMain,
+      onSurfaceVariant: const Color(0xFF475569),
+      outline: inputBorder,
+      outlineVariant: border,
       error: danger,
       onError: Colors.white,
     );
@@ -68,6 +76,8 @@ class StitchTheme {
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
         modalBackgroundColor: surface,
+        elevation: 6,
+        shadowColor: Color(0x330F172A),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
@@ -101,38 +111,65 @@ class StitchTheme {
           side: const BorderSide(color: border),
         ),
       ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: textMuted,
+        textColor: textMain,
+        titleTextStyle: TextStyle(
+          color: textMain,
+          fontWeight: FontWeight.w600,
+          fontSize: 15,
+        ),
+        subtitleTextStyle: TextStyle(
+          color: textMuted,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: surface,
+        surfaceTintColor: Colors.transparent,
+        textStyle: const TextStyle(
+          color: textMain,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: inputBorder),
+        ),
+      ),
       dividerTheme: const DividerThemeData(color: border, thickness: 1),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
-        contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        contentPadding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
         floatingLabelBehavior: FloatingLabelBehavior.always,
         labelStyle: const TextStyle(
-          color: textMuted,
+          color: labelEmphasis,
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
         hintStyle: const TextStyle(
-          color: textSubtle,
+          color: textMuted,
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
-        floatingLabelStyle: const TextStyle(
-          color: textMuted,
+        floatingLabelStyle: TextStyle(
+          color: primaryStrong.withValues(alpha: 0.92),
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: border),
+          borderSide: const BorderSide(color: inputBorder, width: 1.1),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: border),
+          borderSide: const BorderSide(color: inputBorder, width: 1.1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: primary, width: 1.4),
+          borderSide: BorderSide(color: primary, width: 1.65),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -144,11 +181,27 @@ class StitchTheme {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: surfaceAlt,
-        selectedColor: primarySoft,
-        side: const BorderSide(color: border),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        backgroundColor: const Color(0xFFF1F5F9),
+        selectedColor: primary.withValues(alpha: 0.22),
+        disabledColor: const Color(0xFFE2E8F0),
+        side: const BorderSide(color: inputBorder, width: 1.1),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        labelStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: textMain,
+          height: 1.2,
+        ),
+        secondaryLabelStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: primaryStrong,
+        ),
+        checkmarkColor: primaryStrong,
+        brightness: Brightness.light,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -176,7 +229,7 @@ class StitchTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-          side: const BorderSide(color: border),
+          side: const BorderSide(color: inputBorder, width: 1.2),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),

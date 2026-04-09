@@ -64,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final List<Map<String, dynamic>> data = await widget.apiService.getTasks(
       widget.token,
       perPage: 40,
+      chatScope: true,
     );
     if (!mounted) return;
     setState(() {
@@ -287,6 +288,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _hasMore = true;
   static const int _pageSize = 20;
   bool _realtimeEnabled = false;
+
+  bool get _isTaskClosed => (widget.task['status'] ?? '').toString() == 'done';
+
+  bool get _isChatLocked {
+    final Map<String, dynamic>? project = _asMap(widget.task['project']);
+    return (project?['handover_status'] ?? '').toString() == 'approved';
+  }
+
+  String get _chatDisabledReason =>
+      'Dự án đã bàn giao xong, chat công việc đã bị khóa.';
 
   static const Map<String, String> _diacriticMap = <String, String>{
     'à': 'a',
@@ -789,7 +800,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   void _listenRealtime() {
     final int taskId = _asInt(widget.task['id']);
-    if (taskId <= 0) return;
+    if (taskId <= 0 || _isChatLocked) return;
     final Query? query = AppFirebase.taskChatQuery(taskId, limit: _pageSize);
     if (query == null) {
       return;
@@ -1263,13 +1274,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   void _startEdit(Map<String, dynamic> c) {
-    final bool isTaskClosed =
-        (widget.task['status'] ?? '').toString() == 'done';
     final bool isRecalled = c['is_recalled'] == true;
-    if (isTaskClosed || isRecalled) {
+    if (_isTaskClosed || _isChatLocked || isRecalled) {
       setState(() {
         message =
-            isTaskClosed
+            _isChatLocked
+                ? _chatDisabledReason
+                : _isTaskClosed
                 ? 'Công việc đã hoàn thành, không thể chỉnh sửa.'
                 : 'Tin nhắn đã bị thu hồi, không thể chỉnh sửa.';
       });
@@ -1323,6 +1334,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _recallMessage(Map<String, dynamic> c) async {
     final int taskId = _asInt(widget.task['id']);
     if (taskId <= 0) return;
+    if (_isChatLocked) {
+      setState(() {
+        message = _chatDisabledReason;
+      });
+      return;
+    }
     final int id = _asInt(c['id']);
     if (id <= 0) return;
     final bool confirmed =
@@ -1436,11 +1453,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Future<void> _send() async {
     final int taskId = _asInt(widget.task['id']);
     if (taskId <= 0) return;
-    final bool isTaskClosed =
-        (widget.task['status'] ?? '').toString() == 'done';
-    if (isTaskClosed) {
+    if (_isTaskClosed || _isChatLocked) {
       setState(() {
-        message = 'Công việc đã hoàn thành, không thể nhắn thêm.';
+        message =
+            _isChatLocked
+                ? _chatDisabledReason
+                : 'Công việc đã hoàn thành, không thể nhắn thêm.';
       });
       return;
     }
@@ -1519,8 +1537,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final String title = (widget.task['title'] ?? 'Công việc').toString();
-    final bool isTaskClosed =
-        (widget.task['status'] ?? '').toString() == 'done';
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -1606,12 +1622,58 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       style: const TextStyle(color: StitchTheme.textMuted),
                     ),
                   ),
-                if (isTaskClosed)
+                if (_isTaskClosed)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 8),
                     child: Text(
                       'Công việc đã hoàn thành, không thể gửi tin nhắn.',
                       style: TextStyle(color: StitchTheme.textMuted),
+                    ),
+                  ),
+                if (_isChatLocked)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      _chatDisabledReason,
+                      style: TextStyle(
+                        color: StitchTheme.warningStrong,
+                      ),
+                    ),
+                  ),
+                if (participants.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        const Text(
+                          'Phạm vi chat: Admin, phụ trách dự án, phụ trách công việc và toàn bộ phụ trách đầu việc.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: StitchTheme.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children:
+                              participants.map((Map<String, dynamic> u) {
+                                final String name =
+                                    (u['name'] ?? 'Người dùng').toString();
+                                return Chip(
+                                  label: Text(
+                                    name,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  backgroundColor: Colors.white,
+                                  side: const BorderSide(
+                                    color: StitchTheme.border,
+                                  ),
+                                );
+                              }).toList(),
+                        ),
+                      ],
                     ),
                   ),
                 if (editingId != null)
@@ -1642,7 +1704,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   children: <Widget>[
                     TextButton.icon(
                       onPressed:
-                          isTaskClosed
+                          _isTaskClosed || _isChatLocked
                               ? null
                               : () =>
                                   setState(() => showOptions = !showOptions),
@@ -1696,11 +1758,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Đường dẫn tệp hoặc liên kết',
                     ),
-                    enabled: !isTaskClosed,
+                    enabled: !_isTaskClosed && !_isChatLocked,
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: isTaskClosed ? null : _pickAttachment,
+                    onPressed:
+                        _isTaskClosed || _isChatLocked ? null : _pickAttachment,
                     icon: const Icon(Icons.attach_file, size: 18),
                     label: const Text('Chọn file'),
                   ),
@@ -1717,12 +1780,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         minLines: 1,
                         maxLines: 3,
                         onChanged: _onMessageChanged,
-                        enabled: !isTaskClosed,
+                        enabled: !_isTaskClosed && !_isChatLocked,
                       ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      onPressed: isTaskClosed || sending ? null : _send,
+                      onPressed:
+                          _isTaskClosed || _isChatLocked || sending
+                              ? null
+                              : _send,
                       icon: Icon(Icons.send, color: StitchTheme.primary),
                     ),
                   ],
@@ -1738,7 +1804,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       ),
                     ),
                   ),
-                if (mentionOpen && !isTaskClosed)
+                if (mentionOpen && !_isTaskClosed && !_isChatLocked)
                   Container(
                     margin: const EdgeInsets.only(top: 8),
                     decoration: BoxDecoration(

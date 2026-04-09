@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
+import 'create_project_screen.dart';
 import '../tasks/task_detail_screen.dart';
 
 class ProjectDetailScreen extends StatefulWidget {
@@ -111,6 +113,26 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     return currentUserId != null && ownerId > 0 && ownerId == currentUserId;
   }
 
+  bool get _canEditProject =>
+      (project?['permissions']?['can_edit'] ?? false) == true;
+
+  Future<void> _openEditProject() async {
+    if (!_canEditProject || project == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<Widget>(
+        builder:
+            (_) => CreateProjectScreen(
+              token: widget.token,
+              apiService: widget.apiService,
+              projectId: widget.projectId,
+              initialProject: Map<String, dynamic>.from(project!),
+            ),
+      ),
+    );
+    if (!mounted) return;
+    await _fetch();
+  }
+
   Future<void> _ensureDepartmentsLoaded() async {
     if (departments.isNotEmpty) return;
     final List<Map<String, dynamic>> rows = await widget.apiService
@@ -119,24 +141,14 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     setState(() => departments = rows);
   }
 
-  String _toDateInput(dynamic value) {
-    final String raw = (value ?? '').toString().trim();
-    if (raw.length >= 10) return raw.substring(0, 10);
-    return raw;
-  }
+  String _toDateInput(dynamic value) => VietnamTime.toYmdInput(value);
 
   Future<void> _pickDate(
     BuildContext context,
     TextEditingController controller,
   ) async {
     final DateTime now = DateTime.now();
-    DateTime initial = now;
-    if (controller.text.trim().isNotEmpty) {
-      final DateTime? parsed = DateTime.tryParse(controller.text.trim());
-      if (parsed != null) {
-        initial = parsed;
-      }
-    }
+    final DateTime initial = VietnamTime.pickerInitialDate(controller.text);
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -678,14 +690,15 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
   String _formatDate(String raw) {
     if (raw.isEmpty) return '—';
-    return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    final DateTime? dt = VietnamTime.parse(raw);
+    if (dt == null) return '—';
+    return VietnamTime.formatDate(dt);
   }
 
   String _formatShortDate(String raw) {
     if (raw.isEmpty) return '—';
-    if (raw.length >= 10) {
-      return raw.substring(5, 10);
-    }
+    final String ymd = VietnamTime.toYmdInput(raw);
+    if (ymd.length >= 10) return ymd.substring(5, 10);
     return raw;
   }
 
@@ -943,7 +956,17 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         (gscStatus['sync_error'] ?? gscMessage).toString().trim();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Chi tiết dự án')),
+      appBar: AppBar(
+        title: const Text('Chi tiết dự án'),
+        actions: <Widget>[
+          if (_canEditProject)
+            IconButton(
+              onPressed: _openEditProject,
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Sửa dự án',
+            ),
+        ],
+      ),
       body: SafeArea(
         child:
             loading
@@ -1488,100 +1511,35 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                         ),
                         const SizedBox(height: 10),
                         ...tasks.map((Map<String, dynamic> task) {
-                          final String title =
-                              (task['title'] ?? 'Công việc').toString();
-                          final String status =
-                              (task['status'] ?? '').toString();
-                          final int progress =
-                              (task['progress_percent'] ?? 0) is int
-                                  ? task['progress_percent'] as int
-                                  : int.tryParse(
-                                        '${task['progress_percent'] ?? 0}',
-                                      ) ??
-                                      0;
-                          final String deadline =
-                              (task['deadline'] ?? '').toString();
-                          return InkWell(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<Widget>(
-                                  builder:
-                                      (_) => TaskDetailScreen(
-                                        token: widget.token,
-                                        apiService: widget.apiService,
-                                        taskId: (task['id'] ?? 0) as int,
-                                      ),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: StitchTheme.border),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        child: Text(
-                                          title,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 15,
-                                          ),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: _ProjectTaskListTile(
+                              task: task,
+                              projectLabel:
+                                  (project?['name'] ?? 'Dự án').toString(),
+                              statusLabel: _statusLabel,
+                              formatDate: _formatDate,
+                              canManage: _canManageProjectTasks,
+                              onOpen: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<Widget>(
+                                    builder:
+                                        (_) => TaskDetailScreen(
+                                          token: widget.token,
+                                          apiService: widget.apiService,
+                                          taskId: (task['id'] ?? 0) as int,
                                         ),
-                                      ),
-                                      if (_canManageProjectTasks)
-                                        PopupMenuButton<String>(
-                                          tooltip: 'Quản lý công việc',
-                                          onSelected: (String value) {
-                                            if (value == 'edit') {
-                                              _openTaskSheet(editingTask: task);
-                                              return;
-                                            }
-                                            if (value == 'delete') {
-                                              _deleteTask(task);
-                                            }
-                                          },
-                                          itemBuilder:
-                                              (BuildContext context) => const <
-                                                PopupMenuEntry<String>
-                                              >[
-                                                PopupMenuItem<String>(
-                                                  value: 'edit',
-                                                  child: Text('Sửa'),
-                                                ),
-                                                PopupMenuItem<String>(
-                                                  value: 'delete',
-                                                  child: Text('Xóa'),
-                                                ),
-                                              ],
-                                        ),
-                                    ],
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Trạng thái: ${_statusLabel(status)} • Tiến độ: $progress%',
-                                    style: const TextStyle(
-                                      color: StitchTheme.textMuted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  if (deadline.isNotEmpty)
-                                    Text(
-                                      'Deadline: ${_formatDate(deadline)}',
-                                      style: const TextStyle(
-                                        color: StitchTheme.textMuted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                ],
-                              ),
+                                );
+                              },
+                              onEdit:
+                                  _canManageProjectTasks
+                                      ? () => _openTaskSheet(editingTask: task)
+                                      : null,
+                              onDelete:
+                                  _canManageProjectTasks
+                                      ? () => _deleteTask(task)
+                                      : null,
                             ),
                           );
                         }),
@@ -1594,6 +1552,324 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                     ],
                   ),
                 ),
+      ),
+    );
+  }
+}
+
+class _ProjectPriStyle {
+  const _ProjectPriStyle({
+    required this.label,
+    required this.background,
+    required this.foreground,
+    required this.icon,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+  final IconData icon;
+}
+
+_ProjectPriStyle _projectPriStyleForTask(String? value) {
+  switch ((value ?? '').toLowerCase()) {
+    case 'urgent':
+      return const _ProjectPriStyle(
+        label: 'Khẩn cấp',
+        background: Color(0xFFFEE2E2),
+        foreground: Color(0xFFDC2626),
+        icon: Icons.error,
+      );
+    case 'high':
+      return const _ProjectPriStyle(
+        label: 'Cao',
+        background: Color(0xFFFFEDD5),
+        foreground: Color(0xFFEA580C),
+        icon: Icons.flag,
+      );
+    case 'low':
+      return const _ProjectPriStyle(
+        label: 'Thấp',
+        background: Color(0xFFF1F5F9),
+        foreground: Color(0xFF475569),
+        icon: Icons.circle,
+      );
+    default:
+      return _ProjectPriStyle(
+        label: 'Trung bình',
+        background: StitchTheme.primarySoft,
+        foreground: StitchTheme.primary,
+        icon: Icons.adjust,
+      );
+  }
+}
+
+String _projectTaskShortDeadline(String raw) {
+  if (raw.isEmpty) return '—';
+  final DateTime? d = VietnamTime.parse(raw);
+  if (d == null) return '—';
+  return '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}';
+}
+
+/// Thẻ công việc giống danh sách công việc (ưu tiên, PB, tiến độ, deadline…).
+class _ProjectTaskListTile extends StatelessWidget {
+  const _ProjectTaskListTile({
+    required this.task,
+    required this.projectLabel,
+    required this.statusLabel,
+    required this.formatDate,
+    required this.onOpen,
+    required this.canManage,
+    this.onEdit,
+    this.onDelete,
+  });
+
+  final Map<String, dynamic> task;
+  final String projectLabel;
+  final String Function(String value) statusLabel;
+  final String Function(String raw) formatDate;
+  final VoidCallback onOpen;
+  final bool canManage;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
+  int _toInt(dynamic v) {
+    if (v is int) return v;
+    if (v is double) return v.round();
+    return int.tryParse('$v') ?? 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String title = (task['title'] ?? 'Công việc').toString();
+    final String priority = (task['priority'] ?? 'medium').toString();
+    final _ProjectPriStyle pri = _projectPriStyleForTask(priority);
+    final Map<String, dynamic>? department =
+        task['department'] as Map<String, dynamic>?;
+    final String departmentName = (department?['name'] ?? '—').toString();
+    final int progress = _toInt(task['progress_percent']);
+    final int comments = _toInt(task['comments_count']);
+    final int attachments = _toInt(task['attachments_count']);
+    final String status = (task['status'] ?? '').toString();
+    final String deadlineRaw = (task['deadline'] ?? '').toString();
+    final Map<String, dynamic>? assignee =
+        task['assignee'] as Map<String, dynamic>?;
+    final Map<String, dynamic>? reviewer =
+        task['reviewer'] as Map<String, dynamic>?;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: StitchTheme.border.withAlpha(128)),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x0D0F172A),
+                blurRadius: 14,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: pri.background,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(pri.icon, size: 14, color: pri.foreground),
+                          const SizedBox(width: 4),
+                          Text(
+                            pri.label,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: pri.foreground,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (canManage)
+                    PopupMenuButton<String>(
+                      icon: const Icon(
+                        Icons.more_horiz,
+                        color: StitchTheme.textSubtle,
+                      ),
+                      onSelected: (String value) {
+                        if (value == 'edit') onEdit?.call();
+                        if (value == 'delete') onDelete?.call();
+                      },
+                      itemBuilder:
+                          (BuildContext context) => const <
+                            PopupMenuEntry<String>
+                          >[
+                            PopupMenuItem<String>(
+                              value: 'edit',
+                              child: Text('Sửa'),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'delete',
+                              child: Text('Xóa'),
+                            ),
+                          ],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                projectLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: StitchTheme.textMuted,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Phòng ban: $departmentName',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: StitchTheme.textMuted,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Trạng thái: ${statusLabel(status)}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: StitchTheme.textMuted,
+                ),
+              ),
+              if (assignee != null || reviewer != null) ...<Widget>[
+                const SizedBox(height: 4),
+                Text(
+                  'Phụ trách: ${(assignee?['name'] ?? '—')}'
+                  '${reviewer != null ? ' • Review: ${reviewer['name']}' : ''}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: StitchTheme.textMuted,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: <Widget>[
+                  if (attachments > 0)
+                    const Icon(
+                      Icons.attach_file,
+                      size: 16,
+                      color: StitchTheme.textSubtle,
+                    ),
+                  if (attachments > 0) const SizedBox(width: 4),
+                  if (comments > 0) ...<Widget>[
+                    const Icon(
+                      Icons.chat_bubble_outlined,
+                      size: 16,
+                      color: StitchTheme.textSubtle,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$comments',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: StitchTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: StitchTheme.surfaceAlt,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      deadlineRaw.isEmpty
+                          ? '—'
+                          : _projectTaskShortDeadline(deadlineRaw),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: StitchTheme.textMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (deadlineRaw.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 4),
+                Text(
+                  'Hạn: ${formatDate(deadlineRaw)}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: StitchTheme.textMuted,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  const Text(
+                    'Tiến độ',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: StitchTheme.textMuted,
+                    ),
+                  ),
+                  Text(
+                    '$progress%',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: progress.clamp(0, 100) / 100,
+                  minHeight: 6,
+                  color: StitchTheme.primary,
+                  backgroundColor: StitchTheme.surfaceAlt,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

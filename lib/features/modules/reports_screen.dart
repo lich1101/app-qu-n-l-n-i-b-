@@ -32,8 +32,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final Map<String, dynamic> data =
-        await widget.apiService.getReportSummary(widget.token);
+    final Map<String, dynamic> data = await widget.apiService.getReportSummary(
+      widget.token,
+    );
     setState(() {
       loading = false;
       report = data;
@@ -75,16 +76,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return <Map<String, dynamic>>[];
   }
 
+  void _showComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Tính năng đang được hoàn thiện, sẽ có trong bản cập nhật tiếp theo.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final int linksLive =
-        _readInt(<String>['links_live', 'backlinks_live', 'links_done']);
-    final int linksTotal =
-        _readInt(<String>['links_total', 'backlinks_total'], fallback: 100);
-    final int linksPending =
-        _readInt(<String>['links_pending', 'backlinks_pending']);
-    final int totalWords =
-        _readInt(<String>['content_words', 'words_total']);
+    final int linksLive = _readInt(<String>[
+      'links_live',
+      'backlinks_live',
+      'links_done',
+    ]);
+    final int linksTotal = _readInt(<String>[
+      'links_total',
+      'backlinks_total',
+    ], fallback: 100);
+    final int linksPending = _readInt(<String>[
+      'links_pending',
+      'backlinks_pending',
+    ]);
+    final int totalWords = _readInt(<String>['content_words', 'words_total']);
     final int seoScore = _readInt(<String>['seo_score'], fallback: 92);
     final int auditTotal = _readInt(<String>['audit_total']);
     final int auditDone = _readInt(<String>['audit_done']);
@@ -119,11 +136,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     child: Text(
                       'Báo cáo Hiệu suất',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   IconButton(
-                    onPressed: () {},
+                    onPressed: _showComingSoon,
                     icon: Icon(Icons.download, color: StitchTheme.primary),
                   ),
                 ],
@@ -138,7 +158,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   'content': 'Content',
                   'seo': 'SEO',
                 },
-                onChanged: (String value) => setState(() => selectedTab = value),
+                onChanged:
+                    (String value) => setState(() => selectedTab = value),
               ),
             ),
             Expanded(
@@ -164,9 +185,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           icon: Icons.link,
                           label: 'Backlinks đã lên',
                           value: '$linksLive/$linksTotal',
-                          progress: linksTotal == 0
-                              ? 0
-                              : (linksLive / linksTotal).clamp(0, 1).toDouble(),
+                          progress:
+                              linksTotal == 0
+                                  ? 0
+                                  : (linksLive / linksTotal)
+                                      .clamp(0, 1)
+                                      .toDouble(),
                           accent: StitchTheme.primary,
                         ),
                         _ReportMetricCard(
@@ -197,17 +221,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 children: const <Widget>[
                                   Text(
                                     'Phân bổ DA',
-                                    style: TextStyle(fontWeight: FontWeight.w700),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                   SizedBox(height: 4),
                                   Text(
                                     'Dữ liệu thu thập tháng hiện tại',
                                     style: TextStyle(
-                                        fontSize: 11, color: StitchTheme.textMuted),
+                                      fontSize: 11,
+                                      color: StitchTheme.textMuted,
+                                    ),
                                   ),
                                 ],
                               ),
-                              const Icon(Icons.more_horiz, color: StitchTheme.textSubtle),
+                              const Icon(
+                                Icons.more_horiz,
+                                color: StitchTheme.textSubtle,
+                              ),
                             ],
                           ),
                           const SizedBox(height: 16),
@@ -217,24 +248,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: List<Widget>.generate(4, (int index) {
                                 final int value =
-                                    index < daBuckets.length ? daBuckets[index] : 0;
+                                    index < daBuckets.length
+                                        ? daBuckets[index]
+                                        : 0;
                                 final double height =
                                     (value.clamp(10, 100) / 100) * 120;
                                 return Expanded(
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                    ),
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.end,
                                       children: <Widget>[
                                         Container(
                                           height: height,
                                           decoration: BoxDecoration(
-                                            color: index == 2
-                                                ? StitchTheme.primary
-                                                : StitchTheme.primarySoft,
-                                            borderRadius: const BorderRadius.vertical(
-                                              top: Radius.circular(8),
-                                            ),
+                                            color:
+                                                index == 2
+                                                    ? StitchTheme.primary
+                                                    : StitchTheme.primarySoft,
+                                            borderRadius:
+                                                const BorderRadius.vertical(
+                                                  top: Radius.circular(8),
+                                                ),
                                           ),
                                         ),
                                         const SizedBox(height: 6),
@@ -262,10 +299,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       children: <Widget>[
                         const Text(
                           'Thống kê Content',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
                         ),
                         TextButton(
-                          onPressed: () {},
+                          onPressed: _showComingSoon,
                           child: const Text('Xem tất cả'),
                         ),
                       ],
@@ -274,7 +314,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       icon: Icons.description,
                       title: 'Tổng số từ',
                       subtitle: 'Sản lượng tháng này',
-                      value: totalWords == 0 ? '128.400' : totalWords.toString(),
+                      value:
+                          totalWords == 0 ? '128.400' : totalWords.toString(),
                       trailing: '+14.2%',
                       accent: StitchTheme.primary,
                     ),
@@ -290,7 +331,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const SizedBox(height: 18),
                     const Text(
                       'Audit Content & Website Care',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     _StatRow(
@@ -331,7 +375,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const SizedBox(height: 18),
                     const Text(
                       'Vị trí đặt Backlinks gần đây',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     if (recentLinks.isEmpty)
@@ -342,7 +389,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     else
                       ...recentLinks.map((Map<String, dynamic> item) {
                         final String domain =
-                            (item['domain'] ?? item['name'] ?? 'domain.com').toString();
+                            (item['domain'] ?? item['name'] ?? 'domain.com')
+                                .toString();
                         final String da = (item['da'] ?? 'DA 0').toString();
                         final String status =
                             (item['status'] ?? 'Đang duyệt').toString();
@@ -383,33 +431,35 @@ class _SegmentedControl extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
-        children: options.entries.map((MapEntry<String, String> entry) {
-          final bool selected = entry.key == value;
-          return Expanded(
-            child: InkWell(
-              onTap: () => onChanged(entry.key),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                decoration: BoxDecoration(
-                  color: selected ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Center(
-                  child: Text(
-                    entry.value,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: selected
-                          ? StitchTheme.primary
-                          : StitchTheme.textMuted,
+        children:
+            options.entries.map((MapEntry<String, String> entry) {
+              final bool selected = entry.key == value;
+              return Expanded(
+                child: InkWell(
+                  onTap: () => onChanged(entry.key),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    decoration: BoxDecoration(
+                      color: selected ? Colors.white : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        entry.value,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color:
+                              selected
+                                  ? StitchTheme.primary
+                                  : StitchTheme.textMuted,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          );
-        }).toList(),
+              );
+            }).toList(),
       ),
     );
   }
@@ -551,10 +601,18 @@ class _StatRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 4),
-                Text(subtitle,
-                    style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted)),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: StitchTheme.textMuted,
+                  ),
+                ),
               ],
             ),
           ),
@@ -625,9 +683,18 @@ class _RecentLinkTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(domain, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  domain,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 4),
-                Text(meta, style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted)),
+                Text(
+                  meta,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: StitchTheme.textMuted,
+                  ),
+                ),
               ],
             ),
           ),

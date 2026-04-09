@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
+import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'task_item_detail_screen.dart';
 
@@ -36,11 +38,21 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
   int _total = 0;
   final int _perPage = 30;
   List<Map<String, dynamic>> _items = <Map<String, dynamic>>[];
+  List<int> _assigneeFilterIds = <int>[];
+  List<Map<String, dynamic>> _assigneeLookupUsers = <Map<String, dynamic>>[];
 
   @override
   void initState() {
     super.initState();
+    _loadAssignees();
     _load();
+  }
+
+  Future<void> _loadAssignees() async {
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getUsersLookup(widget.token, purpose: 'operational_assignee');
+    if (!mounted) return;
+    setState(() => _assigneeLookupUsers = rows);
   }
 
   @override
@@ -63,6 +75,8 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
           page: nextPage,
           status: _status,
           search: _searchController.text,
+          assigneeIds:
+              _assigneeFilterIds.isEmpty ? null : _assigneeFilterIds,
         );
 
     if (!mounted) return;
@@ -103,9 +117,9 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
   }
 
   String _formatDate(dynamic value) {
-    final String raw = '${value ?? ''}';
-    if (raw.isEmpty) return '—';
-    return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    final String ymd = VietnamTime.toYmdInput(value);
+    if (ymd.isEmpty) return '—';
+    return ymd;
   }
 
   Color _statusColor(String status) {
@@ -223,6 +237,24 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
                             },
                           ),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+                    StaffMultiFilterRow(
+                      users: _assigneeLookupUsers,
+                      selectedIds: _assigneeFilterIds,
+                      title: 'Phụ trách đầu việc',
+                      onChanged: (List<int> ids) {
+                        setState(() => _assigneeFilterIds = ids);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        onPressed: _loading ? null : () => _load(page: 1),
+                        icon: const Icon(Icons.filter_alt_outlined, size: 18),
+                        label: const Text('Áp dụng lọc'),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(

@@ -11,12 +11,15 @@ class ProductsScreen extends StatefulWidget {
     required this.apiService,
     required this.canManage,
     required this.canDelete,
+    /// Mở sheet sửa sản phẩm sau khi tải danh sách (push / thông báo trong app).
+    this.initialProductId,
   });
 
   final String token;
   final MobileApiService apiService;
   final bool canManage;
   final bool canDelete;
+  final int? initialProductId;
 
   @override
   State<ProductsScreen> createState() => _ProductsScreenState();
@@ -54,7 +57,26 @@ class _ProductsScreenState extends State<ProductsScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchAll();
+    _fetchAll().then((_) => _maybeOpenInitialProduct());
+  }
+
+  Future<void> _maybeOpenInitialProduct() async {
+    final int? targetId = widget.initialProductId;
+    if (!widget.canManage || targetId == null || targetId <= 0) {
+      return;
+    }
+    Map<String, dynamic>? match;
+    for (final Map<String, dynamic> row in products) {
+      final int? id = _parseId(row['id']);
+      if (id == targetId) {
+        match = row;
+        break;
+      }
+    }
+    if (match == null || !mounted) {
+      return;
+    }
+    await _openForm(product: match);
   }
 
   @override

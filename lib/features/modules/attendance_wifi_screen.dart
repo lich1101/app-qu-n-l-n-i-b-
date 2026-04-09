@@ -1,5 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/services/attendance_device_identity_service.dart';
 import '../../core/services/attendance_wifi_service.dart';
@@ -67,6 +73,10 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
   AttendanceWifiPermissionState? _wifiPermissionState;
 
   bool get _canManage => _managerRoles.contains(widget.currentUserRole);
+  bool get _canViewReport =>
+      _canManage ||
+      widget.currentUserRole == 'quan_ly' ||
+      widget.currentUserRole == 'nhan_vien';
   bool get _canManualAdjust => widget.currentUserRole == 'administrator';
   bool get _canGetCurrentBssid =>
       <String>['admin', 'administrator'].contains(widget.currentUserRole);
@@ -92,6 +102,15 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         icon: Icons.receipt_long_outlined,
       ),
     ];
+    if (_canViewReport && !_canManage) {
+      tabs.add(
+        const _AttendanceTabItem(
+          key: 'report',
+          label: 'Báo cáo',
+          icon: Icons.bar_chart_outlined,
+        ),
+      );
+    }
     if (_canManage) {
       tabs.addAll(const <_AttendanceTabItem>[
         _AttendanceTabItem(
@@ -236,6 +255,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       if (_canTrack) _loadRecords().catchError((_) {}),
       _loadRequests().catchError((_) {}),
       if (_canManage) _loadManagerData().catchError((_) {}),
+      if (_canViewReport && !_canManage) _loadReportOnly().catchError((_) {}),
     ]);
     if (!mounted) return;
     setState(() {
@@ -338,6 +358,27 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       _staffRows = _extractRows(responses[3]['data']);
       _reportRows = _extractRows(responses[4]['data']);
       final dynamic summary = responses[4]['summary'];
+      _reportSummary =
+          summary is Map
+              ? Map<String, dynamic>.from(summary)
+              : <String, dynamic>{};
+    });
+  }
+
+  Future<void> _loadReportOnly() async {
+    final Map<String, dynamic> response = await widget.apiService
+        .getAttendanceReport(
+          widget.token,
+          startDate: _reportStartDate,
+          endDate: _reportEndDate,
+        );
+    if (response['ok'] != true) {
+      throw Exception(response['message']);
+    }
+    if (!mounted) return;
+    setState(() {
+      _reportRows = _extractRows(response['data']);
+      final dynamic summary = response['summary'];
       _reportSummary =
           summary is Map
               ? Map<String, dynamic>.from(summary)
@@ -449,6 +490,116 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     );
     if (picked == null || !mounted) return;
     onChanged(_formatDate(picked));
+  }
+
+  Future<void> _showAttendanceExportDialog() async {
+    String start = _reportStartDate;
+    String end = _reportEndDate;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext context,
+                void Function(void Function()) setLocal,
+              ) {
+                return AlertDialog(
+                  title: const Text('Xuất báo cáo công'),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        const Text(
+                          'Chọn khoảng ngày để tải file Excel (công và phút trễ theo ngày, tổng hợp kỳ và đơn xin phép).',
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _PickerField(
+                                value: _formatDateLabel(start),
+                                icon: Icons.event_outlined,
+                                onTap: () async {
+                                  await _pickDate(
+                                    currentValue: start,
+                                    onChanged: (String value) {
+                                      setLocal(() => start = value);
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _PickerField(
+                                value: _formatDateLabel(end),
+                                icon: Icons.event_outlined,
+                                onTap: () async {
+                                  await _pickDate(
+                                    currentValue: end,
+                                    onChanged: (String value) {
+                                      setLocal(() => end = value);
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: <Widget>[
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Hủy'),
+                    ),
+                    FilledButton(
+                      onPressed:
+                          _submitting
+                              ? null
+                              : () async {
+                                Navigator.of(context).pop();
+                                await _runAttendanceExport(start, end);
+                              },
+                      child: const Text('Tải file'),
+                    ),
+                  ],
+                );
+              },
+        );
+      },
+    );
+  }
+
+  Future<void> _runAttendanceExport(String start, String end) async {
+    setState(() => _submitting = true);
+    try {
+      final Uint8List bytes = await widget.apiService.downloadAttendanceExport(
+        widget.token,
+        startDate: start,
+        endDate: end,
+      );
+      final Directory dir = await getTemporaryDirectory();
+      final String name = 'bao-cao-cong-$start-den-$end.xlsx';
+      final File file = File('${dir.path}/$name');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles(
+        <XFile>[XFile(file.path)],
+        text: 'Báo cáo công',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
   }
 
   Future<void> _pickTime({
@@ -586,16 +737,27 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       _showSnack('Hệ thống đang tạm tắt chấm công Wi‑Fi.');
       return;
     }
+    if (_dashboard['check_in_allowed'] == false) {
+      final String reason =
+          (_dashboard['check_in_block_reason'] ?? 'Chưa đến giờ hoặc ngoài ca làm.')
+              .toString();
+      _showSnack(reason);
+      return;
+    }
     if (alreadyCheckedIn) {
       _showSnack('Bạn đã chấm công hôm nay rồi.');
       return;
     }
 
-    await _refreshWifiSnapshot(requestPermissions: false);
+    await _refreshWifiSnapshot(requestPermissions: true);
     final AttendanceWifiSnapshot? snapshot = _wifiSnapshot;
     final AttendanceWifiPermissionState? permissionState = _wifiPermissionState;
     if (permissionState != null && !permissionState.permissionGranted) {
-      _showSnack('Ứng dụng cần quyền Vị trí để kiểm tra Wi‑Fi công ty.');
+      _showSnack(
+        permissionState.requiresSettings
+            ? 'Quyền vị trí đang bị chặn. Vui lòng mở Cài đặt để cấp quyền rồi thử lại.'
+            : 'Ứng dụng cần quyền Vị trí để kiểm tra Wi‑Fi công ty.',
+      );
       return;
     }
     if (snapshot == null || !snapshot.hasWifi) {
@@ -681,6 +843,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     final TextEditingController contentCtrl = TextEditingController();
     final TextEditingController timeCtrl = TextEditingController();
     String requestDate = _todayIso();
+    String requestEndDate = '';
 
     await showModalBottomSheet<void>(
       context: context,
@@ -716,7 +879,12 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _FieldLabel(label: 'Ngày áp dụng'),
+                  _FieldLabel(
+                    label:
+                        requestType == 'leave_request'
+                            ? 'Từ ngày'
+                            : 'Ngày áp dụng',
+                  ),
                   _PickerField(
                     value: _formatDateLabel(requestDate),
                     icon: Icons.calendar_today_outlined,
@@ -729,13 +897,35 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                       );
                     },
                   ),
+                  if (requestType == 'leave_request') ...<Widget>[
+                    const SizedBox(height: 12),
+                    _FieldLabel(label: 'Đến ngày (nghỉ nhiều ngày)'),
+                    _PickerField(
+                      value:
+                          requestEndDate.isEmpty
+                              ? 'Trùng ngày bắt đầu'
+                              : _formatDateLabel(requestEndDate),
+                      icon: Icons.calendar_today_outlined,
+                      onTap: () async {
+                        await _pickDate(
+                          currentValue:
+                              requestEndDate.isEmpty
+                                  ? requestDate
+                                  : requestEndDate,
+                          onChanged: (String value) {
+                            setSheetState(() => requestEndDate = value);
+                          },
+                        );
+                      },
+                    ),
+                  ],
                   if (requestType == 'late_arrival') ...<Widget>[
                     const SizedBox(height: 12),
-                    _FieldLabel(label: 'Giờ dự kiến vào'),
+                    _FieldLabel(label: 'Giờ dự kiến vào *'),
                     _PickerField(
                       value:
                           timeCtrl.text.isEmpty
-                              ? 'Chọn giờ (tùy chọn)'
+                              ? 'Chọn giờ (bắt buộc)'
                               : timeCtrl.text,
                       icon: Icons.schedule_outlined,
                       onTap: () async {
@@ -774,6 +964,11 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                           _showSnack('Cần nhập tiêu đề đơn.');
                           return;
                         }
+                        if (requestType == 'late_arrival' &&
+                            timeCtrl.text.trim().isEmpty) {
+                          _showSnack('Đơn đi muộn cần có giờ dự kiến vào làm.');
+                          return;
+                        }
                         Navigator.of(context).pop();
                         setState(() => _submitting = true);
                         final Map<String, dynamic> response = await widget
@@ -783,11 +978,15 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                               requestType: requestType,
                               requestDate: requestDate,
                               title: titleCtrl.text.trim(),
+                              requestEndDate:
+                                  requestType == 'leave_request' &&
+                                          requestEndDate.isNotEmpty
+                                      ? requestEndDate
+                                      : null,
                               expectedCheckInTime:
-                                  requestType == 'late_arrival' &&
-                                          timeCtrl.text.trim().isEmpty
-                                      ? null
-                                      : timeCtrl.text.trim(),
+                                  requestType == 'late_arrival'
+                                      ? timeCtrl.text.trim()
+                                      : null,
                               content: contentCtrl.text.trim(),
                             );
                         if (!mounted) return;
@@ -850,22 +1049,49 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: <Widget>[
-                        _buildChoice(
-                          label: 'Đủ công',
-                          selected: approvalMode == 'full_work',
-                          onTap: () {
-                            setSheetState(() => approvalMode = 'full_work');
-                          },
-                        ),
-                        _buildChoice(
-                          label: 'Không đủ công',
-                          selected: approvalMode == 'no_change',
-                          onTap: () {
-                            setSheetState(() => approvalMode = 'no_change');
-                          },
-                        ),
-                      ],
+                      children:
+                          (item['request_type'] ?? '').toString() ==
+                                  'leave_request'
+                              ? <Widget>[
+                                _buildChoice(
+                                  label: 'Duyệt tính công',
+                                  selected: approvalMode == 'full_work',
+                                  onTap: () {
+                                    setSheetState(
+                                      () => approvalMode = 'full_work',
+                                    );
+                                  },
+                                ),
+                                _buildChoice(
+                                  label: 'Duyệt không tính công',
+                                  selected: approvalMode == 'no_count',
+                                  onTap: () {
+                                    setSheetState(
+                                      () => approvalMode = 'no_count',
+                                    );
+                                  },
+                                ),
+                              ]
+                              : <Widget>[
+                                _buildChoice(
+                                  label: 'Đủ công (theo đơn)',
+                                  selected: approvalMode == 'full_work',
+                                  onTap: () {
+                                    setSheetState(
+                                      () => approvalMode = 'full_work',
+                                    );
+                                  },
+                                ),
+                                _buildChoice(
+                                  label: 'Giữ công hiện có',
+                                  selected: approvalMode == 'no_change',
+                                  onTap: () {
+                                    setSheetState(
+                                      () => approvalMode = 'no_change',
+                                    );
+                                  },
+                                ),
+                              ],
                     ),
                   ],
                   const SizedBox(height: 12),
@@ -1270,6 +1496,32 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     );
   }
 
+  Future<void> _revokeAttendanceDevice(Map<String, dynamic> item) async {
+    if (!_canManualAdjust) return;
+    final Map<String, dynamic>? userMap = item['user'] as Map<String, dynamic>?;
+    final String name = (userMap?['name'] ?? 'nhân sự').toString();
+    final bool ok = await _confirmAction(
+      title: 'Gỡ thiết bị',
+      content:
+          'Gỡ thiết bị khỏi tài khoản $name? Người đó sẽ phải gửi phiếu đăng ký thiết bị lại trên app.',
+      confirmLabel: 'Gỡ thiết bị',
+      confirmColor: Colors.amber.shade800,
+    );
+    if (!ok) return;
+    setState(() => _submitting = true);
+    final Map<String, dynamic> response = await widget.apiService
+        .deleteAttendanceDevice(
+          widget.token,
+          ((item['id'] as num?) ?? 0).toInt(),
+        );
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    _showSnack(response['message'].toString());
+    if (response['ok'] == true) {
+      await _refreshAll();
+    }
+  }
+
   double _defaultUnitsForItem(Map<String, dynamic> item) {
     final String employmentType =
         (item['user']?['attendance_employment_type'] ?? 'full_time').toString();
@@ -1462,6 +1714,80 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                   ),
                 ],
               ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Color _reportDotToneColor(String? tone) {
+    switch (tone) {
+      case 'orange':
+        return Colors.deepOrange;
+      case 'blue':
+        return Colors.blue.shade700;
+      case 'teal':
+        return Colors.teal;
+      default:
+        return StitchTheme.textMuted;
+    }
+  }
+
+  String _reportDotToneLabel(String? tone) {
+    switch (tone) {
+      case 'orange':
+        return 'Chấm app (chưa chỉnh)';
+      case 'blue':
+        return 'Đã chỉnh / duyệt';
+      case 'teal':
+        return 'Ngày lễ (tự động)';
+      default:
+        return tone ?? '—';
+    }
+  }
+
+  Map<String, dynamic> _mergeForManualFromDetail(
+    Map<String, dynamic> reportRow,
+    Map<String, dynamic> record,
+  ) {
+    return <String, dynamic>{
+      'user_id':
+          ((record['user_id'] as num?) ?? (reportRow['user_id'] as num?))
+              ?.toInt() ??
+          0,
+      'user_name': (reportRow['user_name'] ?? 'Nhân sự').toString(),
+      'role': (reportRow['role'] ?? '—').toString(),
+      'work_date': (record['work_date'] ?? reportRow['work_date'] ?? '')
+          .toString(),
+      'check_in_at': (record['check_in_at'] ?? '').toString(),
+      'work_units': record['work_units'],
+      'note': (record['note'] ?? '').toString(),
+    };
+  }
+
+  Future<void> _showReportRecordDetailSheet(Map<String, dynamic> row) async {
+    final int? recordId = (row['id'] as num?)?.toInt();
+    if (recordId == null || recordId <= 0) {
+      _showSnack('Không có bản ghi để xem chi tiết.');
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        return _ReportRecordDetailSheet(
+          token: widget.token,
+          apiService: widget.apiService,
+          recordId: recordId,
+          reportRow: row,
+          canManualAdjust: _canManualAdjust,
+          onOpenManualEdit: (Map<String, dynamic> record) {
+            Navigator.of(sheetContext).pop();
+            _showManualRecordSheet(
+              item: _mergeForManualFromDetail(row, record),
             );
           },
         );
@@ -1685,8 +2011,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       label: Text(label),
       selected: selected,
       onSelected: (_) => onTap(),
-      backgroundColor: const Color(0xFFF1F5F9),
-      selectedColor: const Color(0xFFCCFBF1),
+      backgroundColor: StitchTheme.surfaceAlt,
+      selectedColor: StitchTheme.primarySoft,
       side: BorderSide(
         color: selected ? StitchTheme.primaryStrong : StitchTheme.border,
       ),
@@ -1704,6 +2030,9 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     final List<_AttendanceTabItem> tabs = _tabs;
     final double bottomSafe = MediaQuery.of(context).padding.bottom;
     final bool showCheckInDock = _canTrack && _activeTab == 'checkin';
+    final bool shiftBlocked = _dashboard['check_in_allowed'] == false;
+    final String shiftReason =
+        (_dashboard['check_in_block_reason'] ?? '').toString().trim();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Chấm công Wi‑Fi')),
@@ -1717,6 +2046,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                         .toString()
                         .trim()
                         .isNotEmpty,
+                shiftBlocked: shiftBlocked,
+                shiftMessage: shiftReason,
                 onTap: _submitting ? null : _performCheckIn,
               )
               : null,
@@ -1755,40 +2086,37 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                           ),
                           const SizedBox(height: 12),
                         ],
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children:
-                                tabs.map((_AttendanceTabItem tab) {
-                                  final bool selected = _activeTab == tab.key;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: ChoiceChip(
-                                      avatar: Icon(
-                                        tab.icon,
-                                        size: 18,
-                                        color:
-                                            selected
-                                                ? Colors.white
-                                                : StitchTheme.textMuted,
-                                      ),
-                                      label: Text(tab.label),
-                                      selected: selected,
-                                      onSelected: (_) {
-                                        setState(() => _activeTab = tab.key);
-                                      },
-                                      selectedColor: StitchTheme.primaryStrong,
-                                      labelStyle: TextStyle(
-                                        color:
-                                            selected
-                                                ? Colors.white
-                                                : StitchTheme.textMain,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                        _AttendanceTabBarCard(
+                          children:
+                              tabs.map((_AttendanceTabItem tab) {
+                                final bool selected = _activeTab == tab.key;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ChoiceChip(
+                                    avatar: Icon(
+                                      tab.icon,
+                                      size: 18,
+                                      color:
+                                          selected
+                                              ? Colors.white
+                                              : StitchTheme.textMuted,
                                     ),
-                                  );
-                                }).toList(),
-                          ),
+                                    label: Text(tab.label),
+                                    selected: selected,
+                                    onSelected: (_) {
+                                      setState(() => _activeTab = tab.key);
+                                    },
+                                    selectedColor: StitchTheme.primaryStrong,
+                                    labelStyle: TextStyle(
+                                      color:
+                                          selected
+                                              ? Colors.white
+                                              : StitchTheme.textMain,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
                         ),
                         const SizedBox(height: 16),
                         ..._buildTabBody(),
@@ -1899,35 +2227,38 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
             : 'Khi bắt đầu vào làm, bạn chỉ cần bấm nút bên dưới. Hệ thống sẽ tự kiểm tra Wi‑Fi công ty và trạng thái thiết bị trước khi ghi nhận công.';
 
     return <Widget>[
-      _AttendancePrimaryCard(
-        accent: heroColor,
-        icon: heroIcon,
-        title: '',
-        subtitle: heroSubtitle,
-        buttonLabel: null,
-        onPressed: null,
-        footers: <Widget>[
-          _StatusPill(
-            label:
-                alreadyCheckedIn
-                    ? 'Giờ vào: ${_formatDateTimeLabel((todayRecord['check_in_at'] ?? '').toString()).split(' ').last}'
-                    : (todayRecord == null
-                        ? 'Chưa chấm công'
-                        : _statusLabel(
-                          (todayRecord['status'] ?? '').toString(),
-                          minutesLate: ((todayRecord['minutes_late'] as num?) ?? 0).toInt(),
-                        )),
-            color:
-                alreadyCheckedIn
-                    ? StitchTheme.successStrong
-                    : _statusColor((todayRecord?['status'] ?? '').toString()),
-          ),
-          _StatusPill(
-            label: 'Số công hôm nay: ${formatUnits(todayWorkUnits)}',
-            color: StitchTheme.primaryStrong,
-          ),
-        ],
-        actions: const <Widget>[],
+      Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: _AttendancePrimaryCard(
+          accent: heroColor,
+          icon: heroIcon,
+          title: '',
+          subtitle: heroSubtitle,
+          buttonLabel: null,
+          onPressed: null,
+          footers: <Widget>[
+            _StatusPill(
+              label:
+                  alreadyCheckedIn
+                      ? 'Giờ vào: ${_formatDateTimeLabel((todayRecord['check_in_at'] ?? '').toString()).split(' ').last}'
+                      : (todayRecord == null
+                          ? 'Chưa chấm công'
+                          : _statusLabel(
+                            (todayRecord['status'] ?? '').toString(),
+                            minutesLate: ((todayRecord['minutes_late'] as num?) ?? 0).toInt(),
+                          )),
+              color:
+                  alreadyCheckedIn
+                      ? StitchTheme.successStrong
+                      : _statusColor((todayRecord?['status'] ?? '').toString()),
+            ),
+            _StatusPill(
+              label: 'Số công hôm nay: ${formatUnits(todayWorkUnits)}',
+              color: StitchTheme.primaryStrong,
+            ),
+          ],
+          actions: const <Widget>[],
+        ),
       ),
     ];
   }
@@ -1968,38 +2299,42 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _PickerField(
-                    value: _formatDateLabel(_recordsFromDate),
-                    icon: Icons.date_range_outlined,
-                    onTap: () async {
-                      await _pickDate(
-                        currentValue: _recordsFromDate,
-                        onChanged: (String value) {
-                          setState(() => _recordsFromDate = value);
-                        },
-                      );
-                    },
+            const _AttendanceSectionLabel('Khoảng ngày'),
+            const SizedBox(height: 8),
+            _AttendanceFilterPad(
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _PickerField(
+                      value: _formatDateLabel(_recordsFromDate),
+                      icon: Icons.date_range_outlined,
+                      onTap: () async {
+                        await _pickDate(
+                          currentValue: _recordsFromDate,
+                          onChanged: (String value) {
+                            setState(() => _recordsFromDate = value);
+                          },
+                        );
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _PickerField(
-                    value: _formatDateLabel(_recordsToDate),
-                    icon: Icons.date_range_outlined,
-                    onTap: () async {
-                      await _pickDate(
-                        currentValue: _recordsToDate,
-                        onChanged: (String value) {
-                          setState(() => _recordsToDate = value);
-                        },
-                      );
-                    },
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _PickerField(
+                      value: _formatDateLabel(_recordsToDate),
+                      icon: Icons.date_range_outlined,
+                      onTap: () async {
+                        await _pickDate(
+                          currentValue: _recordsToDate,
+                          onChanged: (String value) {
+                            setState(() => _recordsToDate = value);
+                          },
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Align(
@@ -2018,6 +2353,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                 label: const Text('Xem bảng công'),
               ),
             ),
+            const SizedBox(height: 8),
+            const Divider(height: 1, color: StitchTheme.border),
             const SizedBox(height: 14),
             Wrap(
               spacing: 12,
@@ -2138,43 +2475,47 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                _buildChoice(
-                  label: 'Tất cả',
-                  selected: _requestStatus.isEmpty,
-                  onTap: () async {
-                    setState(() => _requestStatus = '');
-                    await _loadRequests();
-                  },
-                ),
-                _buildChoice(
-                  label: 'Chờ duyệt',
-                  selected: _requestStatus == 'pending',
-                  onTap: () async {
-                    setState(() => _requestStatus = 'pending');
-                    await _loadRequests();
-                  },
-                ),
-                _buildChoice(
-                  label: 'Đã duyệt',
-                  selected: _requestStatus == 'approved',
-                  onTap: () async {
-                    setState(() => _requestStatus = 'approved');
-                    await _loadRequests();
-                  },
-                ),
-                _buildChoice(
-                  label: 'Từ chối',
-                  selected: _requestStatus == 'rejected',
-                  onTap: () async {
-                    setState(() => _requestStatus = 'rejected');
-                    await _loadRequests();
-                  },
-                ),
-              ],
+            const _AttendanceSectionLabel('Lọc trạng thái'),
+            const SizedBox(height: 8),
+            _AttendanceFilterPad(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  _buildChoice(
+                    label: 'Tất cả',
+                    selected: _requestStatus.isEmpty,
+                    onTap: () async {
+                      setState(() => _requestStatus = '');
+                      await _loadRequests();
+                    },
+                  ),
+                  _buildChoice(
+                    label: 'Chờ duyệt',
+                    selected: _requestStatus == 'pending',
+                    onTap: () async {
+                      setState(() => _requestStatus = 'pending');
+                      await _loadRequests();
+                    },
+                  ),
+                  _buildChoice(
+                    label: 'Đã duyệt',
+                    selected: _requestStatus == 'approved',
+                    onTap: () async {
+                      setState(() => _requestStatus = 'approved');
+                      await _loadRequests();
+                    },
+                  ),
+                  _buildChoice(
+                    label: 'Từ chối',
+                    selected: _requestStatus == 'rejected',
+                    onTap: () async {
+                      setState(() => _requestStatus = 'rejected');
+                      await _loadRequests();
+                    },
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             if (rows.isEmpty)
@@ -2379,7 +2720,11 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                 children: <Widget>[
                   OutlinedButton.icon(
                     onPressed:
-                        _submitting ? null : () => _refreshWifiSnapshot(),
+                        _submitting
+                            ? null
+                            : () => _refreshWifiSnapshot(
+                              requestPermissions: true,
+                            ),
                     icon: const Icon(Icons.wifi_tethering_outlined),
                     label: const Text('Lấy Wi‑Fi hiện tại'),
                   ),
@@ -2460,7 +2805,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       _SectionCard(
         title: 'Duyệt thiết bị nhân viên',
         subtitle:
-            'Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công.',
+            'Mỗi nhân viên chỉ dùng một thiết bị đã được duyệt để chấm công.'
+            '${_canManualAdjust ? ' Administrator có thể gỡ liên kết — nhân sự phải đăng ký lại trên app.' : ''}',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -2522,31 +2868,35 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                     label: _statusLabel(status),
                     color: _statusColor(status),
                   ),
-                  actions:
-                      status == 'pending'
-                          ? <Widget>[
-                            IconButton(
-                              onPressed:
-                                  _submitting
-                                      ? null
-                                      : () => _showDeviceReviewSheet(
-                                        item,
-                                        'approved',
-                                      ),
-                              icon: const Icon(Icons.check_circle_outline),
-                            ),
-                            IconButton(
-                              onPressed:
-                                  _submitting
-                                      ? null
-                                      : () => _showDeviceReviewSheet(
-                                        item,
-                                        'rejected',
-                                      ),
-                              icon: const Icon(Icons.cancel_outlined),
-                            ),
-                          ]
-                          : null,
+                  actions: <Widget>[
+                    if (status == 'pending') ...<Widget>[
+                      IconButton(
+                        onPressed:
+                            _submitting
+                                ? null
+                                : () =>
+                                    _showDeviceReviewSheet(item, 'approved'),
+                        icon: const Icon(Icons.check_circle_outline),
+                      ),
+                      IconButton(
+                        onPressed:
+                            _submitting
+                                ? null
+                                : () =>
+                                    _showDeviceReviewSheet(item, 'rejected'),
+                        icon: const Icon(Icons.cancel_outlined),
+                      ),
+                    ],
+                    if (_canManualAdjust)
+                      TextButton.icon(
+                        onPressed:
+                            _submitting
+                                ? null
+                                : () => _revokeAttendanceDevice(item),
+                        icon: const Icon(Icons.link_off_outlined, size: 18),
+                        label: const Text('Gỡ thiết bị'),
+                      ),
+                  ],
                   details: <Widget>[
                     _MiniLine(
                       label: 'Device ID',
@@ -2744,38 +3094,42 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _PickerField(
-                    value: _formatDateLabel(_reportStartDate),
-                    icon: Icons.event_outlined,
-                    onTap: () async {
-                      await _pickDate(
-                        currentValue: _reportStartDate,
-                        onChanged: (String value) {
-                          setState(() => _reportStartDate = value);
-                        },
-                      );
-                    },
+            const _AttendanceSectionLabel('Khoảng ngày'),
+            const SizedBox(height: 8),
+            _AttendanceFilterPad(
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _PickerField(
+                      value: _formatDateLabel(_reportStartDate),
+                      icon: Icons.event_outlined,
+                      onTap: () async {
+                        await _pickDate(
+                          currentValue: _reportStartDate,
+                          onChanged: (String value) {
+                            setState(() => _reportStartDate = value);
+                          },
+                        );
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _PickerField(
-                    value: _formatDateLabel(_reportEndDate),
-                    icon: Icons.event_outlined,
-                    onTap: () async {
-                      await _pickDate(
-                        currentValue: _reportEndDate,
-                        onChanged: (String value) {
-                          setState(() => _reportEndDate = value);
-                        },
-                      );
-                    },
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _PickerField(
+                      value: _formatDateLabel(_reportEndDate),
+                      icon: Icons.event_outlined,
+                      onTap: () async {
+                        await _pickDate(
+                          currentValue: _reportEndDate,
+                          onChanged: (String value) {
+                            setState(() => _reportEndDate = value);
+                          },
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Align(
@@ -2797,7 +3151,11 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                             ? null
                             : () async {
                               setState(() => _submitting = true);
-                              await _loadManagerData();
+                              if (_canManage) {
+                                await _loadManagerData();
+                              } else {
+                                await _loadReportOnly();
+                              }
                               if (!mounted) return;
                               setState(() => _submitting = false);
                             },
@@ -2807,6 +3165,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 8),
+            const Divider(height: 1, color: StitchTheme.border),
             const SizedBox(height: 12),
             Wrap(
               spacing: 10,
@@ -2832,29 +3192,40 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            const _InfoBanner(
-              tone: _InfoTone.info,
-              title: 'Xuất Excel',
-              message:
-                  'Phần xuất Excel đã có sẵn trên bản web để tải file xlsx. Màn hình mobile ưu tiên xem nhanh và duyệt nghiệp vụ.',
-            ),
-            const SizedBox(height: 12),
+            if (_canManage)
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed:
+                      _submitting ? null : () => _showAttendanceExportDialog(),
+                  icon: const Icon(Icons.file_download_outlined),
+                  label: const Text('Xuất Excel báo cáo'),
+                ),
+              ),
+            if (_canManage) const SizedBox(height: 12),
             if (_reportRows.isEmpty)
               const Text(
                 'Chưa có dữ liệu báo cáo trong khoảng đã chọn.',
                 style: TextStyle(color: StitchTheme.textMuted),
               )
-            else
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
+            else ...<Widget>[
+              _AttendanceDataTableCard(
                 child: DataTable(
+                  showCheckboxColumn: false,
                   headingRowColor: WidgetStateProperty.all(
-                    const Color(0xFFF8FAFC),
+                    StitchTheme.primarySoft,
                   ),
                   dataRowMinHeight: 62,
                   dataRowMaxHeight: 72,
                   columns: <DataColumn>[
                     const DataColumn(label: Text('Ngày')),
+                    const DataColumn(
+                      label: Tooltip(
+                        message:
+                            'Cam: chấm app chưa chỉnh. Xanh: đã chỉnh/duyệt.',
+                        child: Text('Loại'),
+                      ),
+                    ),
                     const DataColumn(label: Text('Nhân sự')),
                     const DataColumn(label: Text('Vai trò')),
                     const DataColumn(label: Text('Phòng ban')),
@@ -2867,10 +3238,27 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                   ],
                   rows:
                       _reportRows.map((Map<String, dynamic> item) {
+                        final String tone =
+                            (item['dot_tone'] ?? '').toString();
                         return DataRow(
+                          onSelectChanged: (bool? selected) {
+                            if (selected == true) {
+                              _showReportRecordDetailSheet(item);
+                            }
+                          },
                           cells: <DataCell>[
                             DataCell(
                               Text((item['work_date'] ?? '—').toString()),
+                            ),
+                            DataCell(
+                              Tooltip(
+                                message: _reportDotToneLabel(tone),
+                                child: Icon(
+                                  Icons.circle,
+                                  size: 14,
+                                  color: _reportDotToneColor(tone),
+                                ),
+                              ),
                             ),
                             DataCell(
                               Text((item['user_name'] ?? 'Nhân sự').toString()),
@@ -2917,10 +3305,112 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                       }).toList(),
                 ),
               ),
+              const SizedBox(height: 10),
+              const Text(
+                'Cam: chấm công qua app (Wi‑Fi), chưa chỉnh. Xanh dương: đã điều chỉnh hoặc duyệt đơn. Teal: ngày lễ tự động. Chạm dòng để xem chi tiết và lịch sử (nếu có).',
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.35,
+                  color: StitchTheme.textMuted,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     ];
+  }
+}
+
+class _AttendanceTabBarCard extends StatelessWidget {
+  const _AttendanceTabBarCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 22,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: children),
+      ),
+    );
+  }
+}
+
+class _AttendanceFilterPad extends StatelessWidget {
+  const _AttendanceFilterPad({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: StitchTheme.surfaceAlt,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _AttendanceSectionLabel extends StatelessWidget {
+  const _AttendanceSectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.85,
+        color: StitchTheme.labelEmphasis,
+      ),
+    );
+  }
+}
+
+class _AttendanceDataTableCard extends StatelessWidget {
+  const _AttendanceDataTableCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: child,
+      ),
+    );
   }
 }
 
@@ -2951,58 +3441,13 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: StitchTheme.border),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x120F172A),
-            blurRadius: 28,
-            offset: Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: StitchTheme.textMuted,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (action != null) ...<Widget>[
-                const SizedBox(width: 12),
-                action!,
-              ],
-            ],
-          ),
-          const SizedBox(height: 16),
-          child,
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: StitchFilterCard(
+        title: title,
+        subtitle: subtitle.trim().isEmpty ? null : subtitle,
+        trailing: action,
+        child: child,
       ),
     );
   }
@@ -3238,10 +3683,10 @@ class _InfoBanner extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: border.withValues(alpha: 0.35)),
       ),
       child: Column(
@@ -3290,16 +3735,20 @@ class _AttendanceCheckInDock extends StatelessWidget {
   const _AttendanceCheckInDock({
     required this.busy,
     required this.completed,
+    this.shiftBlocked = false,
+    this.shiftMessage = '',
     required this.onTap,
   });
 
   final bool busy;
   final bool completed;
+  final bool shiftBlocked;
+  final String shiftMessage;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final bool disabled = busy || completed;
+    final bool disabled = busy || completed || shiftBlocked;
     final Color accent =
         completed
             ? StitchTheme.successStrong
@@ -3323,10 +3772,14 @@ class _AttendanceCheckInDock extends StatelessWidget {
             ? 'Đang kiểm tra'
             : completed
             ? 'Đã chấm công hôm nay'
+            : shiftBlocked
+            ? 'Chưa thể chấm công'
             : 'Chấm công vào làm';
     final String subtitle =
         completed
             ? 'Bạn đã ghi nhận giờ vào hôm nay'
+            : shiftBlocked && shiftMessage.isNotEmpty
+            ? shiftMessage
             : disabled
             ? 'Hiện chưa thể chấm công'
             : 'Nhấn để xác nhận nhanh';
@@ -3552,7 +4005,14 @@ class _PickerField extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: StitchTheme.border),
+          border: Border.all(color: StitchTheme.inputBorder),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: Color(0x080F172A),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           children: <Widget>[
@@ -3644,6 +4104,381 @@ class _CounterTile extends StatelessWidget {
           icon: const Icon(Icons.add_circle_outline),
         ),
       ],
+    );
+  }
+}
+
+String _attendanceDetailSourceLabel(String? code) {
+  switch (code) {
+    case 'wifi':
+      return 'Wi‑Fi (app)';
+    case 'request_approval':
+      return 'Duyệt đơn';
+    case 'manual_adjustment':
+      return 'Điều chỉnh tay';
+    case 'holiday_auto':
+      return 'Ngày lễ (cron)';
+    default:
+      return (code ?? '—').toString();
+  }
+}
+
+String _attendanceDetailStatusLabel(String? status, int minutesLate) {
+  switch (status) {
+    case 'present':
+      return 'Đúng công';
+    case 'late_pending':
+    case 'late':
+      return 'Đi muộn${minutesLate > 0 ? ' $minutesLate phút' : ''}';
+    case 'approved_full':
+      return 'Duyệt đủ công';
+    case 'approved_partial':
+      return 'Duyệt công thủ công';
+    case 'holiday_auto':
+      return 'Ngày lễ tự động';
+    default:
+      return (status ?? '—').toString();
+  }
+}
+
+String _attendanceDotToneCaption(String? tone) {
+  switch (tone) {
+    case 'orange':
+      return 'Chấm app (chưa chỉnh)';
+    case 'blue':
+      return 'Đã chỉnh / duyệt';
+    case 'teal':
+      return 'Ngày lễ tự động';
+    default:
+      return tone ?? '—';
+  }
+}
+
+Color _attendanceDotToneColor(String? tone) {
+  switch (tone) {
+    case 'orange':
+      return Colors.deepOrange;
+    case 'blue':
+      return Colors.blue.shade700;
+    case 'teal':
+      return Colors.teal;
+    default:
+      return StitchTheme.textMuted;
+  }
+}
+
+class _ReportRecordDetailSheet extends StatefulWidget {
+  const _ReportRecordDetailSheet({
+    required this.token,
+    required this.apiService,
+    required this.recordId,
+    required this.reportRow,
+    required this.canManualAdjust,
+    required this.onOpenManualEdit,
+  });
+
+  final String token;
+  final MobileApiService apiService;
+  final int recordId;
+  final Map<String, dynamic> reportRow;
+  final bool canManualAdjust;
+  final void Function(Map<String, dynamic> record) onOpenManualEdit;
+
+  @override
+  State<_ReportRecordDetailSheet> createState() =>
+      _ReportRecordDetailSheetState();
+}
+
+class _ReportRecordDetailSheetState extends State<_ReportRecordDetailSheet> {
+  bool _loading = true;
+  String? _error;
+  Map<String, dynamic>? _record;
+  List<Map<String, dynamic>> _editLogs = <Map<String, dynamic>>[];
+  bool _formReadOnly = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final Map<String, dynamic> res = await widget.apiService
+        .getAttendanceRecordDetail(widget.token, widget.recordId);
+    if (!mounted) return;
+    if (res['ok'] == true) {
+      final dynamic raw = res['record'];
+      final Map<String, dynamic>? rec =
+          raw is Map ? Map<String, dynamic>.from(raw) : null;
+      final dynamic logsRaw = res['edit_logs'];
+      final List<Map<String, dynamic>> logs = <Map<String, dynamic>>[];
+      if (logsRaw is List) {
+        for (final dynamic e in logsRaw) {
+          if (e is Map) {
+            logs.add(Map<String, dynamic>.from(e));
+          }
+        }
+      }
+      setState(() {
+        _loading = false;
+        _error = null;
+        _record = rec;
+        _editLogs = logs;
+        _formReadOnly = res['form_read_only'] != false;
+      });
+    } else {
+      setState(() {
+        _loading = false;
+        _error = res['message']?.toString() ?? 'Không tải được chi tiết.';
+        _record = null;
+      });
+    }
+  }
+
+  Widget _kv(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+              color: StitchTheme.labelEmphasis,
+            ),
+          ),
+          const SizedBox(height: 4),
+          SelectableText(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              color: StitchTheme.textMain,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String userName =
+        (widget.reportRow['user_name'] ?? 'Nhân sự').toString();
+    final String workDateHint =
+        (widget.reportRow['work_date'] ?? '').toString();
+
+    return _SheetScaffold(
+      title: 'Chi tiết công — $userName',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (workDateHint.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Ngày $workDateHint. ${_formReadOnly ? 'Bạn chỉ xem; chỉ Administrator sửa công trực tiếp không qua đơn.' : 'Administrator có thể điều chỉnh qua «Sửa công tay».'}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: StitchTheme.textMuted,
+                ),
+              ),
+            ),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            Text(
+              _error!,
+              style: TextStyle(color: StitchTheme.dangerStrong),
+            )
+          else if (_record != null) ...<Widget>[
+            _kv(
+              'Số công',
+              (_record!['work_units'] ?? '0').toString(),
+            ),
+            _kv(
+              'Giờ vào (check-in)',
+              _AttendanceWifiScreenState._formatDateTimeLabel(
+                (_record!['check_in_at'] ?? '').toString(),
+              ),
+            ),
+            _kv(
+              'Phút trễ',
+              '${(_record!['minutes_late'] as num?)?.toInt() ?? 0}',
+            ),
+            _kv(
+              'Trạng thái',
+              _attendanceDetailStatusLabel(
+                (_record!['status'] ?? '').toString(),
+                ((_record!['minutes_late'] as num?) ?? 0).toInt(),
+              ),
+            ),
+            _kv(
+              'Nguồn dữ liệu',
+              _attendanceDetailSourceLabel(
+                (_record!['source'] ?? '').toString(),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Icon(
+                    Icons.circle,
+                    size: 14,
+                    color: _attendanceDotToneColor(
+                      (_record!['dot_tone'] ?? '').toString(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        const Text(
+                          'Loại chấm',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.4,
+                            color: StitchTheme.labelEmphasis,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _attendanceDotToneCaption(
+                            (_record!['dot_tone'] ?? '').toString(),
+                          ),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: StitchTheme.textMain,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _kv('Ghi chú', (_record!['note'] ?? '').toString().trim().isEmpty
+                ? '—'
+                : (_record!['note'] ?? '').toString(),),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Thiết bị / Wi‑Fi: ${_record!['device_name'] ?? '—'} • ${_record!['wifi_ssid'] ?? '—'}',
+                style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+              ),
+            ),
+            if (_editLogs.isNotEmpty) ...<Widget>[
+              const Text(
+                'Lịch sử chỉnh sửa',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: StitchTheme.labelEmphasis,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _editLogs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 12),
+                  itemBuilder: (BuildContext context, int i) {
+                    final Map<String, dynamic> log = _editLogs[i];
+                    final String when = _AttendanceWifiScreenState
+                        ._formatDateTimeLabel(
+                      (log['created_at'] ?? '').toString(),
+                    );
+                    final String actor =
+                        (log['actor'] is Map
+                                ? (log['actor'] as Map)['name']
+                                : null)
+                            ?.toString() ??
+                        'Hệ thống';
+                    final String action = (log['action'] ?? '').toString();
+                    final dynamic payload = log['payload'];
+                    String payloadText = '';
+                    if (payload != null) {
+                      if (payload is String) {
+                        payloadText = payload;
+                      } else {
+                        try {
+                          payloadText = const JsonEncoder.withIndent('  ')
+                              .convert(payload);
+                        } catch (_) {
+                          payloadText = payload.toString();
+                        }
+                      }
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '$when • $actor — $action',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: StitchTheme.textMuted,
+                          ),
+                        ),
+                        if (payloadText.isNotEmpty)
+                          SelectableText(
+                            payloadText,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              height: 1.25,
+                              color: StitchTheme.textMain,
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ] else
+              Text(
+                (_record!['dot_tone'] ?? '').toString() == 'orange'
+                    ? 'Bản ghi gốc từ app — chưa có lịch sử chỉnh sửa.'
+                    : 'Chưa có mục lịch sử (có thể chỉnh qua luồng khác).',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: StitchTheme.textMuted,
+                ),
+              ),
+            const SizedBox(height: 16),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Đóng'),
+                  ),
+                ),
+                if (widget.canManualAdjust && !_formReadOnly && _record != null) ...<Widget>[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () =>
+                          widget.onOpenManualEdit(Map<String, dynamic>.from(_record!)),
+                      child: const Text('Sửa công tay'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

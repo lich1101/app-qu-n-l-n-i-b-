@@ -20,6 +20,7 @@ class AppFirebase {
   static String? _lastPushToken;
   static DateTime? _lastPushTokenAt;
   static String? _lastApnsEnvironment;
+  static StreamSubscription<String>? _tokenRefreshSubscription;
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   static final StreamController<RemoteMessage> _foregroundController =
@@ -115,12 +116,13 @@ class AppFirebase {
         >()
         ?.createNotificationChannel(channel);
 
-    await FirebaseMessaging.instance
-        .setForegroundNotificationPresentationOptions(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
+    // iOS: tắt banner hệ thống khi app đang mở — luôn dùng flutter_local_notifications
+    // để mọi tin (kể cả có notification payload) đều hiển thị nhất quán, tránh trường hợp không thấy gì.
+    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+      alert: !Platform.isIOS,
+      badge: true,
+      sound: !Platform.isIOS,
+    );
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       if (kDebugMode) {
@@ -135,11 +137,7 @@ class AppFirebase {
         return;
       }
       _foregroundController.add(message);
-      final bool shouldShowLocalNotification =
-          !Platform.isIOS || message.notification == null;
-      if (shouldShowLocalNotification) {
-        await _showLocalNotification(message, channel);
-      }
+      await _showLocalNotification(message, channel);
     });
 
     _foregroundConfigured = true;
@@ -165,7 +163,11 @@ class AppFirebase {
           importance: Importance.max,
           priority: Priority.high,
         );
-    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
 
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
@@ -235,6 +237,28 @@ class AppFirebase {
     }
   }
 
+  /// Đăng xuất khỏi Firebase, xóa FCM token trên máy và hủy thông báo local —
+  /// tránh tài khoản sau vẫn nhận push/tin của phiên trước trên cùng thiết bị.
+  static Future<void> clearSessionForAccountSwitch() async {
+    if (!isConfigured) return;
+    await _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = null;
+    try {
+      await ensureInitialized();
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {}
+    try {
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {}
+    try {
+      await _localNotifications.cancelAll();
+    } catch (_) {}
+    _lastPushToken = null;
+    _lastPushTokenAt = null;
+    _lastForegroundMessageKey = null;
+    _lastForegroundMessageAt = null;
+  }
+
   static Stream<DatabaseEvent>? taskChatStream(int taskId) {
     if (!_initialized || _database == null) return null;
     return _database!.ref('task_chats/$taskId/messages').onValue;
@@ -280,7 +304,8 @@ class AppFirebase {
       // Ignore permission errors and continue to avoid blocking app startup.
     }
 
-    messaging.onTokenRefresh.listen((newToken) {
+    await _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = messaging.onTokenRefresh.listen((String newToken) {
       if (newToken.isNotEmpty) {
         _lastPushToken = newToken;
         _lastPushTokenAt = DateTime.now();

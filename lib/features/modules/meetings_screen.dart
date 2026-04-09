@@ -12,12 +12,16 @@ class MeetingsScreen extends StatefulWidget {
     required this.apiService,
     required this.canManage,
     required this.canDelete,
+    this.initialMeetingId,
   });
 
   final String token;
   final MobileApiService apiService;
   final bool canManage;
   final bool canDelete;
+
+  /// Mở từ push thông báo (payload `meeting_id`).
+  final int? initialMeetingId;
 
   @override
   State<MeetingsScreen> createState() => _MeetingsScreenState();
@@ -41,6 +45,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   int? editingMeetingId;
   int? attendeeFilterId;
   DateTime selectedDate = VietnamTime.now();
+  bool _openedInitialMeeting = false;
 
   int? _parseInt(dynamic value) {
     if (value is int) return value;
@@ -158,6 +163,24 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
               .map((dynamic e) => e as Map<String, dynamic>)
               .toList();
     });
+    _tryOpenInitialMeetingFromPush();
+  }
+
+  void _tryOpenInitialMeetingFromPush() {
+    if (_openedInitialMeeting) return;
+    final int? targetId = widget.initialMeetingId;
+    if (targetId == null || targetId <= 0) return;
+    if (meetings.isEmpty) return;
+    for (final Map<String, dynamic> meeting in meetings) {
+      if ((_parseInt(meeting['id']) ?? 0) == targetId) {
+        _openedInitialMeeting = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _showMeetingDetails(meeting);
+        });
+        return;
+      }
+    }
   }
 
   Future<List<int>?> _openAttendeePicker(List<int> initialIds) async {

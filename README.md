@@ -72,3 +72,8 @@ Ung dung Flutter cho he thong quan ly du an va cong viec noi bo.
 - Services module da bo sung:
   - Date picker cho cac truong ngay (`report_date`, `check_date`)
   - Badge mau theo status tren tung ban ghi de theo doi nhanh
+- Contracts mobile da duoc dong bo lai UI form tao/sua:
+  - Bottom sheet sua hop dong chia thanh section card dong bo voi cac man hinh khac
+  - Trang thai hop dong chi hien thi read-only theo nghiep vu tu dong
+  - Danh sach san pham / thu / chi hien thi theo card ro rang hon, de thao tac tren dien thoai
+  - Luong duyet hop dong co them thao tac "khong duyet"; status tu dong suy ra `draft / signed / active / expired / success / cancelled`

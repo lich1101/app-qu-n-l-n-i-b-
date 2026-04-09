@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/stitch_theme.dart';
-import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'contracts_screen.dart';
-import 'chat_screen.dart';
+import 'opportunity_detail_screen.dart';
 
 class ClientDetailScreen extends StatefulWidget {
   const ClientDetailScreen({
@@ -398,6 +397,9 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   Widget _buildOpportunityItem(Map<String, dynamic> opp) {
+    final int oppId = int.tryParse('${opp['id'] ?? 0}') ?? 0;
+    final bool canManageOpportunity =
+        ((data?['permissions'] as Map?)?['can_manage_client'] == true);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -406,6 +408,21 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         border: Border.all(color: StitchTheme.border),
       ),
       child: ListTile(
+        onTap: oppId > 0
+            ? () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => OpportunityDetailScreen(
+                      token: widget.token,
+                      apiService: widget.apiService,
+                      opportunityId: oppId,
+                      canManage: canManageOpportunity,
+                      canDelete: false,
+                    ),
+                  ),
+                );
+              }
+            : null,
         title: Text(opp['title'] ?? 'Cơ hội', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
         subtitle: Text('${opp['amount'] ?? 0} VNĐ • XS: ${opp['success_probability'] ?? 0}%'),
         trailing: Container(
@@ -445,6 +462,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
               canCreate: false,
               canDelete: false,
               canApprove: false,
+              canCreateContractFinanceLines: false,
+              canEditContractFinanceLines: false,
               currentUserRole: '',
               currentUserId: widget.currentUserId,
               // Ideally, pass a filter for this client

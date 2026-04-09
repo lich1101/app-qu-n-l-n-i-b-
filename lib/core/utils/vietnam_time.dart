@@ -68,4 +68,35 @@ class VietnamTime {
     final String month = value.month.toString().padLeft(2, '0');
     return '$year-$month-01';
   }
+
+  /// `yyyy-MM-dd` cho TextField / payload — không dùng `substring(0, 10)` trên ISO có `Z`
+  /// (ví dụ `...T17:00:00.000Z` là nửa đêm ngày kế theo theo giờ VN).
+  static String toYmdInput(dynamic value) {
+    final String raw = (value ?? '').toString().trim();
+    if (raw.isEmpty) return '';
+    final DateTime? dt = parse(raw);
+    if (dt == null) return '';
+    final String y = dt.year.toString().padLeft(4, '0');
+    final String m = dt.month.toString().padLeft(2, '0');
+    final String d = dt.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  /// [showDatePicker.initialDate] — ngày lịch VN, giờ trưa local tránh lệch DST.
+  static DateTime pickerInitialDate(dynamic value) {
+    final String ymd = toYmdInput(value);
+    if (ymd.length >= 10) {
+      final List<String> parts = ymd.split('-');
+      if (parts.length == 3) {
+        final int? y = int.tryParse(parts[0]);
+        final int? m = int.tryParse(parts[1]);
+        final int? d = int.tryParse(parts[2]);
+        if (y != null && m != null && d != null) {
+          return DateTime(y, m, d, 12);
+        }
+      }
+    }
+    final DateTime n = DateTime.now();
+    return DateTime(n.year, n.month, n.day, 12);
+  }
 }

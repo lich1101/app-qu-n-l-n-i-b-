@@ -7,6 +7,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/auth/api_role_access.dart';
+import '../../core/auth/web_menu_roles.dart';
 import '../../config/app_env.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/services/app_permission_bootstrap_service.dart';
@@ -40,6 +42,7 @@ import '../modules/departments_screen.dart';
 import '../projects/create_project_screen.dart';
 import '../projects/projects_screen.dart';
 import '../tasks/task_items_screen.dart';
+import '../tasks/tasks_list_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -65,13 +68,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   Map<String, dynamic> overview = <String, dynamic>{};
   Map<String, dynamic> accounts = <String, dynamic>{};
-  List<Map<String, dynamic>> tasks = <Map<String, dynamic>>[];
-  List<String> taskStatuses = <String>['todo', 'doing', 'done', 'blocked'];
   int unreadNotifications = 0;
   int unreadChats = 0;
-  bool taskLoading = false;
-  String taskMessage = '';
-  String taskStatusFilter = '';
   Map<String, dynamic>? authUser;
   String? authToken;
   String authMessage = '';
@@ -240,20 +238,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     String bootstrapMessage = '';
     Map<String, dynamic> summary = <String, dynamic>{};
     Map<String, dynamic> accountSummary = <String, dynamic>{};
-    Map<String, dynamic> meta = <String, dynamic>{};
     Map<String, dynamic> settings = <String, dynamic>{};
     try {
       final List<Map<String, dynamic>> results =
           await Future.wait(<Future<Map<String, dynamic>>>[
             _safeMap(_api.getPublicSummary()),
             _safeMap(_api.getPublicAccountsSummary()),
-            _safeMap(_api.getMeta()),
             _safeMap(_api.getSettings()),
           ]);
       summary = results[0];
       accountSummary = results[1];
-      meta = results[2];
-      settings = results[3];
+      settings = results[2];
     } catch (_) {
       bootstrapMessage =
           'Không thể kết nối máy chủ. Vui lòng kiểm tra API_BASE_URL.';
@@ -269,11 +264,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
       if (accountSummary.isNotEmpty) {
         accounts = accountSummary;
-      }
-      final List<dynamic> statuses =
-          (meta['task_statuses'] ?? <dynamic>[]) as List<dynamic>;
-      if (statuses.isNotEmpty) {
-        taskStatuses = statuses.map((dynamic e) => e.toString()).toList();
       }
       if (bootstrapMessage.isNotEmpty && authMessage.isEmpty) {
         authMessage = bootstrapMessage;
@@ -304,11 +294,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
     await _ensureFirebaseAuth();
     await _registerDeviceToken(requestPermission: false);
-    try {
-      await fetchTasks(silent: true).timeout(_bootstrapTimeout);
-    } catch (_) {
-      // ignore timeout
-    }
     await _refreshNotificationBadge();
     _scheduleEssentialPermissionPrompt();
     if (_pendingInitialMessage != null) {
@@ -345,15 +330,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     bool clearAuthMessage = true,
   }) async {
     _stopSessionGuard();
+    if (AppFirebase.isConfigured) {
+      await AppFirebase.clearSessionForAccountSwitch();
+    }
     await _secureStorage.delete(key: _tokenKey);
     if (!mounted) return;
     setState(() {
       authUser = null;
       authToken = null;
       authMessage = clearAuthMessage ? message : '';
-      tasks = <Map<String, dynamic>>[];
-      taskMessage = '';
-      taskStatusFilter = '';
       unreadNotifications = 0;
       unreadChats = 0;
       _tabIndex = 0;
@@ -377,12 +362,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
     _isCheckingSession = true;
     try {
-      final Map<String, dynamic> me = await _api
-          .me(token)
-          .timeout(_bootstrapTimeout);
+      final Map<String, dynamic> me = await _fetchMeWithRetry(token);
       final int statusCode = (me['statusCode'] ?? 500) as int;
 
-      if (statusCode == 401) {
+      if (statusCode == 401 || statusCode == 403) {
         await _handleSessionRevoked();
         return;
       }
@@ -405,12 +388,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Future<void> _restoreSession() async {
     final String? token = await _secureStorage.read(key: _tokenKey);
     if (token == null || token.isEmpty) return;
-    Map<String, dynamic> me = <String, dynamic>{};
-    try {
-      me = await _api.me(token).timeout(_bootstrapTimeout);
-    } catch (_) {
-      return;
-    }
+    final Map<String, dynamic> me = await _fetchMeWithRetry(token);
     if ((me['statusCode'] ?? 500) == 200) {
       setState(() {
         authToken = token;
@@ -421,11 +399,21 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       unawaited(_finishRestoredSessionBootstrap(token));
     } else {
       final int statusCode = (me['statusCode'] ?? 500) as int;
-      if (statusCode == 401) {
+      if (statusCode == 401 || statusCode == 403) {
         await _handleSessionRevoked();
       } else {
+        if (statusCode >= 500 && mounted) {
+          setState(() {
+            authMessage =
+                'Máy chủ xác thực đang bận. Vui lòng mở lại ứng dụng sau vài giây.';
+          });
+          return;
+        }
         await _clearLocalSession(
-          message: 'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.',
+          message: _apiMessage(
+            me['body'] as Map<String, dynamic>?,
+            'Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.',
+          ),
         );
       }
     }
@@ -509,6 +497,44 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
+  String _apiMessage(Map<String, dynamic>? responseBody, String fallback) {
+    final String message = (responseBody?['message'] ?? '').toString().trim();
+    return message.isNotEmpty ? message : fallback;
+  }
+
+  Future<Map<String, dynamic>> _fetchMeWithRetry(
+    String token, {
+    int maxAttempts = 3,
+  }) async {
+    Map<String, dynamic> last = <String, dynamic>{
+      'statusCode': 500,
+      'body': <String, dynamic>{},
+    };
+
+    for (int attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        last = await _api.me(token).timeout(_bootstrapTimeout);
+      } catch (_) {
+        last = <String, dynamic>{
+          'statusCode': 500,
+          'body': <String, dynamic>{
+            'message': 'Không thể kết nối đến máy chủ xác thực.',
+          },
+        };
+      }
+
+      final int statusCode = (last['statusCode'] ?? 500) as int;
+      if (statusCode == 200 || statusCode == 401 || statusCode == 403) {
+        return last;
+      }
+      if (attempt < maxAttempts) {
+        await Future<void>.delayed(Duration(milliseconds: 350 * attempt));
+      }
+    }
+
+    return last;
+  }
+
   Future<void> loginMobile({
     required String email,
     required String password,
@@ -539,9 +565,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       });
       return;
     }
-    final Map<String, dynamic> me = await _api.me(token);
+    final Map<String, dynamic> me = await _fetchMeWithRetry(token);
     if (!mounted) return;
-    if ((me['statusCode'] ?? 500) == 200) {
+    final int meStatusCode = (me['statusCode'] ?? 500) as int;
+    if (meStatusCode == 200) {
       await _secureStorage.write(key: _tokenKey, value: token);
       final Map<String, dynamic> summary = await _api.getPublicSummary(token);
       final Map<String, dynamic> accountSummary = await _api
@@ -559,7 +586,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       await _ensureFirebaseAuth();
       await _registerDeviceToken(requestPermission: false);
       await _addSavedAccount(email);
-      await fetchTasks(silent: true);
       await _refreshNotificationBadge();
       _scheduleEssentialPermissionPrompt();
       if (_pendingInitialMessage != null) {
@@ -568,9 +594,40 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         _handlePushNavigation(msg);
       }
     } else {
+      final Map<String, dynamic> fallbackUser =
+          body['user'] is Map<String, dynamic>
+              ? (body['user'] as Map<String, dynamic>)
+              : <String, dynamic>{};
+      if (fallbackUser.isNotEmpty && meStatusCode >= 500) {
+        await _secureStorage.write(key: _tokenKey, value: token);
+        final Map<String, dynamic> summary = await _api.getPublicSummary(token);
+        final Map<String, dynamic> accountSummary = await _api
+            .getPublicAccountsSummary(token);
+        if (!mounted) return;
+        setState(() {
+          authToken = token;
+          authUser = fallbackUser;
+          authMessage =
+              'Đăng nhập thành công. Máy chủ xác thực phản hồi chậm, ứng dụng đã dùng dữ liệu phiên hiện tại.';
+          overview = summary;
+          accounts = accountSummary;
+          _isLoggingIn = false;
+        });
+        _startSessionGuard();
+        await _ensureFirebaseAuth();
+        await _registerDeviceToken(requestPermission: false);
+        await _addSavedAccount(email);
+        await _refreshNotificationBadge();
+        _scheduleEssentialPermissionPrompt();
+        return;
+      }
+
       setState(() {
         _isLoggingIn = false;
-        authMessage = 'Nhận token thành công nhưng gọi /me thất bại.';
+        authMessage = _apiMessage(
+          me['body'] as Map<String, dynamic>?,
+          'Nhận token thành công nhưng gọi /me thất bại.',
+        );
       });
     }
   }
@@ -669,7 +726,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
       if (initialState.allGranted) {
         _permissionPromptQueued = false;
-        await _registerDeviceToken(requestPermission: false);
+        if (initialState.notificationsGranted) {
+          await _registerDeviceToken(requestPermission: false);
+        }
         return;
       }
 
@@ -731,8 +790,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 requesting = false;
                 currentState = next;
                 shouldOpenSettings =
-                    next.needsSettingsAttention ||
-                    (Platform.isIOS && !next.wifiGranted);
+                    next.needsSettingsAttention || !next.wifiGranted;
               });
               if (next.allGranted && context.mounted) {
                 Navigator.of(context).pop(next);
@@ -769,48 +827,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     await AppFirebase.signInWithCustomToken(token);
   }
 
-  Future<void> fetchTasks({String? status, bool silent = false}) async {
-    if (authToken == null || authToken!.isEmpty) {
-      setState(() {
-        taskMessage = 'Cần đăng nhập để xem và thao tác công việc.';
-        tasks = <Map<String, dynamic>>[];
-      });
-      return;
-    }
-    final String resolvedStatus = status ?? taskStatusFilter;
-    if (!silent) setState(() => taskLoading = true);
-    final List<Map<String, dynamic>> rows = await _api.getTasks(
-      authToken!,
-      status: resolvedStatus,
-    );
-    setState(() {
-      taskLoading = false;
-      taskStatusFilter = resolvedStatus;
-      taskMessage = rows.isEmpty ? 'Không có công việc phù hợp bộ lọc.' : '';
-      tasks = rows;
-    });
-  }
-
-  Future<void> updateTaskStatus(
-    Map<String, dynamic> task,
-    String newStatus,
-  ) async {
-    if (authToken == null || authToken!.isEmpty) return;
-    setState(() => taskLoading = true);
-    final bool ok = await _api.updateTaskStatus(authToken!, task, newStatus);
-    await fetchTasks(status: taskStatusFilter, silent: true);
-    setState(() {
-      taskLoading = false;
-      taskMessage =
-          ok
-              ? 'Đã cập nhật trạng thái công việc.'
-              : 'Cập nhật công việc thất bại.';
-    });
-  }
-
   bool _hasRole(List<String> roles) {
     final String role = (authUser?['role'] ?? '').toString();
-    return roles.contains(role);
+    if (roles.contains(role)) return true;
+    // "administrator" là super-admin, tự động kế thừa mọi quyền của "admin".
+    if (role == 'administrator' && roles.contains('admin')) return true;
+    return false;
   }
 
   @override
@@ -903,109 +925,74 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
     }
 
-    // ─── Meetings: web GET /meetings has no role middleware (all can view)
-    // Create/Update: admin,quan_ly | Delete: admin only
-    final bool canManageMeetings = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canDeleteMeetings = _hasRole(<String>['admin']);
-    // ─── CRM: clients CRUD: admin,quan_ly,nhan_vien | payments: admin,ke_toan
-    final bool canManageCrm = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-    ]);
-    final bool canDeleteCrm = _hasRole(<String>['admin']);
-    // ─── Contracts: web allows nhan_vien to CREATE but NOT edit/delete
-    // View: admin,quan_ly,nhan_vien,ke_toan
-    // Create: admin,quan_ly,nhan_vien,ke_toan
-    // Edit: admin,quan_ly,ke_toan (NOT nhan_vien)
-    // Delete: admin,quan_ly,ke_toan
-    final bool canViewContracts = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-      'ke_toan',
-    ]);
-    final bool canCreateContracts = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-      'ke_toan',
-    ]);
-    final bool canEditContracts = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'ke_toan',
-    ]);
-    final bool canDeleteContracts = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'ke_toan',
-    ]);
-    // ─── Projects: create: admin,quan_ly | view: admin,quan_ly,nhan_vien
-    final bool canCreateProject = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewProjects = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-    ]);
-    final bool canViewReports = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewDepartments = _hasRole(<String>['admin', 'quan_ly']);
-    final bool canViewRevenue = _hasRole(<String>['admin']);
-    // ─── Handover: web route: admin,quan_ly,nhan_vien
-    final bool canViewHandover = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-    ]);
-    final bool canViewChat = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-      'ke_toan',
-    ]);
-    final bool canViewLogs = _hasRole(<String>['admin', 'quan_ly']);
-    // ─── Meetings: web GET has no middleware, open for all
-    final bool canViewMeetings = true;
-    // ─── Opportunities: view/create/edit: admin,quan_ly,nhan_vien | delete: admin only
-    final bool canViewOpportunities = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-    ]);
-    final bool canManageOpportunities = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-    ]);
-    final bool canDeleteOpportunities = _hasRole(<String>['admin']);
-    final bool canViewLeadForms = _hasRole(<String>['admin']);
-    final bool canViewLeadTypes = _hasRole(<String>['admin']);
-    final bool canViewOpportunityStatuses = _hasRole(<String>['admin']);
-    final bool canViewRevenueTiers = _hasRole(<String>['admin']);
-    final bool canViewAttendance = _hasRole(<String>[
-      'admin',
-      'administrator',
-      'quan_ly',
-      'nhan_vien',
-      'ke_toan',
-    ]);
-    // ─── Products: web CRUD: admin,ke_toan (NOT quan_ly!) | view: all
-    final bool canViewProducts = _hasRole(<String>[
-      'admin',
-      'quan_ly',
-      'nhan_vien',
-      'ke_toan',
-    ]);
-    final bool canManageProducts = _hasRole(<String>['admin', 'ke_toan']);
-    final bool canDeleteProducts = _hasRole(<String>['admin']);
+    // Phân quyền hiển thị / luồng: khớp menu web (Authenticated.jsx) — webMenuHasRole.
+    // Thao tác ghi API (kế thừa administrator→admin khi API có "admin"): _hasRole.
+    final String role = (authUser?['role'] ?? '').toString();
+    final String currentUserRole = role;
+
+    // Lịch họp — menu web Operations
+    final bool canViewMeetings = webMenuHasRole(role, kWebMenuMeetings);
+
+    // CRM — "Khách hàng": xem menu vs CRUD (API clients: admin,quan_ly,nhan_vien)
+    final bool canViewCrm = webMenuHasRole(role, kWebMenuCrmClients);
+    // Hợp đồng — menu Sales; sửa/xóa: không nhan_vien (khớp Contracts web)
+    final bool canViewContracts = webMenuHasRole(role, kWebMenuContracts);
+
+    final bool canViewProjects = webMenuHasRole(
+      role,
+      kWebMenuOperationsProjectsTasks,
+    );
+    /// Khớp web ProjectsKanban (canCreate) + middleware POST /projects.
+    final bool canCreateProject =
+        canViewProjects && apiRoleMatches(role, kApiProjectStore);
+    final bool canViewServiceWorkflows = webMenuHasRole(
+      role,
+      kWebMenuServiceWorkflows,
+    );
+
+    final bool canViewReports = webMenuHasRole(role, kWebMenuReportsKpi);
+    final bool canViewDepartments = webMenuHasRole(role, kWebMenuDepartments);
+    final bool canViewRevenue = webMenuHasRole(role, kWebMenuReportsCompany);
+
+    final bool canViewHandover = webMenuHasRole(role, kWebMenuHandover);
+
+    final bool canViewLogs = webMenuHasRole(role, kWebMenuActivityLogs);
+
+    final bool canViewOpportunities = webMenuHasRole(
+      role,
+      kWebMenuOpportunities,
+    );
+
+    final bool canViewLeadForms = webMenuHasRole(role, kWebMenuLeadForms);
+    final bool canViewLeadTypes = webMenuHasRole(role, kWebMenuAdminOnlySettings);
+    final bool canViewOpportunityStatuses = webMenuHasRole(
+      role,
+      kWebMenuAdminOnlySettings,
+    );
+    final bool canViewRevenueTiers = webMenuHasRole(
+      role,
+      kWebMenuAdminOnlySettings,
+    );
+    final bool canViewAttendance = webMenuHasRole(role, kWebMenuAttendance);
+
+    final bool canViewProducts = webMenuHasRole(role, kWebMenuProducts);
+
+    final bool canViewCrmHub =
+        canViewCrm ||
+        canViewOpportunities ||
+        canViewContracts ||
+        canViewProducts ||
+        canViewLeadForms ||
+        canViewLeadTypes ||
+        canViewOpportunityStatuses ||
+        canViewRevenueTiers ||
+        canViewRevenue;
 
     Future<void> openScreen(Widget Function() builder) {
       return Navigator.of(
         context,
       ).push(MaterialPageRoute<Widget>(builder: (_) => builder()));
     }
-
-    final String currentUserRole = (authUser?['role'] ?? '').toString();
     final dynamic rawUserId = authUser?['id'];
     final int? resolvedUserId =
         rawUserId is int ? rawUserId : int.tryParse('${rawUserId ?? ''}');
@@ -1014,6 +1001,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       () => ProjectsScreen(
         token: authToken!,
         apiService: _api,
+        canView: canViewProjects,
         canCreate: canCreateProject,
       ),
     );
@@ -1048,36 +1036,44 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       () => MeetingsScreen(
         token: authToken!,
         apiService: _api,
-        canManage: canManageMeetings,
-        canDelete: canDeleteMeetings,
+        canManage: apiRoleMatches(role, kApiMeetingManage),
+        canDelete: apiRoleMatches(role, kApiMeetingDelete),
       ),
     );
     void openCrm() => openScreen(
       () => CrmScreen(
         token: authToken!,
         apiService: _api,
-        canManageClients: canManageCrm,
-        canManagePayments: _hasRole(<String>['admin', 'ke_toan']),
-        canDelete: canDeleteCrm,
-        currentUserRole: (authUser?['role'] ?? '').toString(),
+        canManageClients: apiRoleMatches(role, kApiCrmClientWrite),
+        canManagePayments: apiRoleMatches(role, kApiCrmPaymentWrite),
+        canDelete: apiRoleMatches(role, kApiCrmClientDelete),
+        currentUserRole: currentUserRole,
       ),
     );
     void openOpportunities() => openScreen(
       () => OpportunitiesScreen(
         token: authToken!,
         apiService: _api,
-        canManage: canManageOpportunities,
-        canDelete: canDeleteOpportunities,
+        canManage: apiRoleMatches(role, kApiOpportunityReadWrite),
+        canDelete: apiRoleMatches(role, kApiOpportunityDelete),
       ),
     );
     void openContracts() => openScreen(
       () => ContractsScreen(
         token: authToken!,
         apiService: _api,
-        canManage: canEditContracts,
-        canCreate: canCreateContracts,
-        canDelete: canDeleteContracts,
-        canApprove: _hasRole(<String>['admin', 'ke_toan']),
+        canManage: apiRoleMatches(role, kApiContractUpdateDelete),
+        canCreate: apiRoleMatches(role, kApiContractReadCreate),
+        canDelete: apiRoleMatches(role, kApiContractUpdateDelete),
+        canApprove: apiRoleMatches(role, kApiContractApprove),
+        canCreateContractFinanceLines: apiRoleMatches(
+          role,
+          kApiContractPaymentLineCreate,
+        ),
+        canEditContractFinanceLines: apiRoleMatches(
+          role,
+          kApiContractPaymentLineMutate,
+        ),
         currentUserRole: currentUserRole,
         currentUserId: resolvedUserId,
       ),
@@ -1086,8 +1082,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       () => ProductsScreen(
         token: authToken!,
         apiService: _api,
-        canManage: canManageProducts,
-        canDelete: canDeleteProducts,
+        canManage: apiRoleMatches(role, kApiProductMutate),
+        canDelete: apiRoleMatches(role, kApiProductDelete),
       ),
     );
     void openDepartments() => openScreen(
@@ -1104,8 +1100,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         currentUserRole: currentUserRole,
       ),
     );
-    void openLeadForms() =>
-        openScreen(() => LeadFormsScreen(token: authToken!, apiService: _api));
+    void openLeadForms() => openScreen(
+          () => LeadFormsScreen(
+            token: authToken!,
+            apiService: _api,
+            canManage: apiRoleMatches(role, kApiLeadFormWrite),
+          ),
+        );
     void openLeadTypes() =>
         openScreen(() => LeadTypesScreen(token: authToken!, apiService: _api));
     void openOpportunityStatuses() => openScreen(
@@ -1131,10 +1132,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         currentUserRole: currentUserRole,
       ),
     );
-    void openProjectsTab() {
-      Navigator.of(context).maybePop();
-      setState(() => _tabIndex = 1);
-    }
+    void openTasksList() => openScreen(
+          () => TasksListScreen(
+            token: authToken!,
+            apiService: _api,
+          ),
+        );
 
     void openTaskItems() =>
         openScreen(() => TaskItemsScreen(token: authToken!, apiService: _api));
@@ -1145,12 +1148,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     Widget buildModuleCenter() => ModuleCenterScreen(
       onOpenProjects: canViewProjects ? openProjects : null,
       onOpenHandover: canViewHandover ? openHandover : null,
-      onOpenChat: canViewChat ? openChat : null,
+      onOpenChat: openChat,
       onOpenActivityLogs: canViewLogs ? openActivityLogs : null,
       onOpenNotifications: openNotifications,
       onOpenCreateProject: canCreateProject ? openCreateProject : null,
-      onOpenMeetings: openMeetings,
-      onOpenCrm: canManageCrm ? openCrm : null,
+      onOpenMeetings: canViewMeetings ? openMeetings : null,
+      onOpenCrm: canViewCrm ? openCrm : null,
       onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
       onOpenContracts: canViewContracts ? openContracts : null,
       onOpenProducts: canViewProducts ? openProducts : null,
@@ -1162,10 +1165,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           canViewOpportunityStatuses ? openOpportunityStatuses : null,
       onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
       onOpenReports: canViewReports ? openReports : null,
-      onOpenServices: canViewProjects ? openServices : null,
+      onOpenServices: canViewServiceWorkflows ? openServices : null,
       onOpenAttendance: canViewAttendance ? openAttendance : null,
-      onOpenTasks: openProjectsTab,
-      onOpenTaskItems: openTaskItems,
+      onOpenTasks: canViewProjects ? openTasksList : null,
+      onOpenTaskItems: canViewProjects ? openTaskItems : null,
     );
 
     final List<OverviewQuickAction> quickActions = <OverviewQuickAction>[
@@ -1236,7 +1239,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ),
     ];
 
-    final List<Widget> tabs = <Widget>[
+    final List<Widget> mainTabs = <Widget>[
       OverviewScreen(
         summary: overview,
         authUser: authUser,
@@ -1245,28 +1248,31 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         unreadNotifications: unreadNotifications,
         unreadChats: unreadChats,
         onOpenNotifications: openNotifications,
-        onOpenChat: canViewChat ? openChat : null,
+        onOpenChat: openChat,
         token: authToken,
         apiService: _api,
         currentUserRole: currentUserRole,
       ),
-      ProjectsScreen(
-        token: authToken ?? '',
-        apiService: _api,
-        canCreate: canCreateProject,
-      ),
-      CrmHubScreen(
-        onOpenCrm: canManageCrm ? openCrm : null,
-        onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
-        onOpenContracts: canViewContracts ? openContracts : null,
-        onOpenProducts: canViewProducts ? openProducts : null,
-        onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
-        onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
-        onOpenOpportunityStatuses:
-            canViewOpportunityStatuses ? openOpportunityStatuses : null,
-        onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
-        onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
-      ),
+      if (canViewProjects)
+        ProjectsScreen(
+          token: authToken ?? '',
+          apiService: _api,
+          canView: true,
+          canCreate: canCreateProject,
+        ),
+      if (canViewCrmHub)
+        CrmHubScreen(
+          onOpenCrm: canViewCrm ? openCrm : null,
+          onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
+          onOpenContracts: canViewContracts ? openContracts : null,
+          onOpenProducts: canViewProducts ? openProducts : null,
+          onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
+          onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
+          onOpenOpportunityStatuses:
+              canViewOpportunityStatuses ? openOpportunityStatuses : null,
+          onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
+          onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
+        ),
       AccountsScreen(
         summary: accounts,
         authUser: authUser,
@@ -1277,15 +1283,28 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ),
     ];
 
+    final int lastTabIndex = mainTabs.length - 1;
+    final int safeTabIndex = _tabIndex.clamp(0, lastTabIndex);
+    if (safeTabIndex != _tabIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _tabIndex = safeTabIndex);
+      });
+    }
+
+    final bool showFabSlot = canCreateProject && canViewProjects;
+    final int? tabProjectsIndex = canViewProjects ? 1 : null;
+    final int? tabCrmIndex =
+        canViewCrmHub ? (canViewProjects ? 2 : 1) : null;
+
     return Scaffold(
       extendBody: false,
       body: MediaQuery.removePadding(
         context: context,
         removeBottom: true,
-        child: tabs[_tabIndex],
+        child: mainTabs[safeTabIndex],
       ),
       floatingActionButton:
-          canCreateProject
+          canCreateProject && canViewProjects
               ? FloatingActionButton(
                 elevation: 10,
                 backgroundColor: StitchTheme.primary,
@@ -1296,9 +1315,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: _BottomNavBar(
-        currentIndex: _tabIndex,
+        currentIndex: safeTabIndex,
         onTap: (int value) => setState(() => _tabIndex = value),
-        hasCenterButton: canCreateProject,
+        hasCenterButton: showFabSlot,
+        showProjectsTab: canViewProjects,
+        showCrmTab: canViewCrmHub,
+        tabProjectsIndex: tabProjectsIndex,
+        tabCrmIndex: tabCrmIndex,
+        accountTabIndex: lastTabIndex,
       ),
     );
   }
@@ -1309,11 +1333,21 @@ class _BottomNavBar extends StatelessWidget {
     required this.currentIndex,
     required this.onTap,
     required this.hasCenterButton,
+    required this.showProjectsTab,
+    required this.showCrmTab,
+    required this.tabProjectsIndex,
+    required this.tabCrmIndex,
+    required this.accountTabIndex,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
   final bool hasCenterButton;
+  final bool showProjectsTab;
+  final bool showCrmTab;
+  final int? tabProjectsIndex;
+  final int? tabCrmIndex;
+  final int accountTabIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -1348,34 +1382,36 @@ class _BottomNavBar extends StatelessWidget {
                   compact: compact,
                 ),
               ),
-              Expanded(
-                child: _NavItem(
-                  label: 'Dự án',
-                  icon: Icons.account_tree_outlined,
-                  activeIcon: Icons.account_tree,
-                  isActive: currentIndex == 1,
-                  onTap: () => onTap(1),
-                  compact: compact,
+              if (showProjectsTab && tabProjectsIndex != null)
+                Expanded(
+                  child: _NavItem(
+                    label: 'Dự án',
+                    icon: Icons.account_tree_outlined,
+                    activeIcon: Icons.account_tree,
+                    isActive: currentIndex == tabProjectsIndex,
+                    onTap: () => onTap(tabProjectsIndex!),
+                    compact: compact,
+                  ),
                 ),
-              ),
               if (hasCenterButton) SizedBox(width: compact ? 60 : 72),
-              Expanded(
-                child: _NavItem(
-                  label: 'CRM',
-                  icon: Icons.groups_outlined,
-                  activeIcon: Icons.groups,
-                  isActive: currentIndex == 2,
-                  onTap: () => onTap(2),
-                  compact: compact,
+              if (showCrmTab && tabCrmIndex != null)
+                Expanded(
+                  child: _NavItem(
+                    label: 'CRM',
+                    icon: Icons.groups_outlined,
+                    activeIcon: Icons.groups,
+                    isActive: currentIndex == tabCrmIndex,
+                    onTap: () => onTap(tabCrmIndex!),
+                    compact: compact,
+                  ),
                 ),
-              ),
               Expanded(
                 child: _NavItem(
                   label: 'Tài khoản',
                   icon: Icons.person_outline,
                   activeIcon: Icons.person,
-                  isActive: currentIndex == 3,
-                  onTap: () => onTap(3),
+                  isActive: currentIndex == accountTabIndex,
+                  onTap: () => onTap(accountTabIndex),
                   compact: compact,
                 ),
               ),
@@ -1490,10 +1526,11 @@ class _EssentialPermissionSheet extends StatelessWidget {
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final bool showSettingsButton =
         state.needsSettingsAttention || preferOpenSettings;
-    final bool canRequestNow = !requesting && !state.allGranted;
+    final bool allReady = state.allGranted;
+    final bool canRequestNow = !requesting && !allReady;
     final String primaryLabel =
-        state.allGranted
-            ? 'Mọi thứ đã sẵn sàng'
+        allReady
+            ? 'Đã cấp đủ quyền'
             : showSettingsButton
             ? 'Mở Cài đặt'
             : (requesting ? 'Đang xin quyền...' : 'Cấp quyền ngay');
@@ -1556,7 +1593,7 @@ class _EssentialPermissionSheet extends StatelessWidget {
             description:
                 state.wifiGranted
                     ? 'Đã có thể đọc SSID/BSSID và kiểm tra đúng mạng công ty.'
-                    : 'Trên iPhone, ứng dụng cần quyền Vị trí để đọc Wi-Fi hiện tại và xác minh BSSID nội bộ.',
+                    : 'Ứng dụng cần quyền Vị trí (Android/iOS) để đọc Wi‑Fi hiện tại và xác minh BSSID nội bộ khi chấm công.',
             color: _wifiColor(state),
           ),
           if (state.notificationsSupported) ...<Widget>[
@@ -1577,11 +1614,11 @@ class _EssentialPermissionSheet extends StatelessWidget {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed:
-                  requesting || state.allGranted
+                  requesting || allReady
                       ? null
                       : (showSettingsButton ? onOpenSettings : onGrantNow),
               icon: Icon(
-                state.allGranted
+                allReady
                     ? Icons.check_circle_outline
                     : (showSettingsButton
                         ? Icons.settings_outlined

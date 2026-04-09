@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/task_item_progress_input.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -148,7 +150,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
   String _formatDate(String raw) {
     if (raw.isEmpty) return '—';
     final DateTime? dt = VietnamTime.parse(raw);
-    if (dt == null) return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    if (dt == null) return '—';
     return VietnamTime.formatDate(dt);
   }
 
@@ -171,6 +173,21 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
         return 'Bị chặn';
       default:
         return status.isEmpty ? '—' : status;
+    }
+  }
+
+  String _priorityLabel(String value) {
+    switch (value) {
+      case 'low':
+        return 'Thấp';
+      case 'medium':
+        return 'Trung bình';
+      case 'high':
+        return 'Cao';
+      case 'urgent':
+        return 'Khẩn';
+      default:
+        return value.isEmpty ? '—' : value;
     }
   }
 
@@ -303,6 +320,31 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    _MetaChip(
+                      label: 'Ưu tiên',
+                      value: _priorityLabel(
+                        '${item!['priority'] ?? 'medium'}',
+                      ),
+                    ),
+                    if (task != null) ...<Widget>[
+                      _MetaChip(
+                        label: 'Thuộc công việc',
+                        value: (task!['title'] ?? '—').toString(),
+                      ),
+                      if (task!['department'] is Map<String, dynamic>)
+                        _MetaChip(
+                          label: 'Phòng ban (CV)',
+                          value:
+                              '${(task!['department'] as Map<String, dynamic>)['name'] ?? '—'}',
+                        ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 16),
                 _buildInfoRow(
                   'Nhân sự',
@@ -792,7 +834,9 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
           widget.itemId,
           update['id'] as int,
           status: update['status']?.toString(),
-          progressPercent: int.tryParse('${update['progress_percent']}') ?? 0,
+          progressPercent: TaskItemProgressInput.clampInt(
+            int.tryParse('${update['progress_percent']}') ?? 0,
+          ),
         );
       } else {
         ok = await widget.apiService.rejectTaskItemUpdate(
@@ -883,8 +927,13 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                         TextField(
                           controller: progressCtrl,
                           keyboardType: TextInputType.number,
+                          inputFormatters: <TextInputFormatter>[
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(3),
+                          ],
                           decoration: const InputDecoration(
                             labelText: 'Tiến độ (%)',
+                            helperText: 'Chỉ nhập 0–100, không vượt quá 100%',
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -909,17 +958,19 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                                 submitting
                                     ? null
                                     : () async {
-                                      final p = int.tryParse(
-                                        progressCtrl.text.trim(),
+                                      final int? p =
+                                          TaskItemProgressInput.tryParseOptional(
+                                        progressCtrl.text,
+                                        onInvalid: (String m) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(content: Text(m)),
+                                          );
+                                        },
                                       );
-                                      if (p == null || p < 0 || p > 100) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Tiến độ 0-100%'),
-                                          ),
-                                        );
+                                      if (p == null &&
+                                          progressCtrl.text.trim().isNotEmpty) {
                                         return;
                                       }
                                       setModal(() => submitting = true);
@@ -956,6 +1007,48 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                   ),
                 ),
           ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: StitchTheme.primarySoft,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: StitchTheme.primaryStrong.withValues(alpha: 0.22),
+        ),
+      ),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(fontSize: 12, height: 1.25),
+          children: <TextSpan>[
+            TextSpan(
+              text: '$label: ',
+              style: TextStyle(
+                color: StitchTheme.primaryStrong.withValues(alpha: 0.95),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            TextSpan(
+              text: value,
+              style: const TextStyle(
+                color: StitchTheme.textMain,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1122,8 +1215,9 @@ class _TaskItemInsightChart extends StatelessWidget {
 
   String _formatAxisLabel(Map<String, dynamic> point) {
     final String date = (point['date'] ?? '').toString();
-    if (date.length >= 10) {
-      return date.substring(5, 10);
+    final String ymd = VietnamTime.toYmdInput(date);
+    if (ymd.length >= 10) {
+      return ymd.substring(5, 10);
     }
     final String label = (point['label'] ?? '').toString();
     if (label.length > 8) {

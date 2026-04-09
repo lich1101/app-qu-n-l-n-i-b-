@@ -16,7 +16,7 @@ class AttendanceWifiPermissionState {
 
   bool get requiresSettings =>
       locationStatus.isPermanentlyDenied ||
-      nearbyWifiStatus.isPermanentlyDenied;
+      (Platform.isAndroid && nearbyWifiStatus.isPermanentlyDenied);
 }
 
 class AttendanceWifiSnapshot {
@@ -47,7 +47,7 @@ class AttendanceWifiService {
       return const AttendanceWifiSnapshot(
         permissionGranted: false,
         error:
-            'Trên iPhone, cần cấp quyền Vị trí để ứng dụng đọc SSID và BSSID.',
+            'Cần cấp quyền Vị trí để ứng dụng đọc SSID/BSSID khi chấm công Wi‑Fi.',
       );
     }
 
@@ -92,14 +92,15 @@ class AttendanceWifiService {
             : PermissionStatus.granted;
     final bool locationGranted =
         locationStatus.isGranted || locationStatus.isLimited;
-    final bool nearbyGranted =
-        Platform.isAndroid &&
-        (nearbyWifiStatus.isGranted || nearbyWifiStatus.isLimited);
+    // Reading current SSID/BSSID requires location permission on mobile.
+    // Nearby Wi‑Fi permission is requested on Android for compatibility,
+    // but location is still the mandatory gate to proceed.
+    final bool permissionGranted = locationGranted;
 
     return AttendanceWifiPermissionState(
       locationStatus: locationStatus,
       nearbyWifiStatus: nearbyWifiStatus,
-      permissionGranted: locationGranted || nearbyGranted,
+      permissionGranted: permissionGranted,
     );
   }
 

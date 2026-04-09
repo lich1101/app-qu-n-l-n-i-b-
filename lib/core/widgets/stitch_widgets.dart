@@ -427,8 +427,8 @@ class StitchFilterField extends StatelessWidget {
           style: const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
-            color: StitchTheme.textSubtle,
+            letterSpacing: 0.9,
+            color: StitchTheme.labelEmphasis,
           ),
         ),
         const SizedBox(height: 8),
@@ -506,6 +506,82 @@ class StitchTimelineItem extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Viền bo tròn dùng chung cho ô nhập trong bottom sheet (iOS/Android).
+InputDecoration stitchSheetInputDecoration(
+  BuildContext context, {
+  required String label,
+  String? hint,
+}) {
+  final OutlineInputBorder border = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(14),
+    borderSide: const BorderSide(color: StitchTheme.border),
+  );
+  return InputDecoration(
+    labelText: label,
+    hintText: hint,
+    filled: true,
+    fillColor: StitchTheme.surface,
+    border: border,
+    enabledBorder: border,
+    focusedBorder: border.copyWith(
+      borderSide: BorderSide(color: StitchTheme.primary, width: 1.5),
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    floatingLabelBehavior: FloatingLabelBehavior.auto,
+  );
+}
+
+/// Thông báo lỗi / thành công ngắn trong sheet (API, validation).
+class StitchFeedbackBanner extends StatelessWidget {
+  const StitchFeedbackBanner({
+    super.key,
+    required this.message,
+    this.isError = true,
+  });
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final String t = message.trim();
+    if (t.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final Color bg = isError ? StitchTheme.dangerSoft : StitchTheme.successSoft;
+    final Color fg =
+        isError ? StitchTheme.dangerStrong : StitchTheme.successStrong;
+    final IconData icon =
+        isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: fg.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(icon, color: fg, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              t,
+              style: const TextStyle(
+                color: StitchTheme.textMain,
+                height: 1.4,
+                fontSize: 13.5,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

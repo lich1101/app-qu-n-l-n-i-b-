@@ -8,10 +8,16 @@ class LeadFormsScreen extends StatefulWidget {
     super.key,
     required this.token,
     required this.apiService,
+    this.canManage = true,
+    /// Mở form chỉnh sửa sau khi tải danh sách (push / thông báo trong app).
+    this.initialLeadFormId,
   });
 
   final String token;
   final MobileApiService apiService;
+  /// POST/PUT/DELETE /lead-forms — API: admin
+  final bool canManage;
+  final int? initialLeadFormId;
 
   @override
   State<LeadFormsScreen> createState() => _LeadFormsScreenState();
@@ -35,7 +41,36 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
   @override
   void initState() {
     super.initState();
-    _fetch();
+    _fetch().then((_) => _maybeOpenInitialLeadForm());
+  }
+
+  Future<void> _maybeOpenInitialLeadForm() async {
+    final int? targetId = widget.initialLeadFormId;
+    if (!widget.canManage || targetId == null || targetId <= 0) {
+      return;
+    }
+    Map<String, dynamic>? match;
+    for (final Map<String, dynamic> row in forms) {
+      final int? id = _parseFormId(row['id']);
+      if (id == targetId) {
+        match = row;
+        break;
+      }
+    }
+    if (match == null || !mounted) {
+      return;
+    }
+    await _openForm(form: match);
+  }
+
+  int? _parseFormId(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value == null) {
+      return null;
+    }
+    return int.tryParse(value.toString());
   }
 
   @override
@@ -120,6 +155,7 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
   }
 
   Future<void> _delete(int id) async {
+    if (!widget.canManage) return;
     final bool ok = await widget.apiService.deleteLeadForm(widget.token, id);
     if (!mounted) return;
     setState(() => message = ok ? 'Đã xóa form.' : 'Xóa form thất bại.');
@@ -127,6 +163,7 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
   }
 
   Future<void> _duplicate(int id) async {
+    if (!widget.canManage) return;
     final bool ok = await widget.apiService.duplicateLeadForm(widget.token, id);
     if (!mounted) return;
     setState(
@@ -136,12 +173,13 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
   }
 
   Future<void> _openForm({Map<String, dynamic>? form}) async {
+    if (!widget.canManage) return;
     setState(() {
       message = '';
       if (form == null) {
         _resetForm();
       } else {
-        editingId = form['id'] as int;
+        editingId = _parseFormId(form['id']);
         nameCtrl.text = (form['name'] ?? '').toString();
         slugCtrl.text = (form['slug'] ?? '').toString();
         redirectCtrl.text = (form['redirect_url'] ?? '').toString();
@@ -268,7 +306,9 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                           child: ElevatedButton(
                             onPressed: () async {
                               final bool ok = await _save();
-                              if (!mounted) return;
+                              if (!context.mounted) {
+                                return;
+                              }
                               if (ok) {
                                 Navigator.of(context).pop();
                               } else {
@@ -300,7 +340,11 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
       appBar: AppBar(
         title: const Text('Form tư vấn'),
         actions: <Widget>[
-          IconButton(icon: const Icon(Icons.add), onPressed: () => _openForm()),
+          if (widget.canManage)
+            IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: () => _openForm(),
+            ),
         ],
       ),
       body: SafeArea(
@@ -318,11 +362,12 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
-                  ElevatedButton.icon(
-                    onPressed: () => _openForm(),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Thêm mới'),
-                  ),
+                  if (widget.canManage)
+                    ElevatedButton.icon(
+                      onPressed: () => _openForm(),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Thêm mới'),
+                    ),
                 ],
               ),
               if (message.isNotEmpty)
@@ -344,26 +389,31 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                       subtitle: Text(
                         'Slug: ${(form['slug'] ?? '').toString()}',
                       ),
-                      trailing: Wrap(
-                        spacing: 4,
-                        children: <Widget>[
-                          IconButton(
-                            icon: const Icon(Icons.edit, size: 18),
-                            onPressed: () => _openForm(form: form),
-                            tooltip: 'Sửa',
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.copy, size: 18),
-                            onPressed: () => _duplicate(form['id'] as int),
-                            tooltip: 'Sao chép',
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, size: 18),
-                            onPressed: () => _delete(form['id'] as int),
-                            tooltip: 'Xóa',
-                          ),
-                        ],
-                      ),
+                      trailing:
+                          widget.canManage
+                              ? Wrap(
+                                spacing: 4,
+                                children: <Widget>[
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 18),
+                                    onPressed: () => _openForm(form: form),
+                                    tooltip: 'Sửa',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.copy, size: 18),
+                                    onPressed:
+                                        () => _duplicate(form['id'] as int),
+                                    tooltip: 'Sao chép',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, size: 18),
+                                    onPressed:
+                                        () => _delete(form['id'] as int),
+                                    tooltip: 'Xóa',
+                                  ),
+                                ],
+                              )
+                              : null,
                     ),
                   );
                 }),

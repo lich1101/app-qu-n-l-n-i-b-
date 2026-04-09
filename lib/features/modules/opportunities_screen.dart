@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
+import 'opportunity_detail_screen.dart';
 
 class OpportunitiesScreen extends StatefulWidget {
   const OpportunitiesScreen({
@@ -30,6 +32,8 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
   List<Map<String, dynamic>> opportunities = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> statuses = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> clients = <Map<String, dynamic>>[];
+  List<int> staffFilterIds = <int>[];
+  List<Map<String, dynamic>> staffLookupUsers = <Map<String, dynamic>>[];
   
   int currentPage = 1;
   int lastPage = 1;
@@ -37,11 +41,22 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
   bool loadingMore = false;
   final ScrollController scrollController = ScrollController();
 
+  /// Tổng doanh số (amount) theo bộ lọc, mọi trang.
+  double aggregateRevenueTotal = 0;
+
   @override
   void initState() {
     super.initState();
     scrollController.addListener(_onScroll);
+    _loadStaffLookup();
     _fetch();
+  }
+
+  Future<void> _loadStaffLookup() async {
+    final List<Map<String, dynamic>> rows =
+        await widget.apiService.getUsersLookup(widget.token);
+    if (!mounted) return;
+    setState(() => staffLookupUsers = rows);
   }
 
   void _onScroll() {
@@ -75,6 +90,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
       perPage: 20,
       search: search,
       status: selectedStatus,
+      staffIds: staffFilterIds.isEmpty ? null : staffFilterIds,
     );
     
     final Map<String, dynamic> clientPayload =
@@ -85,6 +101,8 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
     final List<dynamic> oppData = (oppPayload['data'] ?? []) as List<dynamic>;
     final List<dynamic> clientData = (clientPayload['data'] ?? []) as List<dynamic>;
 
+    _applyOpportunityAggregates(oppPayload['aggregates']);
+
     setState(() {
       loading = false;
       statuses = statusRows;
@@ -93,6 +111,21 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
       lastPage = (oppPayload['last_page'] ?? 1) as int;
       totalOpportunities = (oppPayload['total'] ?? 0) as int;
     });
+  }
+
+  void _applyOpportunityAggregates(dynamic raw) {
+    if (raw is! Map) {
+      aggregateRevenueTotal = 0;
+      return;
+    }
+    final Map<String, dynamic> m = Map<String, dynamic>.from(raw);
+    final dynamic v = m['revenue_total'];
+    if (v == null) {
+      aggregateRevenueTotal = 0;
+      return;
+    }
+    aggregateRevenueTotal =
+        v is num ? v.toDouble() : (double.tryParse(v.toString()) ?? 0);
   }
 
   Future<void> _fetchMore() async {
@@ -106,10 +139,12 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
       perPage: 20,
       search: search,
       status: selectedStatus,
+      staffIds: staffFilterIds.isEmpty ? null : staffFilterIds,
     );
 
     if (mounted) {
       final List<dynamic> newData = (payload['data'] ?? []) as List<dynamic>;
+      _applyOpportunityAggregates(payload['aggregates']);
       setState(() {
         loadingMore = false;
         opportunities.addAll(newData.map((e) => e as Map<String, dynamic>).toList());
@@ -125,13 +160,18 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
     final double v =
         value is double ? value : double.tryParse(value.toString()) ?? 0;
     if (v == 0) return '—';
+    return _formatVndDigits(v);
+  }
+
+  /// Luôn hiển thị số (kể cả 0) — dùng cho dòng tổng theo bộ lọc.
+  String _formatVndDigits(double v) {
     final String s = v.toStringAsFixed(0);
     final StringBuffer sb = StringBuffer();
     for (int i = 0; i < s.length; i++) {
       if (i > 0 && (s.length - i) % 3 == 0) sb.write('.');
       sb.write(s[i]);
     }
-    return '${sb}đ';
+    return '$sbđ';
   }
 
   Future<void> _delete(int id) async {
@@ -179,6 +219,13 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
     int? clientId = opp?['client_id'] as int?;
     String? status = opp?['status']?.toString();
     String sheetMessage = '';
+    int? successProbability = opp == null
+        ? null
+        : int.tryParse(opp['success_probability']?.toString() ?? '');
+    if (successProbability != null &&
+        (successProbability < 0 || successProbability > 100)) {
+      successProbability = null;
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -274,7 +321,21 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                 TextField(
                                   controller: amountCtrl,
                                   keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(labelText: 'Giá trị (VNĐ)', prefixIcon: Icon(Icons.attach_money, size: 20, color: StitchTheme.textMuted)),
+                                  decoration: const InputDecoration(labelText: 'Doanh số dự kiến (VNĐ) *', prefixIcon: Icon(Icons.attach_money, size: 20, color: StitchTheme.textMuted)),
+                                ),
+                                const SizedBox(height: 16),
+                                DropdownButtonFormField<int>(
+                                  value: successProbability,
+                                  decoration: const InputDecoration(labelText: 'Tỷ lệ thành công (%) *', prefixIcon: Icon(Icons.percent_outlined, size: 20, color: StitchTheme.textMuted)),
+                                  items: <int>[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+                                      .map(
+                                        (int v) => DropdownMenuItem<int>(
+                                          value: v,
+                                          child: Text('$v%'),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (int? v) => setSheetState(() => successProbability = v),
                                 ),
                                 const SizedBox(height: 16),
                                 TextField(
@@ -336,14 +397,29 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                               final double? amt = amountCtrl.text.trim().isEmpty
                                   ? null
                                   : double.tryParse(amountCtrl.text.trim());
+                              if (amt == null || amt < 0) {
+                                setSheetState(() {
+                                  sheetMessage =
+                                      'Vui lòng nhập doanh số dự kiến (số ≥ 0).';
+                                });
+                                return;
+                              }
+                              if (successProbability == null) {
+                                setSheetState(() {
+                                  sheetMessage =
+                                      'Vui lòng chọn tỷ lệ thành công.';
+                                });
+                                return;
+                              }
                               final bool ok;
                               if (opp == null) {
                                 ok = await widget.apiService.createOpportunity(
                                   widget.token,
                                   title: titleCtrl.text.trim(),
                                   clientId: clientId!,
-                                  status: status,
                                   amount: amt,
+                                  successProbability: successProbability!,
+                                  status: status,
                                   source: sourceCtrl.text.trim().isEmpty
                                       ? null
                                       : sourceCtrl.text.trim(),
@@ -357,8 +433,9 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                   opp['id'] as int,
                                   title: titleCtrl.text.trim(),
                                   clientId: clientId!,
-                                  status: status,
                                   amount: amt,
+                                  successProbability: successProbability!,
+                                  status: status,
                                   source: sourceCtrl.text.trim().isEmpty
                                       ? null
                                       : sourceCtrl.text.trim(),
@@ -367,7 +444,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                       : notesCtrl.text.trim(),
                                 );
                               }
-                              if (!mounted) return;
+                              if (!mounted || !context.mounted) return;
                               if (ok) {
                                 Navigator.of(context).pop();
                                 await _fetch();
@@ -440,10 +517,8 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                           hintText: 'Tìm kiếm...',
                           prefixIcon: Icon(Icons.search),
                         ),
-                        onChanged: (value) {
-                          search = value;
-                          _fetch();
-                        },
+                        onChanged: (String value) => search = value,
+                        onSubmitted: (_) => _fetch(),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -481,6 +556,24 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                         },
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    StaffMultiFilterRow(
+                      users: staffLookupUsers,
+                      selectedIds: staffFilterIds,
+                      title: 'Nhân sự (phụ trách / chăm sóc KH)',
+                      onChanged: (List<int> ids) {
+                        setState(() => staffFilterIds = ids);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton.icon(
+                        onPressed: loading ? null : _fetch,
+                        icon: const Icon(Icons.filter_alt_outlined, size: 18),
+                        label: const Text('Áp dụng lọc nhân sự & tìm kiếm'),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -492,6 +585,38 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                     style: const TextStyle(color: StitchTheme.textMuted),
                   ),
                 ),
+              if (!loading && totalOpportunities > 0) ...<Widget>[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: StitchTheme.surfaceAlt,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: StitchTheme.border),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(
+                        Icons.summarize_outlined,
+                        size: 18,
+                        color: StitchTheme.textSubtle,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Tổng doanh số theo bộ lọc (tất cả trang): ${_formatVndDigits(aggregateRevenueTotal)}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: StitchTheme.textMain,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               if (loading)
                 const Center(child: CircularProgressIndicator())
@@ -525,33 +650,51 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                         Color(int.parse('FF$hex', radix: 16));
                   }
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: StitchTheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(color: StitchTheme.textMain.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
-                      ],
-                      border: Border.all(color: StitchTheme.border),
-                    ),
-                    child: IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Container(
-                            width: 6,
-                            decoration: BoxDecoration(
-                              color: chipColor,
-                              borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), bottomLeft: Radius.circular(16)),
-                            ),
+                  return GestureDetector(
+                    onTap: () async {
+                      final int id = (opp['id'] as int?) ?? 0;
+                      if (id <= 0) return;
+                      await Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => OpportunityDetailScreen(
+                            token: widget.token,
+                            apiService: widget.apiService,
+                            opportunityId: id,
+                            canManage: widget.canManage,
+                            canDelete: widget.canDelete,
                           ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
+                        ),
+                      );
+                      if (!mounted) return;
+                      _fetch();
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: StitchTheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(color: StitchTheme.textMain.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
+                        ],
+                        border: Border.all(color: StitchTheme.border),
+                      ),
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(
+                              width: 6,
+                              decoration: BoxDecoration(
+                                color: chipColor,
+                                borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), bottomLeft: Radius.circular(16)),
+                              ),
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                   Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
@@ -616,11 +759,12 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                     const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1)),
                                     Text((opp['notes'] ?? '').toString(), style: const TextStyle(color: StitchTheme.textMuted, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
                                   ],
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   );

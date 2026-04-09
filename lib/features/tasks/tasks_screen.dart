@@ -4,10 +4,13 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_env.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
+import '../../core/utils/task_item_progress_input.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class TasksScreen extends StatefulWidget {
@@ -212,7 +215,7 @@ class _TasksScreenState extends State<TasksScreen> {
         context: context,
         firstDate: DateTime(now.year - 2),
         lastDate: DateTime(now.year + 5),
-        initialDate: now,
+        initialDate: VietnamTime.pickerInitialDate(deadlineCtrl.text),
       );
       if (picked == null) return;
       setSheetState(() {
@@ -436,9 +439,7 @@ class _TasksScreenState extends State<TasksScreen> {
                           if (deadlineCtrl.text.trim().isEmpty &&
                               nextDeadline.trim().isNotEmpty) {
                             deadlineCtrl.text =
-                                nextDeadline.length >= 10
-                                    ? nextDeadline.substring(0, 10)
-                                    : nextDeadline;
+                                VietnamTime.toYmdInput(nextDeadline);
                           }
                           if (descCtrl.text.trim().isEmpty &&
                               nextRequirement.trim().isNotEmpty) {
@@ -1247,14 +1248,14 @@ class _TasksScreenState extends State<TasksScreen> {
                   );
                   return;
                 }
-                final int? progress =
-                    progressCtrl.text.trim().isEmpty
-                        ? null
-                        : int.tryParse(progressCtrl.text.trim());
-                if (progress != null && (progress < 0 || progress > 100)) {
-                  setModalState(
-                    () => localMessage = 'Tiến độ phải từ 0 đến 100.',
-                  );
+                final int? progress = TaskItemProgressInput.tryParseOptional(
+                  progressCtrl.text,
+                  onInvalid: (String m) {
+                    setModalState(() => localMessage = m);
+                  },
+                );
+                if (progress == null &&
+                    progressCtrl.text.trim().isNotEmpty) {
                   return;
                 }
                 setModalState(() {
@@ -1332,8 +1333,13 @@ class _TasksScreenState extends State<TasksScreen> {
                       TextField(
                         controller: progressCtrl,
                         keyboardType: TextInputType.number,
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(3),
+                        ],
                         decoration: const InputDecoration(
                           labelText: 'Tiến độ (%)',
+                          helperText: 'Chỉ 0–100%, không vượt quá 100%',
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -1560,7 +1566,14 @@ class _TasksScreenState extends State<TasksScreen> {
                   TextField(
                     controller: progressCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Tiến độ (%)'),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(3),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'Tiến độ (%)',
+                      helperText: 'Chỉ 0–100%',
+                    ),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -1588,10 +1601,19 @@ class _TasksScreenState extends State<TasksScreen> {
           progressCtrl.dispose();
           return;
         }
-        final int? progress =
-            progressCtrl.text.trim().isEmpty
-                ? null
-                : int.tryParse(progressCtrl.text.trim());
+        final int? progress = TaskItemProgressInput.tryParseOptional(
+          progressCtrl.text,
+          onInvalid: (String m) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(m)),
+            );
+          },
+        );
+        if (progress == null && progressCtrl.text.trim().isNotEmpty) {
+          noteCtrl.dispose();
+          progressCtrl.dispose();
+          return;
+        }
         final bool ok = await widget.apiService.approveTaskItemUpdate(
           token,
           taskId,
@@ -1800,11 +1822,8 @@ class _TasksScreenState extends State<TasksScreen> {
       final List<Map<String, dynamic>> existingItems = await widget.apiService
           .getTaskItems(token, taskId, perPage: 200);
       if ((task['deadline'] ?? '').toString().isNotEmpty) {
-        final String rawDeadline = (task['deadline'] ?? '').toString();
         deadlineCtrl.text =
-            rawDeadline.length >= 10
-                ? rawDeadline.substring(0, 10)
-                : rawDeadline;
+            VietnamTime.toYmdInput(task['deadline']);
       }
       int? assigneeId = taskOwnerId > 0 ? taskOwnerId : null;
       String priority = (task['priority'] ?? 'medium').toString();
@@ -1821,7 +1840,7 @@ class _TasksScreenState extends State<TasksScreen> {
           context: context,
           firstDate: DateTime(now.year - 2),
           lastDate: DateTime(now.year + 5),
-          initialDate: now,
+          initialDate: VietnamTime.pickerInitialDate(deadlineCtrl.text),
         );
         if (picked == null) return;
         setModalState(() {
@@ -1893,18 +1912,20 @@ class _TasksScreenState extends State<TasksScreen> {
                   );
                   return;
                 }
-                final int? progress =
-                    progressCtrl.text.trim().isEmpty
-                        ? null
-                        : int.tryParse(progressCtrl.text.trim());
+                final int? progress = TaskItemProgressInput.tryParseOptional(
+                  progressCtrl.text,
+                  onInvalid: (String m) {
+                    setModalState(() => localMsg = m);
+                  },
+                );
+                if (progress == null &&
+                    progressCtrl.text.trim().isNotEmpty) {
+                  return;
+                }
                 final int? weight =
                     weightCtrl.text.trim().isEmpty
                         ? null
                         : int.tryParse(weightCtrl.text.trim());
-                if (progress != null && (progress < 0 || progress > 100)) {
-                  setModalState(() => localMsg = 'Tiến độ phải từ 0 đến 100.');
-                  return;
-                }
                 if (weight != null && (weight < 1 || weight > 100)) {
                   setModalState(() => localMsg = 'Tỷ trọng phải từ 1 đến 100.');
                   return;
@@ -2184,8 +2205,13 @@ class _TasksScreenState extends State<TasksScreen> {
                       TextField(
                         controller: progressCtrl,
                         keyboardType: TextInputType.number,
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(3),
+                        ],
                         decoration: const InputDecoration(
                           labelText: 'Tiến độ ban đầu (%)',
+                          helperText: 'Chỉ 0–100%',
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -2344,10 +2370,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                 ),
                               ),
                               const Spacer(),
-                              IconButton(
-                                onPressed: () {},
-                                icon: const Icon(Icons.more_horiz),
-                              ),
+                              const SizedBox(width: 40),
                             ],
                           ),
                         ),

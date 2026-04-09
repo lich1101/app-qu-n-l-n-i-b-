@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/task_item_progress_input.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'task_item_detail_screen.dart';
@@ -120,7 +122,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   String _formatDate(String raw) {
     if (raw.isEmpty) return '—';
     final DateTime? dt = VietnamTime.parse(raw);
-    if (dt == null) return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    if (dt == null) return '—';
     return VietnamTime.formatDate(dt);
   }
 
@@ -166,24 +168,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     setState(() => _departments = rows);
   }
 
-  String _toDateInput(dynamic value) {
-    final String raw = (value ?? '').toString().trim();
-    if (raw.length >= 10) return raw.substring(0, 10);
-    return raw;
-  }
+  String _toDateInput(dynamic value) => VietnamTime.toYmdInput(value);
 
   Future<void> _pickDate(
     BuildContext context,
     TextEditingController controller,
   ) async {
     final DateTime now = DateTime.now();
-    DateTime initial = now;
-    if (controller.text.trim().isNotEmpty) {
-      final DateTime? parsed = DateTime.tryParse(controller.text.trim());
-      if (parsed != null) {
-        initial = parsed;
-      }
-    }
+    final DateTime initial = VietnamTime.pickerInitialDate(controller.text);
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -260,14 +252,21 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 );
                 return;
               }
-              final int? progress = int.tryParse(progressCtrl.text.trim());
-              final int? weight = int.tryParse(weightCtrl.text.trim());
-              if (progress == null || progress < 0 || progress > 100) {
-                setModalState(
-                  () => localMessage = 'Tiến độ phải từ 0 đến 100.',
-                );
+              final int? progress = TaskItemProgressInput.tryParseOptional(
+                progressCtrl.text,
+                onInvalid: (String m) {
+                  setModalState(() => localMessage = m);
+                },
+              );
+              if (progress == null) {
+                if (progressCtrl.text.trim().isEmpty) {
+                  setModalState(
+                    () => localMessage = 'Vui lòng nhập tiến độ (0–100%).',
+                  );
+                }
                 return;
               }
+              final int? weight = int.tryParse(weightCtrl.text.trim());
               if (weight == null || weight < 1 || weight > 100) {
                 setModalState(
                   () => localMessage = 'Tỷ trọng phải từ 1 đến 100.',
@@ -322,7 +321,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                         assigneeId: assigneeId,
                       );
 
-              if (!mounted) return;
+              if (!mounted || !sheetContext.mounted) return;
               if (ok) {
                 Navigator.of(sheetContext).pop();
                 await _fetch();
@@ -461,8 +460,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           child: TextField(
                             controller: progressCtrl,
                             keyboardType: TextInputType.number,
+                            inputFormatters: <TextInputFormatter>[
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(3),
+                            ],
                             decoration: const InputDecoration(
                               labelText: 'Tiến độ (%)',
+                              helperText: 'Chỉ 0–100%',
                             ),
                           ),
                         ),
@@ -761,45 +765,42 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Row(
+                              const Text(
+                                'Đầu việc trong công việc',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 8,
                                 children: <Widget>[
-                                  const Expanded(
-                                    child: Text(
-                                      'Đầu việc trong công việc',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
                                   if (_canManageItems)
                                     FilledButton.icon(
                                       onPressed: () => _openItemEditor(),
                                       icon: const Icon(Icons.add, size: 18),
                                       label: const Text('Thêm đầu việc'),
                                     ),
-                                  if (_canManageItems)
-                                    const SizedBox(width: 10),
                                   if (_isTaskApprovalOwner())
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
+                                        horizontal: 12,
+                                        vertical: 8,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: StitchTheme.primary.withValues(
-                                          alpha: 0.12,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
+                                        color: StitchTheme.primary.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(999),
                                       ),
                                       child: Text(
                                         'Bạn là người duyệt phiếu đầu việc',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: StitchTheme.primary,
                                           fontWeight: FontWeight.w700,
-                                          fontSize: 11,
+                                          fontSize: 12,
                                         ),
                                       ),
                                     ),
@@ -1016,20 +1017,39 @@ class _MiniChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: StitchTheme.border),
+        color: StitchTheme.primarySoft,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: StitchTheme.primaryStrong.withValues(alpha: 0.28),
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: StitchTheme.primaryStrong.withValues(alpha: 0.06),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: RichText(
         text: TextSpan(
-          style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+          style: const TextStyle(
+            fontSize: 12.5,
+            height: 1.25,
+            color: StitchTheme.textMain,
+          ),
           children: <InlineSpan>[
-            TextSpan(text: '$label: '),
+            TextSpan(
+              text: '$label: ',
+              style: TextStyle(
+                color: StitchTheme.primaryStrong.withValues(alpha: 0.95),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             TextSpan(
               text: value,
               style: const TextStyle(
                 color: StitchTheme.textMain,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ],

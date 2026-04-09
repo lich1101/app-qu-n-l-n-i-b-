@@ -174,8 +174,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ...((item['data'] is Map<String, dynamic>)
           ? item['data'] as Map<String, dynamic>
           : (item['data'] is Map)
-              ? (item['data'] as Map).cast<String, dynamic>()
-              : <String, dynamic>{}),
+          ? (item['data'] as Map).cast<String, dynamic>()
+          : <String, dynamic>{}),
     };
 
     if (!mounted) return;
@@ -203,6 +203,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.alarm_on;
       case 'contract_approval':
         return Icons.fact_check;
+      case 'contract_finance_request_pending':
+      case 'contract_finance_request_pending_payment':
+        return Icons.payments_outlined;
+      case 'contract_finance_request_pending_cost':
+        return Icons.account_balance_wallet_outlined;
+      case 'staff_transfer_request':
+        return Icons.swap_horiz_rounded;
       case 'facebook_lead':
         return Icons.support_agent;
       default:
@@ -219,6 +226,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'deadline_reminder':
         return StitchTheme.warning;
       case 'contract_approval':
+        return StitchTheme.primary;
+      case 'contract_finance_request_pending':
+      case 'contract_finance_request_pending_payment':
+        return StitchTheme.success;
+      case 'contract_finance_request_pending_cost':
+        return StitchTheme.warning;
+      case 'staff_transfer_request':
         return StitchTheme.primary;
       case 'facebook_lead':
         return StitchTheme.primary;

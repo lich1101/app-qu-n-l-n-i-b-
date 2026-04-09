@@ -195,30 +195,84 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
             }
 
             return Container(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset + 24),
+              decoration: BoxDecoration(
+                color: StitchTheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: StitchTheme.textMain.withValues(alpha: 0.08),
+                    blurRadius: 24,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
               ),
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      approve
-                          ? 'Duyệt bàn giao dự án'
-                          : 'Từ chối bàn giao dự án',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          color: StitchTheme.border,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      (project['name'] ?? 'Dự án').toString(),
-                      style: const TextStyle(color: StitchTheme.textMuted),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: approve
+                                ? StitchTheme.successSoft
+                                : StitchTheme.dangerSoft,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(
+                            approve
+                                ? Icons.verified_outlined
+                                : Icons.cancel_outlined,
+                            color: approve
+                                ? StitchTheme.successStrong
+                                : StitchTheme.dangerStrong,
+                            size: 26,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                approve
+                                    ? 'Duyệt phiếu bàn giao'
+                                    : 'Từ chối phiếu bàn giao',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: StitchTheme.textMain,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                (project['name'] ?? 'Dự án').toString(),
+                                style: const TextStyle(
+                                  color: StitchTheme.textMuted,
+                                  fontSize: 14,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                     _ReviewInfoRow(
                       label: 'Người gửi duyệt',
                       value:
@@ -254,36 +308,48 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                       controller: reasonCtrl,
                       minLines: 3,
                       maxLines: 5,
-                      decoration: InputDecoration(
-                        labelText:
+                      decoration: stitchSheetInputDecoration(
+                        context,
+                        label:
                             approve
                                 ? 'Ghi chú duyệt (tuỳ chọn)'
                                 : 'Lý do từ chối duyệt *',
-                        hintText:
+                        hint:
                             approve
                                 ? 'Nhập ghi chú duyệt (nếu cần)'
                                 : 'Nhập lý do từ chối để gửi về phụ trách dự án',
                       ),
                     ),
                     if (localMessage.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        localMessage,
-                        style: TextStyle(color: StitchTheme.danger),
+                      const SizedBox(height: 12),
+                      StitchFeedbackBanner(
+                        message: localMessage,
+                        isError: true,
                       ),
                     ],
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     Row(
                       children: <Widget>[
                         Expanded(
-                          child: ElevatedButton(
+                          child: FilledButton(
                             onPressed: saving ? null : submit,
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              backgroundColor: approve
+                                  ? StitchTheme.successStrong
+                                  : StitchTheme.dangerStrong,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
                             child: Text(
                               saving
                                   ? 'Đang xử lý...'
                                   : (approve
-                                      ? 'Duyệt bàn giao'
-                                      : 'Từ chối duyệt'),
+                                      ? 'Xác nhận duyệt'
+                                      : 'Gửi từ chối'),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ),
                         ),
@@ -292,7 +358,15 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                           child: OutlinedButton(
                             onPressed:
                                 saving ? null : () => Navigator.of(ctx).pop(),
-                            child: const Text('Hủy'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              side: const BorderSide(color: StitchTheme.border),
+                              foregroundColor: StitchTheme.textMain,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text('Đóng'),
                           ),
                         ),
                       ],
@@ -685,7 +759,11 @@ class _SummaryChip extends StatelessWidget {
         children: <Widget>[
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: StitchTheme.textMuted),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: StitchTheme.labelEmphasis,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
