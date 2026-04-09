@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -286,135 +287,193 @@ class _ProductsScreenState extends State<ProductsScreen> {
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.bg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      editingId == null ? 'Tạo sản phẩm' : 'Sửa sản phẩm',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Mã sản phẩm sẽ tự sinh theo danh mục khi lưu.',
-                      style: TextStyle(
-                        color: StitchTheme.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Tên sản phẩm',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int?>(
-                      value: selectedCategoryId,
-                      items: <DropdownMenuItem<int?>>[
-                        const DropdownMenuItem<int?>(
-                          value: null,
-                          child: Text('Chọn danh mục'),
-                        ),
-                        ...categories.map((Map<String, dynamic> category) {
-                          final int? id = _parseId(category['id']);
-                          return DropdownMenuItem<int?>(
-                            value: id,
-                            child: Text((category['name'] ?? '').toString()),
-                          );
-                        }),
-                      ],
-                      onChanged: (int? value) {
-                        setSheetState(() => selectedCategoryId = value);
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Danh mục sản phẩm',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: TextField(
-                            controller: unitCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Đơn vị',
+              decoration: stitchFormSheetSurfaceDecoration(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  StitchFormSheetTitleBar(
+                    title: editingId == null ? 'Tạo sản phẩm' : 'Sửa sản phẩm',
+                    subtitle:
+                        'Mã sản phẩm sẽ tự sinh theo danh mục khi lưu.',
+                    icon:
+                        editingId == null
+                            ? Icons.add_shopping_cart_outlined
+                            : Icons.inventory_2_outlined,
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          TextField(
+                            controller: nameCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Tên sản phẩm',
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: priceCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Đơn giá',
-                            ),
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(labelText: 'Mô tả'),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Đang hoạt động'),
-                      value: isActive,
-                      onChanged:
-                          (bool value) => setSheetState(() => isActive = value),
-                    ),
-                    if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        message,
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final bool ok = await _save();
-                              if (!context.mounted) return;
-                              if (ok) {
-                                Navigator.of(context).pop();
-                              } else {
-                                setSheetState(() {});
-                              }
+                          SizedBox(height: kStitchTaskFormGap),
+                          DropdownButtonFormField<int?>(
+                            value: selectedCategoryId,
+                            items: <DropdownMenuItem<int?>>[
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('Chọn danh mục'),
+                              ),
+                              ...categories.map((Map<String, dynamic> category) {
+                                final int? id = _parseId(category['id']);
+                                return DropdownMenuItem<int?>(
+                                  value: id,
+                                  child: Text(
+                                    (category['name'] ?? '').toString(),
+                                  ),
+                                );
+                              }),
+                            ],
+                            onChanged: (int? value) {
+                              setSheetState(() => selectedCategoryId = value);
                             },
-                            child: Text(
-                              editingId == null ? 'Lưu sản phẩm' : 'Cập nhật',
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Danh mục sản phẩm',
                             ),
                           ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: TextField(
+                                  controller: unitCtrl,
+                                  decoration: stitchSheetInputDecoration(
+                                    context,
+                                    label: 'Đơn vị',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: priceCtrl,
+                                  decoration: stitchSheetInputDecoration(
+                                    context,
+                                    label: 'Đơn giá',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: descCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Mô tả',
+                            ),
+                            maxLines: 2,
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Đang hoạt động'),
+                            value: isActive,
+                            onChanged:
+                                (bool value) =>
+                                    setSheetState(() => isActive = value),
+                          ),
+                          if (message.isNotEmpty) ...<Widget>[
+                            SizedBox(height: kStitchTaskFormGap),
+                            StitchFeedbackBanner(
+                              message: message,
+                              isError:
+                                  message.contains('thất bại') ||
+                                  message.contains('Vui lòng') ||
+                                  message.contains('không có quyền'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                    decoration: BoxDecoration(
+                      color: StitchTheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: StitchTheme.border.withValues(alpha: 0.85),
+                        ),
+                      ),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: StitchTheme.textMain.withValues(alpha: 0.04),
+                          blurRadius: 12,
+                          offset: const Offset(0, -4),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                    child: SafeArea(
+                      top: false,
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                side: const BorderSide(
+                                  color: StitchTheme.border,
+                                ),
+                                foregroundColor: StitchTheme.textMain,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text('Hủy'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () async {
+                                final bool ok = await _save();
+                                if (!context.mounted) return;
+                                if (ok) {
+                                  Navigator.of(context).pop();
+                                } else {
+                                  setSheetState(() {});
+                                }
+                              },
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                backgroundColor: StitchTheme.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: Text(
+                                editingId == null
+                                    ? 'Lưu sản phẩm'
+                                    : 'Cập nhật',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -447,94 +506,146 @@ class _ProductsScreenState extends State<ProductsScreen> {
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.bg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      editingCategoryId == null
-                          ? 'Tạo danh mục'
-                          : 'Sửa danh mục',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: categoryNameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Tên danh mục',
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Mã danh mục sẽ được hệ thống tự sinh và không trùng nhau.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: StitchTheme.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: categoryDescCtrl,
-                      decoration: const InputDecoration(labelText: 'Mô tả'),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Đang hoạt động'),
-                      value: categoryIsActive,
-                      onChanged:
-                          (bool value) =>
-                              setSheetState(() => categoryIsActive = value),
-                    ),
-                    if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        message,
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final bool ok = await _saveCategory();
-                              if (!context.mounted) return;
-                              if (ok) {
-                                Navigator.of(context).pop();
-                              } else {
-                                setSheetState(() {});
-                              }
-                            },
-                            child: Text(
-                              editingCategoryId == null
-                                  ? 'Lưu danh mục'
-                                  : 'Cập nhật',
+              decoration: stitchFormSheetSurfaceDecoration(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  StitchFormSheetTitleBar(
+                    title:
+                        editingCategoryId == null
+                            ? 'Tạo danh mục'
+                            : 'Sửa danh mục',
+                    subtitle:
+                        'Mã danh mục sẽ được hệ thống tự sinh và không trùng nhau.',
+                    icon:
+                        editingCategoryId == null
+                            ? Icons.create_new_folder_outlined
+                            : Icons.folder_special_outlined,
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          TextField(
+                            controller: categoryNameCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Tên danh mục',
                             ),
                           ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: categoryDescCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Mô tả',
+                            ),
+                            maxLines: 2,
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Đang hoạt động'),
+                            value: categoryIsActive,
+                            onChanged:
+                                (bool value) => setSheetState(
+                                  () => categoryIsActive = value,
+                                ),
+                          ),
+                          if (message.isNotEmpty) ...<Widget>[
+                            SizedBox(height: kStitchTaskFormGap),
+                            StitchFeedbackBanner(
+                              message: message,
+                              isError:
+                                  message.contains('thất bại') ||
+                                  message.contains('Vui lòng') ||
+                                  message.contains('không có quyền'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                    decoration: BoxDecoration(
+                      color: StitchTheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: StitchTheme.border.withValues(alpha: 0.85),
+                        ),
+                      ),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: StitchTheme.textMain.withValues(alpha: 0.04),
+                          blurRadius: 12,
+                          offset: const Offset(0, -4),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                    child: SafeArea(
+                      top: false,
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                side: const BorderSide(
+                                  color: StitchTheme.border,
+                                ),
+                                foregroundColor: StitchTheme.textMain,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text('Hủy'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () async {
+                                final bool ok = await _saveCategory();
+                                if (!context.mounted) return;
+                                if (ok) {
+                                  Navigator.of(context).pop();
+                                } else {
+                                  setSheetState(() {});
+                                }
+                              },
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                backgroundColor: StitchTheme.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: Text(
+                                editingCategoryId == null
+                                    ? 'Lưu danh mục'
+                                    : 'Cập nhật',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
+import 'opportunity_detail_edit_screen.dart';
 
 class OpportunityDetailScreen extends StatefulWidget {
   const OpportunityDetailScreen({
@@ -25,7 +26,6 @@ class OpportunityDetailScreen extends StatefulWidget {
 
 class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
   bool _loading = true;
-  bool _saving = false;
   String _message = '';
   Map<String, dynamic>? _opportunity;
   List<Map<String, dynamic>> _statuses = <Map<String, dynamic>>[];
@@ -108,253 +108,24 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
   Future<void> _openEditSheet() async {
     final Map<String, dynamic>? opportunity = _opportunity;
     if (opportunity == null) return;
-
-    final TextEditingController titleCtrl = TextEditingController(
-      text: (opportunity['title'] ?? '').toString(),
+    final bool? ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder:
+            (_) => OpportunityDetailEditScreen(
+              token: widget.token,
+              apiService: widget.apiService,
+              opportunityId: widget.opportunityId,
+              opportunity: Map<String, dynamic>.from(opportunity),
+              clients: _clients,
+              statuses: _statuses,
+            ),
+      ),
     );
-    final TextEditingController amountCtrl = TextEditingController(
-      text: (opportunity['amount'] ?? '').toString(),
-    );
-    final TextEditingController sourceCtrl = TextEditingController(
-      text: (opportunity['source'] ?? '').toString(),
-    );
-    final TextEditingController notesCtrl = TextEditingController(
-      text: (opportunity['notes'] ?? '').toString(),
-    );
-    final TextEditingController typeCtrl = TextEditingController(
-      text: (opportunity['opportunity_type'] ?? '').toString(),
-    );
-    final TextEditingController probabilityCtrl = TextEditingController(
-      text: (opportunity['success_probability'] ?? '').toString(),
-    );
-    final TextEditingController expectedDateCtrl = TextEditingController(
-      text: (opportunity['expected_close_date'] ?? '').toString(),
-    );
-    int? clientId = _toInt(opportunity['client_id']);
-    String? statusCode = (opportunity['status'] ?? '').toString();
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 16,
-                bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        const Text(
-                          'Sửa cơ hội',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _FieldLabel('Tên cơ hội *'),
-                    TextField(controller: titleCtrl),
-                    const SizedBox(height: 12),
-                    _FieldLabel('Khách hàng *'),
-                    DropdownButtonFormField<int>(
-                      value: clientId,
-                      decoration: const InputDecoration(hintText: 'Chọn khách hàng'),
-                      items: _clients
-                          .map(
-                            (Map<String, dynamic> client) => DropdownMenuItem<int>(
-                              value: _toInt(client['id']),
-                              child: Text(
-                                '${client['name'] ?? '—'}${(client['company'] ?? '').toString().trim().isNotEmpty ? ' • ${client['company']}' : ''}',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (int? next) => setModalState(() => clientId = next),
-                    ),
-                    const SizedBox(height: 12),
-                    _FieldLabel('Trạng thái'),
-                    DropdownButtonFormField<String>(
-                      value: statusCode == null || statusCode!.isEmpty ? null : statusCode,
-                      decoration: const InputDecoration(hintText: 'Chọn trạng thái'),
-                      items: _statuses
-                          .map(
-                            (Map<String, dynamic> status) => DropdownMenuItem<String>(
-                              value: (status['code'] ?? '').toString(),
-                              child: Text((status['name'] ?? '—').toString()),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (String? next) => setModalState(() => statusCode = next),
-                    ),
-                    const SizedBox(height: 12),
-                    _FieldLabel('Doanh số dự kiến (VNĐ) *'),
-                    TextField(
-                      controller: amountCtrl,
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 12),
-                    _FieldLabel('Nguồn cơ hội'),
-                    TextField(controller: sourceCtrl),
-                    const SizedBox(height: 12),
-                    _FieldLabel('Loại cơ hội'),
-                    TextField(controller: typeCtrl),
-                    const SizedBox(height: 12),
-                    _FieldLabel('Tỷ lệ thành công (%) *'),
-                    TextField(
-                      controller: probabilityCtrl,
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 12),
-                    _FieldLabel('Ngày kết thúc dự kiến'),
-                    TextField(
-                      controller: expectedDateCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'YYYY-MM-DD',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _FieldLabel('Ghi chú'),
-                    TextField(controller: notesCtrl, minLines: 3, maxLines: 4),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _saving
-                            ? null
-                            : () async {
-                                if (titleCtrl.text.trim().isEmpty || clientId == null || clientId == 0) {
-                                  if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Vui lòng nhập tên cơ hội và chọn khách hàng.'),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                setModalState(() {});
-                                final bool saved = await _submitEdit(
-                                  title: titleCtrl.text.trim(),
-                                  clientId: clientId!,
-                                  status: statusCode,
-                                  amount: amountCtrl.text.trim(),
-                                  source: sourceCtrl.text.trim(),
-                                  notes: notesCtrl.text.trim(),
-                                  opportunityType: typeCtrl.text.trim(),
-                                  successProbability: probabilityCtrl.text.trim(),
-                                  expectedCloseDate: expectedDateCtrl.text.trim(),
-                                );
-                                if (!mounted || !context.mounted) return;
-                                if (saved) {
-                                  Navigator.of(context).pop();
-                                }
-                              },
-                        child: Text(_saving ? 'Đang lưu...' : 'Lưu thay đổi'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  int? _toInt(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    return int.tryParse(value.toString());
-  }
-
-  double? _toDouble(String value) {
-    if (value.trim().isEmpty) return null;
-    return double.tryParse(value.trim());
-  }
-
-  int? _toProbability(String value) {
-    if (value.trim().isEmpty) return null;
-    final int? parsed = int.tryParse(value.trim());
-    if (parsed == null) return null;
-    if (parsed < 0 || parsed > 100) return null;
-    return parsed;
-  }
-
-  Future<bool> _submitEdit({
-    required String title,
-    required int clientId,
-    String? status,
-    required String amount,
-    required String source,
-    required String notes,
-    required String opportunityType,
-    required String successProbability,
-    required String expectedCloseDate,
-  }) async {
-    setState(() => _saving = true);
-    try {
-      final double? amt = _toDouble(amount);
-      if (amt == null || amt < 0) {
-        if (mounted) {
-          setState(() {
-            _message = 'Vui lòng nhập doanh số dự kiến (số ≥ 0).';
-          });
-        }
-        return false;
-      }
-      final int? prob = _toProbability(successProbability);
-      if (prob == null) {
-        if (mounted) {
-          setState(() {
-            _message = 'Vui lòng nhập tỷ lệ thành công (0–100%).';
-          });
-        }
-        return false;
-      }
-      final bool ok = await widget.apiService.updateOpportunity(
-        widget.token,
-        widget.opportunityId,
-        title: title,
-        clientId: clientId,
-        status: (status ?? '').trim().isEmpty ? null : status,
-        amount: amt,
-        source: source.trim().isEmpty ? null : source.trim(),
-        notes: notes.trim().isEmpty ? null : notes.trim(),
-        opportunityType:
-            opportunityType.trim().isEmpty ? null : opportunityType.trim(),
-        successProbability: prob,
-        expectedCloseDate:
-            expectedCloseDate.trim().isEmpty ? null : expectedCloseDate.trim(),
-      );
-      if (!mounted) return false;
-      setState(() {
-        _message = ok ? 'Đã cập nhật cơ hội.' : 'Không cập nhật được cơ hội.';
-      });
-      if (ok) {
-        await _fetch();
-      }
-      return ok;
-    } finally {
+    if (!mounted) return;
+    if (ok == true) {
+      await _fetch();
       if (mounted) {
-        setState(() => _saving = false);
+        setState(() => _message = 'Đã cập nhật cơ hội.');
       }
     }
   }
@@ -548,27 +319,6 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                   ],
                 ),
               ),
-      ),
-    );
-  }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: StitchTheme.textSubtle,
-        ),
       ),
     );
   }

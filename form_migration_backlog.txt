@@ -1,0 +1,17 @@
+Backlog: form dài còn dùng showModalBottomSheet (ưu tiên migrate full-screen Winmap)
+
+Đã chuyển full-screen (tham chiếu):
+- create_project_screen, project_task_form_screen, task_list_create_task_screen,
+  task_item_form_screen, opportunity_list_form_screen, opportunity_detail_edit_screen
+
+Còn nhiều sheet (grep showModalBottomSheet trong lib/features):
+- tasks_screen.dart — sheet chi tiết công việc / báo cáo đầu việc (giữ sheet cho insight/modal nhỏ; openCreateItemModal vẫn là sheet — có thể migrate sau)
+- task_item_detail_screen.dart
+- products_screen.dart, crm_screen.dart, contracts_screen.dart (nhiều)
+- attendance_wifi_screen.dart (nhiều)
+- meetings_screen.dart, client_detail_screen.dart, handover_screen.dart
+- home_shell.dart, chat_screen.dart, deadline_screen.dart
+- opportunity_statuses_screen.dart
+- department_assignments_screen, departments_screen, lead_types_screen, revenue_tiers_screen, services_screen
+
+Gợi ý thứ tự: contracts → crm → products → attendance → meetings (theo độ phức tạp form).

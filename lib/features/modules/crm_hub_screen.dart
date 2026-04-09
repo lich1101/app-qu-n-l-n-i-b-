@@ -9,7 +9,6 @@ class CrmHubScreen extends StatelessWidget {
     this.onOpenOpportunities,
     this.onOpenContracts,
     this.onOpenProducts,
-    this.onOpenLeadForms,
     this.onOpenLeadTypes,
     this.onOpenOpportunityStatuses,
     this.onOpenRevenueTiers,
@@ -20,7 +19,6 @@ class CrmHubScreen extends StatelessWidget {
   final VoidCallback? onOpenOpportunities;
   final VoidCallback? onOpenContracts;
   final VoidCallback? onOpenProducts;
-  final VoidCallback? onOpenLeadForms;
   final VoidCallback? onOpenLeadTypes;
   final VoidCallback? onOpenOpportunityStatuses;
   final VoidCallback? onOpenRevenueTiers;
@@ -61,13 +59,6 @@ class CrmHubScreen extends StatelessWidget {
     ];
 
     final List<_CrmItem> configItems = <_CrmItem>[
-      if (onOpenLeadForms != null)
-        _CrmItem(
-          title: 'Form tư vấn',
-          subtitle: 'Tạo iframe thu khách hàng tiềm năng',
-          icon: Icons.webhook_outlined,
-          onTap: onOpenLeadForms!,
-        ),
       if (onOpenLeadTypes != null)
         _CrmItem(
           title: 'Trạng thái khách hàng',

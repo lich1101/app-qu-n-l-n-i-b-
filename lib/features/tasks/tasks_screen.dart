@@ -9,9 +9,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_env.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_searchable_select.dart';
+import '../../core/widgets/stitch_task_form_sheet.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../core/utils/task_item_progress_input.dart';
 import '../../data/services/mobile_api_service.dart';
+import 'task_list_create_task_screen.dart';
 
 class TasksScreen extends StatefulWidget {
   const TasksScreen({
@@ -195,563 +198,43 @@ class _TasksScreenState extends State<TasksScreen> {
     }
     if (!mounted) return;
 
-    final TextEditingController titleCtrl = TextEditingController();
-    final TextEditingController descCtrl = TextEditingController();
-    final TextEditingController deadlineCtrl = TextEditingController();
-    final TextEditingController weightCtrl = TextEditingController(text: '100');
-    List<Map<String, dynamic>> projectTasks = <Map<String, dynamic>>[];
-    bool loadingProjectWeights = false;
-    int? projectId;
-    int? departmentId;
-    int? assigneeId;
-    String priority = 'medium';
-    String status = widget.statuses.isNotEmpty ? widget.statuses.first : 'todo';
-    bool submitting = false;
-    String localMessage = '';
-
-    Future<void> pickDeadline(StateSetter setSheetState) async {
-      final DateTime now = DateTime.now();
-      final DateTime? picked = await showDatePicker(
-        context: context,
-        firstDate: DateTime(now.year - 2),
-        lastDate: DateTime(now.year + 5),
-        initialDate: VietnamTime.pickerInitialDate(deadlineCtrl.text),
-      );
-      if (picked == null) return;
-      setSheetState(() {
-        deadlineCtrl.text =
-            '${picked.year.toString().padLeft(4, '0')}-'
-            '${picked.month.toString().padLeft(2, '0')}-'
-            '${picked.day.toString().padLeft(2, '0')}';
-      });
-    }
-
-    Future<void> loadProjectTasks(
-      int? nextProjectId,
-      StateSetter setSheetState,
-    ) async {
-      if (nextProjectId == null) {
-        setSheetState(() {
-          projectTasks = <Map<String, dynamic>>[];
-          loadingProjectWeights = false;
-        });
-        return;
-      }
-      setSheetState(() => loadingProjectWeights = true);
-      final List<Map<String, dynamic>> rows = await widget.apiService.getTasks(
-        token,
-        projectId: nextProjectId,
-        perPage: 200,
+    final bool? created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder:
+            (_) => TaskListCreateTaskScreen(
+              token: token,
+              apiService: widget.apiService,
+              projects: projects,
+              departments: departments,
+              statuses: widget.statuses,
+            ),
+      ),
+    );
+    if (!mounted) return;
+    if (created == true) {
+      await widget.onRefresh(
+        status: widget.currentFilter,
+        silent: true,
       );
       if (!mounted) return;
-      setSheetState(() {
-        projectTasks = rows;
-        loadingProjectWeights = false;
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã tạo công việc mới.')),
+      );
     }
+  }
 
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: StitchTheme.surface,
-      builder: (BuildContext ctx) {
-        final double bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
-        return StatefulBuilder(
-          builder: (BuildContext ctx, StateSetter setSheetState) {
-            final Map<String, dynamic>? selectedProject =
-                projectId == null
-                    ? null
-                    : projects.firstWhere(
-                      (Map<String, dynamic> p) => p['id'] == projectId,
-                      orElse: () => <String, dynamic>{},
-                    );
-            final List<Map<String, dynamic>> siblingTasks = projectTasks;
-            final int siblingWeightTotal = siblingTasks.fold<int>(
-              0,
-              (int sum, Map<String, dynamic> task) =>
-                  sum +
-                  (int.tryParse((task['weight_percent'] ?? 0).toString()) ?? 0),
-            );
-            final int currentWeight = int.tryParse(weightCtrl.text.trim()) ?? 0;
-            final int projectedWeightTotal = siblingWeightTotal + currentWeight;
-            final int remainingWeight = math.max(0, 100 - siblingWeightTotal);
-
-            List<Map<String, dynamic>> staffOptions = <Map<String, dynamic>>[];
-            if (departmentId != null) {
-              final Map<String, dynamic>? dept = departments.firstWhere(
-                (Map<String, dynamic> d) => d['id'] == departmentId,
-                orElse: () => <String, dynamic>{},
-              );
-              final List<dynamic> staff =
-                  (dept?['staff'] ?? <dynamic>[]) as List<dynamic>;
-              staffOptions =
-                  staff.map((dynamic e) => e as Map<String, dynamic>).toList();
-            }
-
-            Future<void> submit() async {
-              final String title = titleCtrl.text.trim();
-              if (projectId == null) {
-                setSheetState(() => localMessage = 'Vui lòng chọn dự án.');
-                return;
-              }
-              if (departmentId == null) {
-                setSheetState(() => localMessage = 'Vui lòng chọn phòng ban.');
-                return;
-              }
-              if (title.isEmpty) {
-                setSheetState(() => localMessage = 'Vui lòng nhập tiêu đề.');
-                return;
-              }
-              if (assigneeId == null) {
-                setSheetState(
-                  () => localMessage = 'Vui lòng chọn nhân sự phụ trách.',
-                );
-                return;
-              }
-              final int? weight =
-                  weightCtrl.text.trim().isEmpty
-                      ? null
-                      : int.tryParse(weightCtrl.text.trim());
-              if (weight != null && (weight < 1 || weight > 100)) {
-                setSheetState(
-                  () => localMessage = 'Tỷ trọng phải từ 1 đến 100.',
-                );
-                return;
-              }
-              if (projectedWeightTotal > 100) {
-                setSheetState(
-                  () =>
-                      localMessage =
-                          'Tổng tỷ trọng không được lố 100%. Mức nhập tối đa: $remainingWeight%',
-                );
-                return;
-              }
-              setSheetState(() {
-                submitting = true;
-                localMessage = '';
-              });
-              final bool ok = await widget.apiService.createTask(
-                token,
-                projectId: projectId!,
-                departmentId: departmentId,
-                assigneeId: assigneeId,
-                title: title,
-                description: descCtrl.text.trim(),
-                priority: priority,
-                status: status,
-                deadline:
-                    deadlineCtrl.text.trim().isEmpty ? null : deadlineCtrl.text,
-                weightPercent: weight,
-              );
-              if (!mounted) return;
-              if (ok) {
-                Navigator.of(ctx).pop();
-                await widget.onRefresh(
-                  status: widget.currentFilter,
-                  silent: true,
-                );
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đã tạo công việc mới.')),
-                  );
-                }
-              } else {
-                setSheetState(() {
-                  submitting = false;
-                  localMessage = 'Tạo công việc thất bại.';
-                });
-              }
-            }
-
-            return Container(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + bottomInset),
-              decoration: const BoxDecoration(
-                color: StitchTheme.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Text(
-                      'Thêm công việc mới',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (localMessage.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        localMessage,
-                        style: const TextStyle(color: Colors.redAccent),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      value: projectId,
-                      items:
-                          projects
-                              .map(
-                                (Map<String, dynamic> p) =>
-                                    DropdownMenuItem<int>(
-                                      value: p['id'] as int?,
-                                      child: Text(
-                                        (p['name'] ?? 'Dự án').toString(),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                              )
-                              .toList(),
-                      onChanged: (int? v) async {
-                        final Map<String, dynamic>? nextProject =
-                            v == null
-                                ? null
-                                : projects.firstWhere(
-                                  (Map<String, dynamic> p) => p['id'] == v,
-                                  orElse: () => <String, dynamic>{},
-                                );
-                        final int? nextOwnerId =
-                            nextProject == null
-                                ? null
-                                : int.tryParse(
-                                  '${nextProject['owner_id'] ?? nextProject['owner']?['id'] ?? ''}',
-                                );
-                        final int? nextDepartmentId =
-                            nextProject == null
-                                ? null
-                                : int.tryParse(
-                                  '${nextProject['owner']?['department_id'] ?? nextProject['department_id'] ?? ''}',
-                                );
-                        final String nextDeadline =
-                            nextProject == null
-                                ? ''
-                                : '${nextProject['deadline'] ?? ''}'.toString();
-                        final String nextRequirement =
-                            nextProject == null
-                                ? ''
-                                : '${nextProject['customer_requirement'] ?? ''}'
-                                    .toString();
-                        setSheetState(() {
-                          projectId = v;
-                          departmentId = nextDepartmentId ?? departmentId;
-                          assigneeId = nextOwnerId ?? assigneeId;
-                          if (deadlineCtrl.text.trim().isEmpty &&
-                              nextDeadline.trim().isNotEmpty) {
-                            deadlineCtrl.text =
-                                VietnamTime.toYmdInput(nextDeadline);
-                          }
-                          if (descCtrl.text.trim().isEmpty &&
-                              nextRequirement.trim().isNotEmpty) {
-                            descCtrl.text = nextRequirement;
-                          }
-                        });
-                        await loadProjectTasks(v, setSheetState);
-                      },
-                      decoration: const InputDecoration(labelText: 'Dự án'),
-                    ),
-                    if (selectedProject != null &&
-                        selectedProject.isNotEmpty &&
-                        selectedProject['contract_id'] == null)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 6),
-                        child: Text(
-                          'Dự án chưa có hợp đồng, hệ thống xử lý theo luồng dự án nội bộ.',
-                          style: TextStyle(
-                            color: StitchTheme.textMuted,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      value: departmentId,
-                      items:
-                          departments
-                              .map(
-                                (Map<String, dynamic> d) =>
-                                    DropdownMenuItem<int>(
-                                      value: d['id'] as int?,
-                                      child: Text(
-                                        (d['name'] ?? 'Phòng ban').toString(),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                              )
-                              .toList(),
-                      onChanged: (int? v) {
-                        setSheetState(() {
-                          departmentId = v;
-                          assigneeId = null;
-                        });
-                      },
-                      decoration: const InputDecoration(labelText: 'Phòng ban'),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      value: assigneeId,
-                      items:
-                          staffOptions
-                              .map(
-                                (Map<String, dynamic> s) =>
-                                    DropdownMenuItem<int>(
-                                      value: s['id'] as int?,
-                                      child: Text(
-                                        (s['name'] ?? s['email'] ?? 'Nhân sự')
-                                            .toString(),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                              )
-                              .toList(),
-                      onChanged:
-                          (int? v) => setSheetState(() => assigneeId = v),
-                      decoration: const InputDecoration(
-                        labelText: 'Nhân sự phụ trách',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: titleCtrl,
-                      decoration: const InputDecoration(labelText: 'Tiêu đề'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: descCtrl,
-                      maxLines: 3,
-                      decoration: const InputDecoration(labelText: 'Mô tả'),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: priority,
-                            items: const <DropdownMenuItem<String>>[
-                              DropdownMenuItem(
-                                value: 'low',
-                                child: Text('Thấp'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'medium',
-                                child: Text('Trung bình'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'high',
-                                child: Text('Cao'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'urgent',
-                                child: Text('Khẩn cấp'),
-                              ),
-                            ],
-                            onChanged:
-                                (String? v) => setSheetState(
-                                  () => priority = v ?? 'medium',
-                                ),
-                            decoration: const InputDecoration(
-                              labelText: 'Ưu tiên',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: status,
-                            items:
-                                widget.statuses
-                                    .map(
-                                      (String s) => DropdownMenuItem<String>(
-                                        value: s,
-                                        child: Text(_prettyStatus(s)),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged:
-                                (String? v) =>
-                                    setSheetState(() => status = v ?? status),
-                            decoration: const InputDecoration(
-                              labelText: 'Trạng thái',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: TextField(
-                            controller: deadlineCtrl,
-                            readOnly: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Hạn hoàn tất',
-                              suffixIcon: Icon(Icons.calendar_today, size: 18),
-                            ),
-                            onTap: () => pickDeadline(setSheetState),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              TextField(
-                                controller: weightCtrl,
-                                keyboardType: TextInputType.number,
-                                onChanged: (_) => setSheetState(() {}),
-                                decoration: InputDecoration(
-                                  labelText:
-                                      'Tỷ trọng % (Trống: $remainingWeight%)',
-                                  labelStyle: TextStyle(
-                                    color:
-                                        projectedWeightTotal > 100
-                                            ? StitchTheme.danger
-                                            : StitchTheme.success,
-                                    fontWeight:
-                                        projectedWeightTotal > 100
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                  ),
-                                ),
-                              ),
-                              if (projectedWeightTotal > 100)
-                                Padding(
-                                  padding: EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    'Đã vượt quá 100%!',
-                                    style: TextStyle(
-                                      color: StitchTheme.danger,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: <Widget>[
-                        OutlinedButton(
-                          onPressed:
-                              projectId == null || remainingWeight <= 0
-                                  ? null
-                                  : () {
-                                    setSheetState(() {
-                                      weightCtrl.text =
-                                          math
-                                              .max(1, remainingWeight)
-                                              .toString();
-                                    });
-                                  },
-                          child: Text('Điền phần còn lại ($remainingWeight%)'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color:
-                            projectedWeightTotal == 100
-                                ? const Color(0xFFECFDF3)
-                                : projectedWeightTotal > 100
-                                ? const Color(0xFFFEF2F2)
-                                : const Color(0xFFFFFBEB),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color:
-                              projectedWeightTotal == 100
-                                  ? const Color(0xFFA7F3D0)
-                                  : projectedWeightTotal > 100
-                                  ? const Color(0xFFFECACA)
-                                  : const Color(0xFFFDE68A),
-                        ),
-                      ),
-                      child: Text(
-                        loadingProjectWeights
-                            ? 'Đang kiểm tra tổng tỷ trọng công việc trong dự án...'
-                            : 'Tổng tỷ trọng công việc của dự án sau khi lưu sẽ là $projectedWeightTotal%. Mốc hợp lý là 100%.',
-                        style: TextStyle(
-                          color:
-                              projectedWeightTotal == 100
-                                  ? const Color(0xFF047857)
-                                  : projectedWeightTotal > 100
-                                  ? Colors.redAccent
-                                  : const Color(0xFFB45309),
-                          fontSize: 12,
-                          height: 1.45,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: StitchTheme.surfaceAlt,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: StitchTheme.border),
-                      ),
-                      child: const Text(
-                        'Tiến độ công việc sẽ được hệ thống tự tính từ các đầu việc và tỷ trọng của từng đầu việc. Bạn chỉ cần nhập tỷ trọng công việc trong dự án.',
-                        style: TextStyle(
-                          color: StitchTheme.textMuted,
-                          fontSize: 12,
-                          height: 1.45,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: submitting ? null : submit,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: Text(
-                              submitting ? 'Đang tạo...' : 'Tạo công việc',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed:
-                                submitting
-                                    ? null
-                                    : () => Navigator.of(ctx).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    titleCtrl.dispose();
-    descCtrl.dispose();
-    deadlineCtrl.dispose();
-    weightCtrl.dispose();
+  Color _taskStatusColor(String status) {
+    switch (status) {
+      case 'done':
+        return StitchTheme.successStrong;
+      case 'doing':
+        return StitchTheme.primaryStrong;
+      case 'blocked':
+        return StitchTheme.danger;
+      case 'todo':
+      default:
+        return StitchTheme.warningStrong;
+    }
   }
 
   String _shortDate(String? raw) {
@@ -1311,14 +794,19 @@ class _TasksScreenState extends State<TasksScreen> {
                         ),
                       ],
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
+                      StitchSearchableSelectField<String>(
                         value: statusValue.isEmpty ? null : statusValue,
-                        items:
+                        nullable: true,
+                        nullLabel: '— Không chọn —',
+                        sheetTitle: 'Trạng thái (tuỳ chọn)',
+                        label: 'Trạng thái (tuỳ chọn)',
+                        searchHint: 'Tìm trạng thái...',
+                        options:
                             widget.statuses
                                 .map(
-                                  (String s) => DropdownMenuItem<String>(
+                                  (String s) => StitchSelectOption<String>(
                                     value: s,
-                                    child: Text(_prettyStatus(s)),
+                                    label: _prettyStatus(s),
                                   ),
                                 )
                                 .toList(),
@@ -1327,7 +815,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                 setModalState(() => statusValue = v ?? ''),
                         decoration: const InputDecoration(
                           labelText: 'Trạng thái (tuỳ chọn)',
-                        ),
+                        ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
                       ),
                       const SizedBox(height: 10),
                       TextField(
@@ -1545,42 +1033,53 @@ class _TasksScreenState extends State<TasksScreen> {
           builder: (BuildContext ctx) {
             return AlertDialog(
               title: const Text('Sửa & duyệt báo cáo'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  DropdownButtonFormField<String>(
-                    value: statusValue.isEmpty ? null : statusValue,
-                    items:
-                        widget.statuses
-                            .map(
-                              (String s) => DropdownMenuItem<String>(
-                                value: s,
-                                child: Text(_prettyStatus(s)),
-                              ),
-                            )
-                            .toList(),
-                    onChanged: (String? v) => statusValue = v ?? '',
-                    decoration: const InputDecoration(labelText: 'Trạng thái'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: progressCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(3),
+              content: StatefulBuilder(
+                builder: (BuildContext dCtx, void Function(void Function()) setD) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      StitchSearchableSelectField<String>(
+                        value: statusValue.isEmpty ? null : statusValue,
+                        sheetTitle: 'Chọn trạng thái',
+                        label: 'Trạng thái',
+                        searchHint: 'Tìm trạng thái...',
+                        options:
+                            widget.statuses
+                                .map(
+                                  (String s) => StitchSelectOption<String>(
+                                    value: s,
+                                    label: _prettyStatus(s),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged:
+                            (String? v) =>
+                                setD(() => statusValue = v ?? ''),
+                        decoration: const InputDecoration(
+                          labelText: 'Trạng thái',
+                        ).applyDefaults(Theme.of(dCtx).inputDecorationTheme),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: progressCtrl,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(3),
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Tiến độ (%)',
+                          helperText: 'Chỉ 0–100%',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: noteCtrl,
+                        decoration: const InputDecoration(labelText: 'Ghi chú'),
+                      ),
                     ],
-                    decoration: const InputDecoration(
-                      labelText: 'Tiến độ (%)',
-                      helperText: 'Chỉ 0–100%',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: noteCtrl,
-                    decoration: const InputDecoration(labelText: 'Ghi chú'),
-                  ),
-                ],
+                  );
+                },
               ),
               actions: <Widget>[
                 TextButton(
@@ -1813,6 +1312,7 @@ class _TasksScreenState extends State<TasksScreen> {
         text: (task['description'] ?? '').toString(),
       );
       final TextEditingController deadlineCtrl = TextEditingController();
+      final TextEditingController startCtrl = TextEditingController();
       final TextEditingController progressCtrl = TextEditingController(
         text: '${task['progress_percent'] ?? 0}',
       );
@@ -1825,6 +1325,9 @@ class _TasksScreenState extends State<TasksScreen> {
         deadlineCtrl.text =
             VietnamTime.toYmdInput(task['deadline']);
       }
+      if ((task['start_at'] ?? '').toString().isNotEmpty) {
+        startCtrl.text = VietnamTime.toYmdInput(task['start_at']);
+      }
       int? assigneeId = taskOwnerId > 0 ? taskOwnerId : null;
       String priority = (task['priority'] ?? 'medium').toString();
       String status =
@@ -1834,17 +1337,45 @@ class _TasksScreenState extends State<TasksScreen> {
       bool submitting = false;
       String localMsg = '';
 
+      final DateTime? taskDeadlineCap =
+          VietnamTime.parseDateOnly(task['deadline']);
+
       Future<void> pickDeadline(StateSetter setModalState) async {
-        final DateTime now = DateTime.now();
+        final DateTime lastDate =
+            VietnamTime.pickerLastDateWithCap(taskDeadlineCap);
+        final DateTime firstDate = VietnamTime.pickerFirstDateSafe(lastDate);
+        DateTime initial = VietnamTime.pickerInitialDate(deadlineCtrl.text);
+        initial = VietnamTime.clampPickerInitial(initial, firstDate, lastDate);
         final DateTime? picked = await showDatePicker(
           context: context,
-          firstDate: DateTime(now.year - 2),
-          lastDate: DateTime(now.year + 5),
-          initialDate: VietnamTime.pickerInitialDate(deadlineCtrl.text),
+          firstDate: firstDate,
+          lastDate: lastDate,
+          initialDate: initial,
         );
         if (picked == null) return;
         setModalState(() {
           deadlineCtrl.text =
+              '${picked.year.toString().padLeft(4, '0')}-'
+              '${picked.month.toString().padLeft(2, '0')}-'
+              '${picked.day.toString().padLeft(2, '0')}';
+        });
+      }
+
+      Future<void> pickStart(StateSetter setModalState) async {
+        final DateTime lastDate =
+            VietnamTime.pickerLastDateWithCap(taskDeadlineCap);
+        final DateTime firstDate = VietnamTime.pickerFirstDateSafe(lastDate);
+        DateTime initial = VietnamTime.pickerInitialDate(startCtrl.text);
+        initial = VietnamTime.clampPickerInitial(initial, firstDate, lastDate);
+        final DateTime? picked = await showDatePicker(
+          context: context,
+          firstDate: firstDate,
+          lastDate: lastDate,
+          initialDate: initial,
+        );
+        if (picked == null) return;
+        setModalState(() {
+          startCtrl.text =
               '${picked.year.toString().padLeft(4, '0')}-'
               '${picked.month.toString().padLeft(2, '0')}-'
               '${picked.day.toString().padLeft(2, '0')}';
@@ -1930,6 +1461,21 @@ class _TasksScreenState extends State<TasksScreen> {
                   setModalState(() => localMsg = 'Tỷ trọng phải từ 1 đến 100.');
                   return;
                 }
+                final DateTime? cap = taskDeadlineCap;
+                if (!VietnamTime.ymdNotAfterCap(startCtrl.text.trim(), cap)) {
+                  setModalState(
+                    () => localMsg =
+                        'Ngày bắt đầu đầu việc không được sau deadline công việc.',
+                  );
+                  return;
+                }
+                if (!VietnamTime.ymdNotAfterCap(deadlineCtrl.text.trim(), cap)) {
+                  setModalState(
+                    () => localMsg =
+                        'Hạn đầu việc không được sau deadline công việc.',
+                  );
+                  return;
+                }
                 setModalState(() {
                   submitting = true;
                   localMsg = '';
@@ -1943,7 +1489,10 @@ class _TasksScreenState extends State<TasksScreen> {
                   status: status,
                   progressPercent: progress,
                   weightPercent: weight,
-                  startDate: null,
+                  startDate:
+                      startCtrl.text.trim().isEmpty
+                          ? null
+                          : startCtrl.text.trim(),
                   deadline:
                       deadlineCtrl.text.trim().isEmpty
                           ? null
@@ -1963,44 +1512,40 @@ class _TasksScreenState extends State<TasksScreen> {
               }
 
               return Container(
-                padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + bottomInset),
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
                 decoration: const BoxDecoration(
-                  color: Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  color: StitchTheme.surface,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                 ),
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      const Text(
-                        'Thêm đầu việc',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      stitchTaskFormSheetHeader(
+                        ctx,
+                        title: 'Thêm đầu việc',
+                        subtitle:
+                            'Phân nhỏ công việc, gán người và tỷ trọng để theo dõi tiến độ.',
                       ),
                       if (localMsg.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 8),
-                        Text(
-                          localMsg,
-                          style: const TextStyle(color: Colors.redAccent),
-                        ),
+                        const SizedBox(height: 10),
+                        stitchTaskFormMessage(localMsg),
                       ],
-                      const SizedBox(height: 12),
+                      const SizedBox(height: kStitchTaskFormGap),
                       if (taskDeptId == null) ...<Widget>[
-                        DropdownButtonFormField<int>(
+                        StitchSearchableSelectField<int>(
                           value: departmentId,
-                          items:
+                          sheetTitle: 'Chọn phòng ban',
+                          label: 'Chọn phòng ban',
+                          searchHint: 'Tìm theo tên phòng ban...',
+                          options:
                               departments
                                   .map(
                                     (Map<String, dynamic> d) =>
-                                        DropdownMenuItem<int>(
-                                          value: d['id'] as int?,
-                                          child: Text(
-                                            (d['name'] ?? 'Phòng ban')
-                                                .toString(),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
+                                        StitchSelectOption<int>(
+                                          value: d['id'] as int,
+                                          label: (d['name'] ?? 'Phòng ban')
+                                              .toString(),
                                         ),
                                   )
                                   .toList(),
@@ -2009,32 +1554,191 @@ class _TasksScreenState extends State<TasksScreen> {
                                 departmentId = v;
                                 assigneeId = null;
                               }),
-                          decoration: const InputDecoration(
-                            labelText: 'Chọn phòng ban',
+                          decoration: stitchTaskDropdownDecoration(
+                            ctx,
+                            'Chọn phòng ban',
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: kStitchTaskFormGap),
                       ],
-                      DropdownButtonFormField<int>(
+                      TextField(
+                        controller: titleCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Tiêu đề',
+                        ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
+                      ),
+                      const SizedBox(height: kStitchTaskFormGap),
+                      TextField(
+                        controller: descCtrl,
+                        minLines: 3,
+                        maxLines: 6,
+                        decoration: const InputDecoration(
+                          labelText: 'Mô tả',
+                          alignLabelWithHint: true,
+                        ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
+                      ),
+                      const SizedBox(height: kStitchTaskFormGap),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Expanded(
+                            child: StitchSearchableSelectField<String>(
+                              value: status,
+                              sheetTitle: 'Chọn trạng thái',
+                              label: 'Trạng thái',
+                              searchHint: 'Tìm trạng thái...',
+                              options:
+                                  widget.statuses
+                                      .map(
+                                        (String s) =>
+                                            StitchSelectOption<String>(
+                                              value: s,
+                                              label: _prettyStatus(s),
+                                            ),
+                                      )
+                                      .toList(),
+                              onChanged:
+                                  (String? v) =>
+                                      setModalState(() => status = v ?? status),
+                              decoration: stitchTaskDropdownDecoration(
+                                ctx,
+                                'Trạng thái',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: StitchSearchableSelectField<String>(
+                              value: priority,
+                              sheetTitle: 'Chọn mức ưu tiên',
+                              label: 'Ưu tiên',
+                              searchHint: 'Tìm mức ưu tiên...',
+                              options: const <StitchSelectOption<String>>[
+                                StitchSelectOption<String>(
+                                  value: 'low',
+                                  label: 'Thấp',
+                                ),
+                                StitchSelectOption<String>(
+                                  value: 'medium',
+                                  label: 'Trung bình',
+                                ),
+                                StitchSelectOption<String>(
+                                  value: 'high',
+                                  label: 'Cao',
+                                ),
+                                StitchSelectOption<String>(
+                                  value: 'urgent',
+                                  label: 'Khẩn cấp',
+                                ),
+                              ],
+                              onChanged:
+                                  (String? v) => setModalState(
+                                    () => priority = v ?? 'medium',
+                                  ),
+                              decoration: stitchTaskDropdownDecoration(
+                                ctx,
+                                'Ưu tiên',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: kStitchTaskFormGap),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Expanded(
+                            child: TextField(
+                              controller: progressCtrl,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: <TextInputFormatter>[
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(3),
+                              ],
+                              decoration: const InputDecoration(
+                                labelText: 'Tiến độ (%)',
+                                helperText: 'Chỉ 0–100%',
+                                suffixText: '%',
+                              ).applyDefaults(
+                                Theme.of(ctx).inputDecorationTheme,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: weightCtrl,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setModalState(() {}),
+                              decoration: const InputDecoration(
+                                labelText: 'Tỷ trọng (%)',
+                                suffixText: '%',
+                              ).applyDefaults(
+                                Theme.of(ctx).inputDecorationTheme,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: kStitchTaskFormGap),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Expanded(
+                            child: TextField(
+                              controller: startCtrl,
+                              readOnly: true,
+                              decoration: stitchTaskDateDecoration(
+                                ctx,
+                                'Ngày bắt đầu',
+                              ),
+                              onTap: () => pickStart(setModalState),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: deadlineCtrl,
+                              readOnly: true,
+                              decoration: stitchTaskDateDecoration(
+                                ctx,
+                                'Deadline',
+                              ),
+                              onTap: () => pickDeadline(setModalState),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: kStitchTaskFormGap),
+                      StitchSearchableSelectField<int>(
                         value: assigneeId,
-                        items:
+                        sheetTitle: 'Chọn nhân sự phụ trách',
+                        label: 'Nhân sự phụ trách',
+                        searchHint: 'Tìm theo tên hoặc email...',
+                        options:
                             staffOptions
                                 .map(
                                   (Map<String, dynamic> s) =>
-                                      DropdownMenuItem<int>(
-                                        value: s['id'] as int?,
-                                        child: Text(
-                                          (s['name'] ?? s['email'] ?? 'Nhân sự')
-                                              .toString(),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                                      StitchSelectOption<int>(
+                                        value: s['id'] as int,
+                                        label:
+                                            (s['name'] ?? s['email'] ?? 'Nhân sự')
+                                                .toString(),
+                                        subtitle:
+                                            (s['email'] ?? '')
+                                                    .toString()
+                                                    .trim()
+                                                    .isEmpty
+                                                ? null
+                                                : (s['email'] ?? '').toString(),
                                       ),
                                 )
                                 .toList(),
                         onChanged:
                             (int? v) => setModalState(() => assigneeId = v),
-                        decoration: const InputDecoration(
-                          labelText: 'Nhân sự phụ trách',
+                        decoration: stitchTaskDropdownDecoration(
+                          ctx,
+                          'Nhân sự phụ trách',
                         ),
                       ),
                       if (staffOptions.isEmpty)
@@ -2048,104 +1752,7 @@ class _TasksScreenState extends State<TasksScreen> {
                             ),
                           ),
                         ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: titleCtrl,
-                        decoration: const InputDecoration(labelText: 'Tiêu đề'),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: descCtrl,
-                        maxLines: 3,
-                        decoration: const InputDecoration(labelText: 'Mô tả'),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: priority,
-                              items: const <DropdownMenuItem<String>>[
-                                DropdownMenuItem(
-                                  value: 'low',
-                                  child: Text('Thấp'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'medium',
-                                  child: Text('Trung bình'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'high',
-                                  child: Text('Cao'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'urgent',
-                                  child: Text('Khẩn cấp'),
-                                ),
-                              ],
-                              onChanged:
-                                  (String? v) => setModalState(
-                                    () => priority = v ?? 'medium',
-                                  ),
-                              decoration: const InputDecoration(
-                                labelText: 'Ưu tiên',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: status,
-                              items:
-                                  widget.statuses
-                                      .map(
-                                        (String s) => DropdownMenuItem<String>(
-                                          value: s,
-                                          child: Text(_prettyStatus(s)),
-                                        ),
-                                      )
-                                      .toList(),
-                              onChanged:
-                                  (String? v) =>
-                                      setModalState(() => status = v ?? status),
-                              decoration: const InputDecoration(
-                                labelText: 'Trạng thái',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: TextField(
-                              controller: deadlineCtrl,
-                              readOnly: true,
-                              onTap: () => pickDeadline(setModalState),
-                              decoration: const InputDecoration(
-                                labelText: 'Hạn hoàn tất',
-                                suffixIcon: Icon(
-                                  Icons.calendar_today,
-                                  size: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: weightCtrl,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setModalState(() {}),
-                              decoration: const InputDecoration(
-                                labelText: 'Tỷ trọng trong công việc (%)',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: kStitchTaskFormGap),
                       Row(
                         children: <Widget>[
                           OutlinedButton(
@@ -2160,6 +1767,21 @@ class _TasksScreenState extends State<TasksScreen> {
                                                 .toString();
                                       });
                                     },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: StitchTheme.primaryStrong,
+                              side: BorderSide(
+                                color: StitchTheme.primary.withValues(
+                                  alpha: 0.45,
+                                ),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                            ),
                             child: Text(
                               'Điền phần còn lại ($remainingWeight%)',
                             ),
@@ -2202,19 +1824,6 @@ class _TasksScreenState extends State<TasksScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      TextField(
-                        controller: progressCtrl,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(3),
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'Tiến độ ban đầu (%)',
-                          helperText: 'Chỉ 0–100%',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
@@ -2232,13 +1841,15 @@ class _TasksScreenState extends State<TasksScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 18),
                       Row(
                         children: <Widget>[
                           Expanded(
                             child: ElevatedButton(
                               onPressed: submitting ? null : submit,
                               style: ElevatedButton.styleFrom(
+                                backgroundColor: StitchTheme.primary,
+                                foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 14,
                                 ),
@@ -2265,6 +1876,11 @@ class _TasksScreenState extends State<TasksScreen> {
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
+                                side: const BorderSide(
+                                  color: StitchTheme.inputBorder,
+                                  width: 1.2,
+                                ),
+                                foregroundColor: StitchTheme.textMain,
                               ),
                               child: const Text('Hủy'),
                             ),
@@ -2282,6 +1898,8 @@ class _TasksScreenState extends State<TasksScreen> {
       titleCtrl.dispose();
       descCtrl.dispose();
       deadlineCtrl.dispose();
+      startCtrl.dispose();
+      weightCtrl.dispose();
       progressCtrl.dispose();
     }
 
@@ -2862,27 +2480,28 @@ class _TasksScreenState extends State<TasksScreen> {
                                         'Bạn không có quyền quản lý nhắc hạn.',
                                       ),
                                     ),
-                                  DropdownButtonFormField<String>(
+                                  StitchSearchableSelectField<String>(
                                     value: reminderChannel,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Kênh',
-                                    ),
-                                    items: const <DropdownMenuItem<String>>[
-                                      DropdownMenuItem<String>(
+                                    enabled: _canManageReminders,
+                                    sheetTitle: 'Chọn kênh nhắc',
+                                    label: 'Kênh',
+                                    searchHint: 'Tìm kênh...',
+                                    options: const <StitchSelectOption<String>>[
+                                      StitchSelectOption<String>(
                                         value: 'in_app',
-                                        child: Text('Trong ứng dụng'),
+                                        label: 'Trong ứng dụng',
                                       ),
-                                      DropdownMenuItem<String>(
+                                      StitchSelectOption<String>(
                                         value: 'email',
-                                        child: Text('Email'),
+                                        label: 'Email',
                                       ),
-                                      DropdownMenuItem<String>(
+                                      StitchSelectOption<String>(
                                         value: 'telegram',
-                                        child: Text('Telegram'),
+                                        label: 'Telegram',
                                       ),
-                                      DropdownMenuItem<String>(
+                                      StitchSelectOption<String>(
                                         value: 'zalo',
-                                        child: Text('Zalo'),
+                                        label: 'Zalo',
                                       ),
                                     ],
                                     onChanged:
@@ -2895,29 +2514,35 @@ class _TasksScreenState extends State<TasksScreen> {
                                               }
                                             }
                                             : null,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Kênh',
+                                    ).applyDefaults(
+                                      Theme.of(context).inputDecorationTheme,
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
-                                  DropdownButtonFormField<String>(
+                                  StitchSearchableSelectField<String>(
                                     value: reminderTrigger,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Kích hoạt',
-                                    ),
-                                    items: const <DropdownMenuItem<String>>[
-                                      DropdownMenuItem<String>(
+                                    enabled: _canManageReminders,
+                                    sheetTitle: 'Chọn kích hoạt nhắc',
+                                    label: 'Kích hoạt',
+                                    searchHint: 'Tìm kịch bản...',
+                                    options: const <StitchSelectOption<String>>[
+                                      StitchSelectOption<String>(
                                         value: 'days_3',
-                                        child: Text('Trước 3 ngày'),
+                                        label: 'Trước 3 ngày',
                                       ),
-                                      DropdownMenuItem<String>(
+                                      StitchSelectOption<String>(
                                         value: 'day_1',
-                                        child: Text('Trước 1 ngày'),
+                                        label: 'Trước 1 ngày',
                                       ),
-                                      DropdownMenuItem<String>(
+                                      StitchSelectOption<String>(
                                         value: 'overdue',
-                                        child: Text('Quá hạn'),
+                                        label: 'Quá hạn',
                                       ),
-                                      DropdownMenuItem<String>(
+                                      StitchSelectOption<String>(
                                         value: 'custom',
-                                        child: Text('Tuỳ chỉnh'),
+                                        label: 'Tuỳ chỉnh',
                                       ),
                                     ],
                                     onChanged:
@@ -2930,6 +2555,11 @@ class _TasksScreenState extends State<TasksScreen> {
                                               }
                                             }
                                             : null,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Kích hoạt',
+                                    ).applyDefaults(
+                                      Theme.of(context).inputDecorationTheme,
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                   TextField(
@@ -3054,108 +2684,83 @@ class _TasksScreenState extends State<TasksScreen> {
                                       subtitle: Text(
                                         (r['scheduled_at'] ?? '').toString(),
                                       ),
-                                      trailing: IconButton(
-                                        icon: const Icon(Icons.more_horiz),
-                                        onPressed:
-                                            _canManageReminders
-                                                ? () async {
-                                                  final int reminderId =
-                                                      (r['id'] ?? 0) as int;
-                                                  final String scheduled =
-                                                      (r['scheduled_at'] ?? '')
-                                                          .toString();
-                                                  final String channel =
-                                                      (r['channel'] ?? 'in_app')
-                                                          .toString();
-                                                  final String trigger =
-                                                      (r['trigger_type'] ??
-                                                              'custom')
-                                                          .toString();
-                                                  final String?
-                                                  action = await showModalBottomSheet<
-                                                    String
-                                                  >(
-                                                    context: context,
-                                                    builder: (
-                                                      BuildContext context,
-                                                    ) {
-                                                      return SafeArea(
-                                                        child: Column(
-                                                          mainAxisSize:
-                                                              MainAxisSize.min,
-                                                          children: <Widget>[
-                                                            ListTile(
-                                                              leading: const Icon(
-                                                                Icons
-                                                                    .edit_outlined,
-                                                              ),
-                                                              title: const Text(
-                                                                'Sửa reminder',
-                                                              ),
-                                                              onTap:
-                                                                  () =>
-                                                                      Navigator.of(
-                                                                        context,
-                                                                      ).pop(
-                                                                        'edit',
-                                                                      ),
-                                                            ),
-                                                            ListTile(
-                                                              leading: const Icon(
-                                                                Icons
-                                                                    .delete_outline,
-                                                                color:
-                                                                    Colors.red,
-                                                              ),
-                                                              title: const Text(
-                                                                'Xoá reminder',
-                                                              ),
-                                                              onTap:
-                                                                  () =>
-                                                                      Navigator.of(
-                                                                        context,
-                                                                      ).pop(
-                                                                        'delete',
-                                                                      ),
-                                                            ),
-                                                          ],
-                                                        ),
+                                      trailing:
+                                          _canManageReminders
+                                              ? Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: <Widget>[
+                                                  TextButton.icon(
+                                                    onPressed: () {
+                                                      final int reminderId =
+                                                          (r['id'] ?? 0) as int;
+                                                      final String scheduled =
+                                                          (r['scheduled_at'] ??
+                                                                  '')
+                                                              .toString();
+                                                      final String channel =
+                                                          (r['channel'] ??
+                                                                  'in_app')
+                                                              .toString();
+                                                      final String trigger =
+                                                          (r['trigger_type'] ??
+                                                                  'custom')
+                                                              .toString();
+                                                      setSheetState(() {
+                                                        editingReminderId =
+                                                            reminderId;
+                                                        reminderAtCtrl.text =
+                                                            scheduled;
+                                                        reminderChannel =
+                                                            channel;
+                                                        reminderTrigger =
+                                                            trigger;
+                                                        localMessage =
+                                                            'Đang sửa reminder #$editingReminderId';
+                                                      });
+                                                    },
+                                                    icon: const Icon(
+                                                      Icons.edit_outlined,
+                                                      size: 18,
+                                                    ),
+                                                    label: const Text('Sửa'),
+                                                  ),
+                                                  TextButton.icon(
+                                                    onPressed: () async {
+                                                      final int reminderId =
+                                                          (r['id'] ?? 0) as int;
+                                                      final bool ok = await widget
+                                                          .apiService
+                                                          .deleteTaskReminder(
+                                                            token,
+                                                            taskId,
+                                                            reminderId,
+                                                          );
+                                                      setSheetState(() {
+                                                        localMessage =
+                                                            ok
+                                                                ? 'Đã xoá reminder.'
+                                                                : 'Xoá reminder thất bại.';
+                                                      });
+                                                      await refresh(
+                                                        setSheetState,
                                                       );
                                                     },
-                                                  );
-                                                  if (action == 'edit') {
-                                                    setSheetState(() {
-                                                      editingReminderId =
-                                                          reminderId;
-                                                      reminderAtCtrl.text =
-                                                          scheduled;
-                                                      reminderChannel = channel;
-                                                      reminderTrigger = trigger;
-                                                      localMessage =
-                                                          'Đang sửa reminder #$editingReminderId';
-                                                    });
-                                                  } else if (action ==
-                                                      'delete') {
-                                                    final bool ok = await widget
-                                                        .apiService
-                                                        .deleteTaskReminder(
-                                                          token,
-                                                          taskId,
-                                                          reminderId,
-                                                        );
-                                                    setSheetState(() {
-                                                      localMessage =
-                                                          ok
-                                                              ? 'Đã xoá reminder.'
-                                                              : 'Xoá reminder thất bại.';
-                                                    });
-                                                    await refresh(
-                                                      setSheetState,
-                                                    );
-                                                  }
-                                                }
-                                                : null,
-                                      ),
+                                                    icon: Icon(
+                                                      Icons.delete_outline,
+                                                      size: 18,
+                                                      color: StitchTheme.danger,
+                                                    ),
+                                                    label: Text(
+                                                      'Xóa',
+                                                      style: TextStyle(
+                                                        color:
+                                                            StitchTheme.danger,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              )
+                                              : null,
                                     ),
                                   ),
                                 ],
@@ -3637,6 +3242,8 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Widget _buildTaskCard(Map<String, dynamic> task) {
     final String title = (task['title'] ?? 'Công việc').toString();
+    final String taskStatus = (task['status'] ?? '').toString();
+    final Color statusTone = _taskStatusColor(taskStatus);
     final Map<String, dynamic>? project =
         task['project'] as Map<String, dynamic>?;
     final String projectName = (project?['name'] ?? 'Dự án nội bộ').toString();
@@ -3648,6 +3255,9 @@ class _TasksScreenState extends State<TasksScreen> {
     final String deadlineLabel = _shortDate(
       (task['deadline'] ?? '').toString(),
     );
+    final String startRaw = (task['start_at'] ?? '').toString();
+    final String startLabel =
+        startRaw.isEmpty ? 'Chưa gán' : _shortDate(startRaw);
 
     final int progress =
         (task['progress_percent'] ?? 0) is int
@@ -3664,17 +3274,17 @@ class _TasksScreenState extends State<TasksScreen> {
             ? task['attachments_count'] as int
             : int.tryParse('${task['attachments_count'] ?? 0}') ?? 0;
 
-    final List<_AvatarInfo> avatars = <_AvatarInfo>[];
     final Map<String, dynamic>? assignee =
         task['assignee'] as Map<String, dynamic>?;
-    if (assignee != null) {
-      avatars.add(_AvatarInfo(name: (assignee['name'] ?? 'A').toString()));
-    }
+    final String assigneeName =
+        (assignee?['name'] ?? assignee?['email'] ?? 'Chưa phân công')
+            .toString();
     final Map<String, dynamic>? reviewer =
         task['reviewer'] as Map<String, dynamic>?;
-    if (reviewer != null) {
-      avatars.add(_AvatarInfo(name: (reviewer['name'] ?? 'R').toString()));
-    }
+    final String? reviewerName =
+        reviewer == null
+            ? null
+            : (reviewer['name'] ?? reviewer['email'] ?? '').toString().trim();
 
     return GestureDetector(
       onTap: widget.isAuthenticated ? () => _openTaskCenter(task) : null,
@@ -3697,84 +3307,69 @@ class _TasksScreenState extends State<TasksScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: priorityStyle.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Icon(
-                        priorityStyle.icon,
-                        size: 14,
-                        color: priorityStyle.foreground,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        priorityStyle.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: priorityStyle.foreground,
-                        ),
-                      ),
-                    ],
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                Row(
-                  children: <Widget>[
-                    if (attachments > 0)
-                      const Icon(
-                        Icons.attach_file,
-                        color: StitchTheme.textSubtle,
-                        size: 18,
-                      ),
-                    if (_canUpdateStatus)
-                      PopupMenuButton<String>(
-                        icon: const Icon(
-                          Icons.more_horiz,
-                          color: StitchTheme.textSubtle,
-                        ),
-                        onSelected: (String value) {
-                          if (!widget.isAuthenticated) return;
-                          widget.onUpdateStatus(task, value);
-                        },
-                        itemBuilder: (BuildContext context) {
-                          return widget.statuses
-                              .where((String s) => s != task['status'])
-                              .map(
-                                (String s) => PopupMenuItem<String>(
-                                  value: s,
-                                  child: Text('Chuyển: ${_prettyStatus(s)}'),
-                                ),
-                              )
-                              .toList();
-                        },
-                      )
-                    else
-                      const Tooltip(
-                        message: 'Không có quyền đổi trạng thái',
-                        child: Icon(
-                          Icons.lock_outline,
-                          color: StitchTheme.textSubtle,
-                        ),
-                      ),
-                  ],
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusTone.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: statusTone.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    _prettyStatus(taskStatus),
+                    style: TextStyle(
+                      color: statusTone,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: priorityStyle.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(
+                    priorityStyle.icon,
+                    size: 14,
+                    color: priorityStyle.foreground,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    priorityStyle.label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: priorityStyle.foreground,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               projectName,
               style: const TextStyle(
@@ -3790,82 +3385,199 @@ class _TasksScreenState extends State<TasksScreen> {
                 color: StitchTheme.textMuted,
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
             Row(
               children: <Widget>[
-                if (avatars.isNotEmpty) _AvatarStack(avatars: avatars),
-                const Spacer(),
-                if (comments > 0)
-                  Row(
-                    children: <Widget>[
-                      const Icon(
-                        Icons.chat_bubble,
-                        size: 16,
-                        color: StitchTheme.textSubtle,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        comments.toString(),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: StitchTheme.textMuted,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                    ],
-                  ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: StitchTheme.surfaceAlt,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                const Icon(
+                  Icons.event_outlined,
+                  size: 16,
+                  color: StitchTheme.textMuted,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
                   child: Text(
-                    deadlineLabel,
+                    'Bắt đầu: $startLabel',
                     style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
                       color: StitchTheme.textMuted,
                     ),
                   ),
                 ),
               ],
             ),
-            if (progress > 0) ...<Widget>[
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  const Text(
-                    'Tiến độ',
-                    style: TextStyle(
+            const SizedBox(height: 6),
+            Row(
+              children: <Widget>[
+                const Icon(
+                  Icons.timer_outlined,
+                  size: 16,
+                  color: StitchTheme.textMuted,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Hạn: $deadlineLabel',
+                    style: const TextStyle(
                       fontSize: 12,
                       color: StitchTheme.textMuted,
                     ),
                   ),
-                  Text(
-                    '$progress%',
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Icon(
+                  Icons.person_outline,
+                  size: 16,
+                  color: StitchTheme.textMuted,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Phụ trách: $assigneeName',
                     style: const TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      color: StitchTheme.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (reviewerName != null && reviewerName.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Icon(
+                    Icons.fact_check_outlined,
+                    size: 16,
+                    color: StitchTheme.textMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Người duyệt: $reviewerName',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: StitchTheme.textMuted,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0, 100) / 100,
-                  minHeight: 6,
-                  color: StitchTheme.primary,
-                  backgroundColor: StitchTheme.surfaceAlt,
-                ),
+            ],
+            if (comments > 0 || attachments > 0) ...<Widget>[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                children: <Widget>[
+                  if (comments > 0)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(
+                          Icons.chat_bubble_outline,
+                          size: 16,
+                          color: StitchTheme.textSubtle,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$comments bình luận',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: StitchTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (attachments > 0)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(
+                          Icons.attach_file,
+                          size: 16,
+                          color: StitchTheme.textSubtle,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$attachments tệp đính kèm',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: StitchTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
               ),
             ],
+            const SizedBox(height: 10),
+            Text(
+              'Tiến độ: $progress%',
+              style: const TextStyle(
+                color: StitchTheme.textMuted,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0, 100) / 100,
+                minHeight: 6,
+                color: statusTone,
+                backgroundColor: StitchTheme.surfaceAlt,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                TextButton.icon(
+                  onPressed:
+                      widget.isAuthenticated
+                          ? () => _openTaskCenter(task)
+                          : null,
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: const Text('Chi tiết'),
+                ),
+                if (_canUpdateStatus)
+                  ...widget.statuses
+                      .where((String s) => s != task['status'])
+                      .map(
+                        (String s) => TextButton(
+                          onPressed:
+                              widget.isAuthenticated
+                                  ? () => widget.onUpdateStatus(task, s)
+                                  : null,
+                          child: Text(
+                            '→ ${_prettyStatus(s)}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 8),
+                    child: Text(
+                      'Không đổi được trạng thái (vai trò hiện tại)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: StitchTheme.textMuted.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -4142,55 +3854,6 @@ class _SegmentedControl extends StatelessWidget {
                 ),
               );
             }).toList(),
-      ),
-    );
-  }
-}
-
-class _AvatarInfo {
-  _AvatarInfo({required this.name});
-
-  final String name;
-
-  String get initials {
-    final List<String> parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty) return 'NB';
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts[1].characters.first)
-        .toUpperCase();
-  }
-}
-
-class _AvatarStack extends StatelessWidget {
-  const _AvatarStack({required this.avatars});
-
-  final List<_AvatarInfo> avatars;
-
-  @override
-  Widget build(BuildContext context) {
-    final int count = avatars.length.clamp(0, 3);
-    return SizedBox(
-      width: 24 + (count - 1) * 16,
-      height: 28,
-      child: Stack(
-        children: List<Widget>.generate(count, (int index) {
-          final _AvatarInfo avatar = avatars[index];
-          return Positioned(
-            left: index * 16,
-            child: CircleAvatar(
-              radius: 12,
-              backgroundColor: StitchTheme.primary,
-              child: Text(
-                avatar.initials,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          );
-        }),
       ),
     );
   }

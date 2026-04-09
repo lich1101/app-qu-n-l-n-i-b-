@@ -99,4 +99,55 @@ class VietnamTime {
     final DateTime n = DateTime.now();
     return DateTime(n.year, n.month, n.day, 12);
   }
+
+  /// Parse về ngày (không giờ) cho so sánh / giới hạn picker.
+  static DateTime? parseDateOnly(dynamic raw) {
+    final String ymd = toYmdInput(raw);
+    if (ymd.length < 10) return null;
+    final DateTime? dt = parse(ymd);
+    if (dt == null) return null;
+    return DateTime(dt.year, dt.month, dt.day);
+  }
+
+  /// `lastDate` cho [showDatePicker] khi có hạn dự án / công việc.
+  static DateTime pickerLastDateWithCap(DateTime? maxDay) {
+    if (maxDay != null) {
+      return DateTime(maxDay.year, maxDay.month, maxDay.day);
+    }
+    return DateTime(DateTime.now().year + 10, 12, 31);
+  }
+
+  static DateTime pickerFirstDateDefault() {
+    return DateTime(DateTime.now().year - 5, 1, 1);
+  }
+
+  /// Đảm bảo [firstDate] ≤ [lastDate] (dự án hết hạn trong quá khứ).
+  static DateTime pickerFirstDateSafe(DateTime lastDate) {
+    final DateTime def = pickerFirstDateDefault();
+    if (lastDate.isBefore(def)) {
+      return lastDate;
+    }
+    return def;
+  }
+
+  /// Kẹp [initial] vào [firstDate, lastDate].
+  static DateTime clampPickerInitial(
+    DateTime initial,
+    DateTime firstDate,
+    DateTime lastDate,
+  ) {
+    if (initial.isBefore(firstDate)) return firstDate;
+    if (initial.isAfter(lastDate)) return lastDate;
+    return initial;
+  }
+
+  /// Chuỗi `yyyy-MM-dd` không được sau ngày [maxDay] (nếu có).
+  static bool ymdNotAfterCap(String? ymd, DateTime? maxDay) {
+    if (maxDay == null || ymd == null || ymd.trim().isEmpty) return true;
+    final DateTime? a = parse(ymd.trim());
+    if (a == null) return true;
+    final DateTime ad = DateTime(a.year, a.month, a.day);
+    final DateTime md = DateTime(maxDay.year, maxDay.month, maxDay.day);
+    return !ad.isAfter(md);
+  }
 }

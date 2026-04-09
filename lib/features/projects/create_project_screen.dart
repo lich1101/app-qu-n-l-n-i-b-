@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_form_layout.dart';
+import '../../core/widgets/stitch_searchable_select.dart';
+import '../../core/widgets/stitch_task_form_sheet.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -534,83 +537,48 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditMode ? 'Sửa dự án' : 'Tạo dự án'),
-        actions: <Widget>[
-          TextButton(
-            onPressed: saving ? null : () => Navigator.of(context).maybePop(),
-            child: const Text('Đóng'),
-          ),
-          const SizedBox(width: 8),
-        ],
+      backgroundColor: StitchTheme.formPageBackground,
+      resizeToAvoidBottomInset: true,
+      appBar: stitchFormAppBar(
+        context: context,
+        title: _isEditMode ? 'Sửa dự án' : 'Tạo dự án',
+        onClose:
+            saving ? () {} : () => Navigator.of(context).maybePop(),
+      ),
+      bottomNavigationBar: StitchFormBottomBar(
+        primaryLoading: saving,
+        primaryLabel:
+            saving
+                ? (_isEditMode ? 'Đang cập nhật...' : 'Đang tạo...')
+                : (_isEditMode ? 'Lưu cập nhật dự án' : 'Tạo dự án ngay'),
+        onPrimary: saving ? null : _submit,
+        onSecondary: saving ? null : () => Navigator.of(context).maybePop(),
+        secondaryLabel: 'Hủy',
       ),
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.only(bottom: 24),
           children: <Widget>[
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                gradient: LinearGradient(
-                  colors: <Color>[
-                    StitchTheme.primary.withValues(alpha: 0.18),
-                    Colors.white,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                border: Border.all(color: StitchTheme.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    _isEditMode
-                        ? 'Cập nhật thông tin dự án'
-                        : 'Khởi tạo dự án triển khai',
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      height: 1.25,
-                      color: StitchTheme.textMain,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
+            StitchFormSection(
+              margin: EdgeInsets.zero,
+              child: stitchTaskFormSheetHeader(
+                context,
+                subtitle:
                     _isEditMode
                         ? 'Điều chỉnh thông tin dự án. Nếu đổi topic barem, hệ thống sẽ yêu cầu xác nhận làm mới công việc.'
                         : 'Điền thông tin chính xác để hệ thống tự liên kết hợp đồng, nhân sự triển khai và luồng công việc.',
-                    style: const TextStyle(
-                      color: StitchTheme.textMuted,
-                      height: 1.45,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
               ),
             ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: StitchTheme.border),
-              ),
+            StitchFormSection(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
-                    'Thông tin cơ bản',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.65,
-                      color: StitchTheme.labelEmphasis,
-                    ),
+                  const StitchFormSectionHeader(
+                    icon: Icons.info_outline_rounded,
+                    title: 'Thông tin cơ bản',
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   TextField(
                     controller: nameCtrl,
                     decoration: fieldDecoration(
@@ -619,38 +587,35 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       prefixIcon: Icons.work_outline,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  const SizedBox(height: 16),
+                  StitchSearchableSelectField<String>(
                     value:
                         contracts.any((c) => '${c['id']}' == selectedContractId)
                             ? selectedContractId
-                            : null,
-                    decoration: fieldDecoration(
-                      'Hợp đồng liên kết',
-                      prefixIcon: Icons.description_outlined,
-                    ),
-                    menuMaxHeight: 360,
-                    items: <DropdownMenuItem<String>>[
-                      const DropdownMenuItem<String>(
+                            : (selectedContractId.isEmpty ? '' : null),
+                    sheetTitle: 'Chọn hợp đồng',
+                    label: 'Hợp đồng liên kết',
+                    searchHint: 'Tìm theo mã hoặc tiêu đề hợp đồng...',
+                    options: <StitchSelectOption<String>>[
+                      const StitchSelectOption<String>(
                         value: '',
-                        child: Text(
-                          'Không liên kết hợp đồng (dự án nội bộ)',
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        label: 'Không liên kết hợp đồng (dự án nội bộ)',
                       ),
                       ...contracts.map(
-                        (Map<String, dynamic> c) => DropdownMenuItem<String>(
+                        (Map<String, dynamic> c) => StitchSelectOption<String>(
                           value: '${c['id']}',
-                          child: Text(
-                            '${c['code'] ?? 'CTR'} • ${c['title'] ?? ''}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          label:
+                              '${c['code'] ?? 'CTR'} • ${c['title'] ?? ''}',
                         ),
                       ),
                     ],
                     onChanged: (String? value) {
                       setState(() => selectedContractId = value ?? '');
                     },
+                    decoration: fieldDecoration(
+                      'Hợp đồng liên kết',
+                      prefixIcon: Icons.description_outlined,
+                    ),
                   ),
                   if (contracts.isEmpty) ...<Widget>[
                     const SizedBox(height: 8),
@@ -662,67 +627,63 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  const SizedBox(height: 16),
+                  StitchSearchableSelectField<String>(
                     value: selectedOwnerId.isEmpty ? null : selectedOwnerId,
-                    decoration: fieldDecoration(
-                      'Người phụ trách triển khai',
-                      prefixIcon: Icons.person_outline,
-                    ),
-                    menuMaxHeight: 360,
-                    items:
+                    sheetTitle: 'Chọn người phụ trách',
+                    label: 'Người phụ trách triển khai',
+                    searchHint: 'Tìm theo tên hoặc vai trò...',
+                    options:
                         owners
                             .map(
                               (Map<String, dynamic> u) =>
-                                  DropdownMenuItem<String>(
+                                  StitchSelectOption<String>(
                                     value: '${u['id']}',
-                                    child: Text(
-                                      '${u['name'] ?? ''} (${u['role'] ?? ''})',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                                    label:
+                                        '${u['name'] ?? ''} (${u['role'] ?? ''})',
                                   ),
                             )
                             .toList(),
                     onChanged: (String? value) {
                       setState(() => selectedOwnerId = value ?? '');
                     },
+                    decoration: fieldDecoration(
+                      'Người phụ trách triển khai',
+                      prefixIcon: Icons.person_outline,
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  const SizedBox(height: 16),
+                  StitchSearchableSelectField<String>(
                     value:
                         selectedWorkflowTopicId.isEmpty
                             ? ''
                             : selectedWorkflowTopicId,
-                    decoration: fieldDecoration(
-                      'Barem công việc theo Topic',
-                      prefixIcon: Icons.account_tree_outlined,
-                    ),
-                    menuMaxHeight: 360,
-                    items: <DropdownMenuItem<String>>[
-                      const DropdownMenuItem<String>(
+                    sheetTitle: 'Chọn barem theo Topic',
+                    label: 'Barem công việc theo Topic',
+                    searchHint: 'Tìm theo tên topic...',
+                    options: <StitchSelectOption<String>>[
+                      const StitchSelectOption<String>(
                         value: '',
-                        child: Text(
-                          'Không dùng barem (tạo dự án trống)',
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        label: 'Không dùng barem (tạo dự án trống)',
                       ),
                       ...workflowTopics.map(
-                        (
-                          Map<String, dynamic> topic,
-                        ) => DropdownMenuItem<String>(
-                          value: '${topic['id']}',
-                          child: Text(
-                            '${topic['name'] ?? ''}'
-                            '${(topic['code'] ?? '').toString().isEmpty ? '' : ' • ${topic['code']}'}'
-                            ' (${(topic['tasks'] as List<dynamic>? ?? <dynamic>[]).length} công việc mẫu)',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                        (Map<String, dynamic> topic) =>
+                            StitchSelectOption<String>(
+                              value: '${topic['id']}',
+                              label:
+                                  '${topic['name'] ?? ''}'
+                                  '${(topic['code'] ?? '').toString().isEmpty ? '' : ' • ${topic['code']}'}'
+                                  ' (${(topic['tasks'] as List<dynamic>? ?? <dynamic>[]).length} công việc mẫu)',
+                            ),
                       ),
                     ],
                     onChanged: (String? value) {
                       setState(() => selectedWorkflowTopicId = value ?? '');
                     },
+                    decoration: fieldDecoration(
+                      'Barem công việc theo Topic',
+                      prefixIcon: Icons.account_tree_outlined,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   const Text(
@@ -735,27 +696,14 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: StitchTheme.border),
-              ),
+            StitchFormSection(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
-                    'Loại dịch vụ',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.65,
-                      color: StitchTheme.labelEmphasis,
-                    ),
+                  const StitchFormSectionHeader(
+                    icon: Icons.category_outlined,
+                    title: 'Loại dịch vụ',
                   ),
-                  const SizedBox(height: 8),
                   const Text(
                     'Chọn loại dịch vụ chính cho dự án.',
                     style: TextStyle(
@@ -763,14 +711,14 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   GridView.count(
                     crossAxisCount: 2,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: 1.8,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.65,
                     children:
                         serviceOptions
                             .map(
@@ -800,16 +748,14 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: StitchTheme.border),
-              ),
+            StitchFormSection(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
+                  const StitchFormSectionHeader(
+                    icon: Icons.calendar_today_outlined,
+                    title: 'Thời gian & tài liệu',
+                  ),
                   Row(
                     children: <Widget>[
                       Expanded(
@@ -843,7 +789,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: requirementCtrl,
                     maxLines: 4,
@@ -854,7 +800,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       prefixIcon: Icons.notes_outlined,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: repoUrlCtrl,
                     decoration: fieldDecoration(
@@ -863,7 +809,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       prefixIcon: Icons.folder_open_outlined,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: websiteUrlCtrl,
                     decoration: fieldDecoration(
@@ -876,52 +822,19 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
               ),
             ),
             if (message.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 12),
-              Text(
-                message,
-                style: TextStyle(
-                  color:
-                      message.contains('thành công')
-                          ? StitchTheme.success
-                          : StitchTheme.danger,
+              StitchFormSection(
+                margin: EdgeInsets.zero,
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color:
+                        message.contains('thành công')
+                            ? StitchTheme.success
+                            : StitchTheme.danger,
+                  ),
                 ),
               ),
             ],
-            const SizedBox(height: 18),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        saving ? null : () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    label: const Text('Hủy'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: saving ? null : _submit,
-                    icon:
-                        saving
-                            ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                            : const Icon(Icons.rocket_launch, size: 18),
-                    label: Text(
-                      saving
-                          ? (_isEditMode ? 'Đang cập nhật...' : 'Đang tạo...')
-                          : (_isEditMode
-                              ? 'Lưu cập nhật dự án'
-                              : 'Tạo dự án ngay'),
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),
@@ -964,7 +877,7 @@ class _ServiceOption extends StatelessWidget {
               label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 fontSize: 12,
                 color: selected ? Colors.white : StitchTheme.textMain,
               ),

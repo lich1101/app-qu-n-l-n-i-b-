@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_searchable_select.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'opportunity_detail_screen.dart';
+import 'opportunity_list_form_screen.dart';
 
 class OpportunitiesScreen extends StatefulWidget {
   const OpportunitiesScreen({
@@ -201,284 +203,28 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
   }
 
   Future<void> _openForm({Map<String, dynamic>? opp}) async {
-    final TextEditingController titleCtrl = TextEditingController(
-      text: opp != null ? (opp['title'] ?? '').toString() : '',
+    final bool? ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder:
+            (_) => OpportunityListFormScreen(
+              token: widget.token,
+              apiService: widget.apiService,
+              clients: clients,
+              statuses: statuses,
+              initialOpportunity: opp,
+            ),
+      ),
     );
-    final TextEditingController amountCtrl = TextEditingController(
-      text:
-          opp != null && opp['amount'] != null
-              ? opp['amount'].toString()
-              : '',
-    );
-    final TextEditingController notesCtrl = TextEditingController(
-      text: opp != null ? (opp['notes'] ?? '').toString() : '',
-    );
-    final TextEditingController sourceCtrl = TextEditingController(
-      text: opp != null ? (opp['source'] ?? '').toString() : '',
-    );
-    int? clientId = opp?['client_id'] as int?;
-    String? status = opp?['status']?.toString();
-    String sheetMessage = '';
-    int? successProbability = opp == null
-        ? null
-        : int.tryParse(opp['success_probability']?.toString() ?? '');
-    if (successProbability != null &&
-        (successProbability < 0 || successProbability > 100)) {
-      successProbability = null;
+    if (!mounted) return;
+    if (ok == true) {
+      await _fetch();
+      if (!mounted) return;
+      setState(
+        () =>
+            message =
+                opp == null ? 'Đã tạo cơ hội mới.' : 'Đã cập nhật cơ hội.',
+      );
     }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: StitchTheme.surface,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setSheetState) {
-            return Container(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-              decoration: const BoxDecoration(
-                color: StitchTheme.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 4,
-                          margin: const EdgeInsets.only(bottom: 16),
-                          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(opp == null ? 'Tạo Cơ Hội Mới' : 'Cập Nhật Cơ Hội', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-                            InkWell(
-                              onTap: () => Navigator.of(context).pop(),
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
-                                child: const Icon(Icons.close, size: 20, color: Colors.black54),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: StitchTheme.border)),
-                            child: Column(
-                              children: [
-                                TextField(
-                                  controller: titleCtrl,
-                                  decoration: const InputDecoration(labelText: 'Tên cơ hội *', prefixIcon: Icon(Icons.stars_outlined, size: 20, color: StitchTheme.textMuted)),
-                                ),
-                                const SizedBox(height: 16),
-                                DropdownButtonFormField<int>(
-                                  value: clientId,
-                                  decoration: const InputDecoration(labelText: 'Khách hàng *', prefixIcon: Icon(Icons.business_center_outlined, size: 20, color: StitchTheme.textMuted)),
-                                  items: clients.map((c) => DropdownMenuItem<int>(
-                                    value: c['id'] as int,
-                                    child: Text('${c['name'] ?? ''}${(c['company'] ?? '').toString().isNotEmpty ? ' — ${c['company']}' : ''}', overflow: TextOverflow.ellipsis),
-                                  )).toList(),
-                                  onChanged: (v) => setSheetState(() => clientId = v),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: StitchTheme.border)),
-                            child: Column(
-                              children: [
-                                DropdownButtonFormField<String>(
-                                  value: status,
-                                  decoration: const InputDecoration(labelText: 'Trạng thái', prefixIcon: Icon(Icons.flag_outlined, size: 20, color: StitchTheme.textMuted)),
-                                  items: statuses.map((s) => DropdownMenuItem<String>(
-                                    value: (s['code'] ?? '').toString(),
-                                    child: Text((s['name'] ?? '').toString()),
-                                  )).toList(),
-                                  onChanged: (v) => setSheetState(() => status = v),
-                                ),
-                                const SizedBox(height: 16),
-                                TextField(
-                                  controller: amountCtrl,
-                                  keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(labelText: 'Doanh số dự kiến (VNĐ) *', prefixIcon: Icon(Icons.attach_money, size: 20, color: StitchTheme.textMuted)),
-                                ),
-                                const SizedBox(height: 16),
-                                DropdownButtonFormField<int>(
-                                  value: successProbability,
-                                  decoration: const InputDecoration(labelText: 'Tỷ lệ thành công (%) *', prefixIcon: Icon(Icons.percent_outlined, size: 20, color: StitchTheme.textMuted)),
-                                  items: <int>[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-                                      .map(
-                                        (int v) => DropdownMenuItem<int>(
-                                          value: v,
-                                          child: Text('$v%'),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (int? v) => setSheetState(() => successProbability = v),
-                                ),
-                                const SizedBox(height: 16),
-                                TextField(
-                                  controller: sourceCtrl,
-                                  decoration: const InputDecoration(labelText: 'Nguồn', prefixIcon: Icon(Icons.language, size: 20, color: StitchTheme.textMuted)),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: StitchTheme.border)),
-                            child: TextField(
-                              controller: notesCtrl,
-                              decoration: const InputDecoration(labelText: 'Ghi chú', prefixIcon: Icon(Icons.notes, size: 20, color: StitchTheme.textMuted)),
-                              maxLines: 3,
-                            ),
-                          ),
-                          if (sheetMessage.isNotEmpty) ...<Widget>[
-                            const SizedBox(height: 12),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                              child: Text(sheetMessage, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4))],
-                    ),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              if (titleCtrl.text.trim().isEmpty ||
-                                  clientId == null) {
-                                setSheetState(() {
-                                  sheetMessage =
-                                      'Vui lòng nhập tên và chọn khách hàng.';
-                                });
-                                return;
-                              }
-                              final double? amt = amountCtrl.text.trim().isEmpty
-                                  ? null
-                                  : double.tryParse(amountCtrl.text.trim());
-                              if (amt == null || amt < 0) {
-                                setSheetState(() {
-                                  sheetMessage =
-                                      'Vui lòng nhập doanh số dự kiến (số ≥ 0).';
-                                });
-                                return;
-                              }
-                              if (successProbability == null) {
-                                setSheetState(() {
-                                  sheetMessage =
-                                      'Vui lòng chọn tỷ lệ thành công.';
-                                });
-                                return;
-                              }
-                              final bool ok;
-                              if (opp == null) {
-                                ok = await widget.apiService.createOpportunity(
-                                  widget.token,
-                                  title: titleCtrl.text.trim(),
-                                  clientId: clientId!,
-                                  amount: amt,
-                                  successProbability: successProbability!,
-                                  status: status,
-                                  source: sourceCtrl.text.trim().isEmpty
-                                      ? null
-                                      : sourceCtrl.text.trim(),
-                                  notes: notesCtrl.text.trim().isEmpty
-                                      ? null
-                                      : notesCtrl.text.trim(),
-                                );
-                              } else {
-                                ok = await widget.apiService.updateOpportunity(
-                                  widget.token,
-                                  opp['id'] as int,
-                                  title: titleCtrl.text.trim(),
-                                  clientId: clientId!,
-                                  amount: amt,
-                                  successProbability: successProbability!,
-                                  status: status,
-                                  source: sourceCtrl.text.trim().isEmpty
-                                      ? null
-                                      : sourceCtrl.text.trim(),
-                                  notes: notesCtrl.text.trim().isEmpty
-                                      ? null
-                                      : notesCtrl.text.trim(),
-                                );
-                              }
-                              if (!mounted || !context.mounted) return;
-                              if (ok) {
-                                Navigator.of(context).pop();
-                                await _fetch();
-                                setState(
-                                  () => message = opp == null
-                                      ? 'Đã tạo cơ hội mới.'
-                                      : 'Đã cập nhật cơ hội.',
-                                );
-                              } else {
-                                setSheetState(
-                                  () => sheetMessage = 'Lưu thất bại.',
-                                );
-                              }
-                            },
-                            child: Text(
-                              opp == null ? 'Tạo mới' : 'Cập nhật',
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-    titleCtrl.dispose();
-    amountCtrl.dispose();
-    notesCtrl.dispose();
-    sourceCtrl.dispose();
   }
 
   @override
@@ -533,27 +279,36 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                     const SizedBox(height: 12),
                     StitchFilterField(
                       label: 'Trạng thái',
-                      child: DropdownButtonFormField<String>(
+                      child: StitchSearchableSelectField<String>(
                         value: selectedStatus,
-                        decoration: const InputDecoration(
-                          hintText: 'Tất cả',
-                        ),
-                        items: <DropdownMenuItem<String>>[
-                          const DropdownMenuItem<String>(
-                            value: null,
-                            child: Text('Tất cả'),
-                          ),
-                          ...statuses.map(
-                            (s) => DropdownMenuItem<String>(
-                              value: (s['code'] ?? '').toString(),
-                              child: Text((s['name'] ?? '').toString()),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
+                        nullable: true,
+                        nullLabel: 'Tất cả',
+                        sheetTitle: 'Lọc theo trạng thái',
+                        label: 'Trạng thái',
+                        searchHint: 'Tìm trạng thái...',
+                        options:
+                            statuses
+                                .map(
+                                  (Map<String, dynamic> s) =>
+                                      StitchSelectOption<String>(
+                                        value: (s['code'] ?? '').toString(),
+                                        label: (s['name'] ?? '').toString(),
+                                      ),
+                                )
+                                .toList(),
+                        onChanged: (String? value) {
                           setState(() => selectedStatus = value);
                           _fetch();
                         },
+                        decoration: InputDecoration(
+                          hintText: 'Tất cả',
+                          suffixIcon: const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: StitchTheme.textMuted,
+                          ),
+                        ).applyDefaults(
+                          Theme.of(context).inputDecorationTheme,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),

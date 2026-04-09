@@ -16,7 +16,6 @@ class ModuleCenterScreen extends StatelessWidget {
     this.onOpenProducts,
     this.onOpenDepartments,
     this.onOpenRevenueReport,
-    this.onOpenLeadForms,
     this.onOpenLeadTypes,
     this.onOpenOpportunityStatuses,
     this.onOpenRevenueTiers,
@@ -40,7 +39,6 @@ class ModuleCenterScreen extends StatelessWidget {
   final VoidCallback? onOpenProducts;
   final VoidCallback? onOpenDepartments;
   final VoidCallback? onOpenRevenueReport;
-  final VoidCallback? onOpenLeadForms;
   final VoidCallback? onOpenLeadTypes;
   final VoidCallback? onOpenOpportunityStatuses;
   final VoidCallback? onOpenRevenueTiers;
@@ -161,12 +159,6 @@ class ModuleCenterScreen extends StatelessWidget {
         subtitle: 'Tổng hợp doanh thu toàn công ty',
         icon: Icons.stacked_line_chart_outlined,
         onTap: onOpenRevenueReport,
-      ),
-      _ModuleItem(
-        title: 'Form tư vấn',
-        subtitle: 'Tạo iframe thu khách hàng tiềm năng',
-        icon: Icons.webhook_outlined,
-        onTap: onOpenLeadForms,
       ),
       _ModuleItem(
         title: 'Trạng thái khách hàng tiềm năng',

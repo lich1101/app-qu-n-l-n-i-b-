@@ -1759,6 +1759,7 @@ class MobileApiService {
     String? description,
     String priority = 'medium',
     String status = 'todo',
+    String? startAt,
     String? deadline,
     int? weightPercent,
   }) async {
@@ -1774,6 +1775,7 @@ class MobileApiService {
           'description': description.trim(),
         'priority': priority,
         'status': status,
+        if (startAt != null && startAt.isNotEmpty) 'start_at': startAt,
         if (deadline != null && deadline.isNotEmpty) 'deadline': deadline,
         if (weightPercent != null) 'weight_percent': weightPercent,
       }),

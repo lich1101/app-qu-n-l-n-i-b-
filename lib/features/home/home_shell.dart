@@ -34,7 +34,6 @@ import '../modules/services_screen.dart';
 import '../modules/opportunities_screen.dart';
 import '../modules/products_screen.dart';
 import '../modules/revenue_report_screen.dart';
-import '../modules/lead_forms_screen.dart';
 import '../modules/lead_types_screen.dart';
 import '../modules/opportunity_statuses_screen.dart';
 import '../modules/revenue_tiers_screen.dart';
@@ -963,7 +962,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       kWebMenuOpportunities,
     );
 
-    final bool canViewLeadForms = webMenuHasRole(role, kWebMenuLeadForms);
     final bool canViewLeadTypes = webMenuHasRole(role, kWebMenuAdminOnlySettings);
     final bool canViewOpportunityStatuses = webMenuHasRole(
       role,
@@ -982,7 +980,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         canViewOpportunities ||
         canViewContracts ||
         canViewProducts ||
-        canViewLeadForms ||
         canViewLeadTypes ||
         canViewOpportunityStatuses ||
         canViewRevenueTiers ||
@@ -1100,13 +1097,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         currentUserRole: currentUserRole,
       ),
     );
-    void openLeadForms() => openScreen(
-          () => LeadFormsScreen(
-            token: authToken!,
-            apiService: _api,
-            canManage: apiRoleMatches(role, kApiLeadFormWrite),
-          ),
-        );
     void openLeadTypes() =>
         openScreen(() => LeadTypesScreen(token: authToken!, apiService: _api));
     void openOpportunityStatuses() => openScreen(
@@ -1159,7 +1149,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenProducts: canViewProducts ? openProducts : null,
       onOpenDepartments: canViewDepartments ? openDepartments : null,
       onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
-      onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
       onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
       onOpenOpportunityStatuses:
           canViewOpportunityStatuses ? openOpportunityStatuses : null,
@@ -1266,7 +1255,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
           onOpenContracts: canViewContracts ? openContracts : null,
           onOpenProducts: canViewProducts ? openProducts : null,
-          onOpenLeadForms: canViewLeadForms ? openLeadForms : null,
           onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
           onOpenOpportunityStatuses:
               canViewOpportunityStatuses ? openOpportunityStatuses : null,

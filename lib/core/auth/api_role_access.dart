@@ -96,9 +96,6 @@ const List<String> kApiProductMutate = <String>['admin', 'ke_toan'];
 /// DELETE sản phẩm
 const List<String> kApiProductDelete = <String>['admin'];
 
-// --- Form tư vấn (api.php ~387–396) — toàn bộ CRUD: admin
-const List<String> kApiLeadFormWrite = <String>['admin'];
-
 // --- Lịch họp (api.php ~271–277) — GET không middleware
 const List<String> kApiMeetingManage = <String>['admin', 'quan_ly'];
 

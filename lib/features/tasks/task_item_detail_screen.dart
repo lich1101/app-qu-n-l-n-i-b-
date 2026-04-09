@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_searchable_select.dart';
 import '../../core/utils/task_item_progress_input.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -897,28 +898,32 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
+                        StitchSearchableSelectField<String>(
                           value: statusValue,
-                          items: const [
-                            DropdownMenuItem(
+                          sheetTitle: 'Chọn trạng thái',
+                          label: 'Trạng thái',
+                          searchHint: 'Tìm trạng thái...',
+                          options: const <StitchSelectOption<String>>[
+                            StitchSelectOption<String>(
                               value: 'todo',
-                              child: Text('Cần làm'),
+                              label: 'Cần làm',
                             ),
-                            DropdownMenuItem(
+                            StitchSelectOption<String>(
                               value: 'doing',
-                              child: Text('Đang làm'),
+                              label: 'Đang làm',
                             ),
-                            DropdownMenuItem(
+                            StitchSelectOption<String>(
                               value: 'done',
-                              child: Text('Hoàn tất'),
+                              label: 'Hoàn tất',
                             ),
-                            DropdownMenuItem(
+                            StitchSelectOption<String>(
                               value: 'blocked',
-                              child: Text('Bị chặn'),
+                              label: 'Bị chặn',
                             ),
                           ],
                           onChanged:
-                              (v) => setModal(() => statusValue = v ?? 'todo'),
+                              (String? v) =>
+                                  setModal(() => statusValue = v ?? 'todo'),
                           decoration: const InputDecoration(
                             labelText: 'Trạng thái',
                           ),

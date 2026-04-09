@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class StitchTheme {
   static Color primaryStrong = const Color(0xFF0F766E);
@@ -7,6 +8,18 @@ class StitchTheme {
   static const Color bg = Color(0xFFF3F7F9);
   static const Color surface = Color(0xFFFFFFFF);
   static const Color surfaceAlt = Color(0xFFEAF1F5);
+  /// Nền trang form full-screen (tương đương Winmap `AppColors.background`).
+  static const Color formPageBackground = Color(0xFFF3F7F9);
+  /// Viền ngăn cách giữa các strip section (tương đương `cardBorder` Winmap).
+  static const Color formSectionDivider = Color(0xFFE7EAF3);
+  /// Nền vùng hàng chọn (picker) — primary rất nhạt.
+  static Color get formSelectionFill =>
+      primary.withValues(alpha: 0.06);
+  /// Viền vùng hàng chọn.
+  static Color get formSelectionBorder =>
+      primary.withValues(alpha: 0.22);
+  /// Nền ô icon 40px trong hàng chọn (chip nhạt).
+  static Color get formSelectionIconBg => primarySoft;
   static const Color border = Color(0xFFD9E4EA);
   /// Viền ô nhập / chip — đậm hơn [border] để dễ nhìn.
   static const Color borderStrong = Color(0xFF94A3B8);
@@ -25,6 +38,15 @@ class StitchTheme {
   static Color successSoft = successStrong.withValues(alpha: 0.12);
   static Color warningSoft = warningStrong.withValues(alpha: 0.12);
   static Color dangerSoft = dangerStrong.withValues(alpha: 0.12);
+
+  /// Giá trị hiển thị trên [DropdownButtonFormField] — nhỏ, mảnh, ellipsis.
+  static const TextStyle dropdownFieldValueStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w400,
+    color: textMain,
+    height: 1.25,
+    overflow: TextOverflow.ellipsis,
+  );
 
   static void applyPrimary(Color color) {
     primaryStrong = color;
@@ -71,6 +93,8 @@ class StitchTheme {
           fontSize: 19,
           fontWeight: FontWeight.w800,
         ),
+        /// Nền sáng → giờ/hệ thống/pin trên status bar dùng màu tối (Android/iOS).
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: surface,
@@ -142,22 +166,25 @@ class StitchTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
-        contentPadding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+        contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         floatingLabelBehavior: FloatingLabelBehavior.always,
         labelStyle: const TextStyle(
           color: labelEmphasis,
           fontSize: 13,
           fontWeight: FontWeight.w600,
+          overflow: TextOverflow.ellipsis,
         ),
         hintStyle: const TextStyle(
           color: textMuted,
           fontSize: 14,
           fontWeight: FontWeight.w500,
+          overflow: TextOverflow.ellipsis,
         ),
         floatingLabelStyle: TextStyle(
           color: primaryStrong.withValues(alpha: 0.92),
           fontSize: 12,
           fontWeight: FontWeight.w700,
+          overflow: TextOverflow.ellipsis,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -243,6 +270,14 @@ class StitchTheme {
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
+      dropdownMenuTheme: DropdownMenuThemeData(
+        textStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w400,
+          color: textMain,
+          height: 1.25,
+        ),
+      ),
       textTheme: base.textTheme.copyWith(
         titleLarge: const TextStyle(
           fontWeight: FontWeight.w700,
@@ -259,7 +294,20 @@ class StitchTheme {
           fontSize: 14,
           color: textMain,
         ),
-        bodyMedium: const TextStyle(fontSize: 14, color: textMain),
+        bodyLarge: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: textMain,
+          height: 1.35,
+          overflow: TextOverflow.ellipsis,
+        ),
+        bodyMedium: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: textMain,
+          height: 1.35,
+          overflow: TextOverflow.ellipsis,
+        ),
         bodySmall: const TextStyle(fontSize: 12, color: textMuted),
       ),
     );

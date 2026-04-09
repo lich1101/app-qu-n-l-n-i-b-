@@ -23,9 +23,6 @@ const List<String> kWebMenuOpportunities = <String>[
   'nhan_vien',
 ];
 
-/// CRM — "Form tư vấn"
-const List<String> kWebMenuLeadForms = <String>['admin'];
-
 /// Sales — "Hợp đồng"
 const List<String> kWebMenuContracts = <String>[
   'admin',

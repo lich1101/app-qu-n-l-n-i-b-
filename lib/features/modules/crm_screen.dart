@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'client_detail_screen.dart';
@@ -549,99 +550,23 @@ class _CrmScreenState extends State<CrmScreen> {
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-              decoration: BoxDecoration(
-                color: StitchTheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: StitchTheme.textMain.withValues(alpha: 0.08),
-                    blurRadius: 24,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
+              decoration: stitchFormSheetSurfaceDecoration(),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 12, 16),
-                    decoration: const BoxDecoration(
-                      color: StitchTheme.surface,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Center(
-                          child: Container(
-                            width: 40,
-                            height: 4,
-                            margin: const EdgeInsets.only(bottom: 14),
-                            decoration: BoxDecoration(
-                              color: StitchTheme.border,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: StitchTheme.primarySoft,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: StitchTheme.primary.withValues(alpha: 0.2),
-                                ),
-                              ),
-                              child: Icon(
-                                editingClientId == null
-                                    ? Icons.person_add_alt_1_rounded
-                                    : Icons.edit_note_rounded,
-                                color: StitchTheme.primaryStrong,
-                                size: 26,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Text(
-                                    editingClientId == null ? 'Thêm khách hàng' : 'Sửa khách hàng',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 18,
-                                      color: StitchTheme.textMain,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    editingClientId == null
-                                        ? 'Số điện thoại không được trùng với khách đã có. Hệ thống sẽ từ chối tạo mới và báo tên khách cũ.'
-                                        : 'Đổi SĐT sang số đã dùng cho khách khác cũng không được phép.',
-                                    style: const TextStyle(
-                                      fontSize: 12.5,
-                                      height: 1.35,
-                                      color: StitchTheme.textMuted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              style: IconButton.styleFrom(
-                                backgroundColor: StitchTheme.surfaceAlt,
-                                foregroundColor: StitchTheme.textMuted,
-                              ),
-                              icon: const Icon(Icons.close_rounded, size: 22),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                children: <Widget>[
+                  StitchFormSheetTitleBar(
+                    title:
+                        editingClientId == null
+                            ? 'Thêm khách hàng'
+                            : 'Sửa khách hàng',
+                    subtitle:
+                        editingClientId == null
+                            ? 'Số điện thoại không được trùng với khách đã có. Hệ thống sẽ từ chối tạo mới và báo tên khách cũ.'
+                            : 'Đổi SĐT sang số đã dùng cho khách khác cũng không được phép.',
+                    icon:
+                        editingClientId == null
+                            ? Icons.person_add_alt_1_rounded
+                            : Icons.edit_note_rounded,
                   ),
                   Flexible(
                     child: SingleChildScrollView(
@@ -656,7 +581,7 @@ class _CrmScreenState extends State<CrmScreen> {
                         label: 'Tên khách hàng',
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     TextField(
                       controller: clientCompanyCtrl,
                       decoration: stitchSheetInputDecoration(
@@ -664,7 +589,7 @@ class _CrmScreenState extends State<CrmScreen> {
                         label: 'Công ty',
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     TextField(
                       controller: clientEmailCtrl,
                       keyboardType: TextInputType.emailAddress,
@@ -673,7 +598,7 @@ class _CrmScreenState extends State<CrmScreen> {
                         label: 'Email',
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     TextField(
                       controller: clientPhoneCtrl,
                       keyboardType: TextInputType.phone,
@@ -683,7 +608,7 @@ class _CrmScreenState extends State<CrmScreen> {
                         hint: 'Nhập đúng SĐT để tránh trùng',
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     DropdownButtonFormField<int>(
                       value: leadTypeId,
                       decoration: stitchSheetInputDecoration(
@@ -712,7 +637,7 @@ class _CrmScreenState extends State<CrmScreen> {
                           'administrator',
                           'quan_ly',
                         }.contains(widget.currentUserRole.toLowerCase())) ...<Widget>[
-                      const SizedBox(height: 12),
+                      SizedBox(height: kStitchTaskFormGap),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
@@ -740,7 +665,7 @@ class _CrmScreenState extends State<CrmScreen> {
                       'administrator',
                       'quan_ly',
                     ].contains(widget.currentUserRole.toLowerCase())) ...<Widget>[
-                      const SizedBox(height: 12),
+                      SizedBox(height: kStitchTaskFormGap),
                       DropdownButtonFormField<int?>(
                         value: assignedDepartmentId,
                         decoration: stitchSheetInputDecoration(
@@ -780,7 +705,7 @@ class _CrmScreenState extends State<CrmScreen> {
                           }
                         }),
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: kStitchTaskFormGap),
                       Builder(
                         builder: (BuildContext context) {
                           final List<Map<String, dynamic>> staffFiltered =
@@ -997,7 +922,7 @@ class _CrmScreenState extends State<CrmScreen> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     TextField(
                       controller: leadSourceCtrl,
                       decoration: stitchSheetInputDecoration(
@@ -1005,7 +930,7 @@ class _CrmScreenState extends State<CrmScreen> {
                         label: 'Nguồn khách hàng tiềm năng',
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     TextField(
                       controller: leadChannelCtrl,
                       decoration: stitchSheetInputDecoration(
@@ -1013,7 +938,7 @@ class _CrmScreenState extends State<CrmScreen> {
                         label: 'Kênh',
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     TextField(
                       controller: leadMessageCtrl,
                       decoration: stitchSheetInputDecoration(
@@ -1023,13 +948,13 @@ class _CrmScreenState extends State<CrmScreen> {
                       maxLines: 2,
                     ),
                     if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 12),
+                      SizedBox(height: kStitchTaskFormGap),
                       StitchFeedbackBanner(
                         message: message,
                         isError: !message.contains('thành công'),
                       ),
                     ],
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                         ],
                       ),
                     ),
@@ -1147,80 +1072,27 @@ class _CrmScreenState extends State<CrmScreen> {
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              decoration: BoxDecoration(
-                color: StitchTheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: StitchTheme.textMain.withValues(alpha: 0.08),
-                    blurRadius: 24,
-                    offset: const Offset(0, -4),
+              decoration: stitchFormSheetSurfaceDecoration(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  StitchFormSheetTitleBar(
+                    title:
+                        editingPaymentId == null
+                            ? 'Ghi nhận thanh toán'
+                            : 'Sửa thanh toán',
+                    subtitle:
+                        'Liên kết khoản thu với khách hàng trong CRM.',
+                    icon: Icons.receipt_long_rounded,
                   ),
-                ],
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: StitchTheme.border,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: <Widget>[
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: StitchTheme.primarySoft,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(
-                            Icons.receipt_long_rounded,
-                            color: StitchTheme.primaryStrong,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                editingPaymentId == null
-                                    ? 'Ghi nhận thanh toán'
-                                    : 'Sửa thanh toán',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 18,
-                                  color: StitchTheme.textMain,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Liên kết khoản thu với khách hàng trong CRM.',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: StitchTheme.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
                     DropdownButtonFormField<int>(
                       value: paymentClientId,
                       decoration: stitchSheetInputDecoration(
@@ -1248,7 +1120,7 @@ class _CrmScreenState extends State<CrmScreen> {
                                   setSheetState(() => paymentClientId = value)
                               : null,
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     TextField(
                       controller: paymentAmountCtrl,
                       decoration: stitchSheetInputDecoration(
@@ -1258,7 +1130,7 @@ class _CrmScreenState extends State<CrmScreen> {
                       ),
                       keyboardType: TextInputType.number,
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: kStitchTaskFormGap),
                     DropdownButtonFormField<String>(
                       value: paymentStatus,
                       decoration: stitchSheetInputDecoration(
@@ -1288,68 +1160,103 @@ class _CrmScreenState extends State<CrmScreen> {
                               : null,
                     ),
                     if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 12),
+                      SizedBox(height: kStitchTaskFormGap),
                       StitchFeedbackBanner(
                         message: message,
                         isError: !message.contains('thành công'),
                       ),
                     ],
-                    const SizedBox(height: 20),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              side: const BorderSide(color: StitchTheme.border),
-                              foregroundColor: StitchTheme.textMain,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: const Text('Hủy'),
-                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                    decoration: BoxDecoration(
+                      color: StitchTheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: StitchTheme.border.withValues(alpha: 0.85),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed:
-                                widget.canManagePayments && !_savingPaymentForm
-                                    ? () async {
-                                      final bool ok = await _savePayment();
-                                      if (!context.mounted) return;
-                                      if (ok) {
-                                        Navigator.of(context).pop();
-                                      } else {
-                                        setSheetState(() {});
-                                      }
-                                    }
-                                    : null,
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              backgroundColor: StitchTheme.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: Text(
-                              _savingPaymentForm
-                                  ? (editingPaymentId == null
-                                      ? 'Đang tạo...'
-                                      : 'Đang cập nhật...')
-                                  : (editingPaymentId == null
-                                      ? 'Lưu thanh toán'
-                                      : 'Cập nhật thanh toán'),
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
+                      ),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: StitchTheme.textMain.withValues(alpha: 0.04),
+                          blurRadius: 12,
+                          offset: const Offset(0, -4),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                    child: SafeArea(
+                      top: false,
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed:
+                                  _savingPaymentForm
+                                      ? null
+                                      : () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                side: const BorderSide(
+                                  color: StitchTheme.border,
+                                ),
+                                foregroundColor: StitchTheme.textMain,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text('Hủy'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed:
+                                  widget.canManagePayments &&
+                                          !_savingPaymentForm
+                                      ? () async {
+                                        final bool ok = await _savePayment();
+                                        if (!context.mounted) return;
+                                        if (ok) {
+                                          Navigator.of(context).pop();
+                                        } else {
+                                          setSheetState(() {});
+                                        }
+                                      }
+                                      : null,
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                backgroundColor: StitchTheme.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: Text(
+                                _savingPaymentForm
+                                    ? (editingPaymentId == null
+                                        ? 'Đang tạo...'
+                                        : 'Đang cập nhật...')
+                                    : (editingPaymentId == null
+                                        ? 'Lưu thanh toán'
+                                        : 'Cập nhật thanh toán'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -1394,7 +1301,7 @@ class _CrmScreenState extends State<CrmScreen> {
               subtitle:
                   'Theo dõi khách hàng, thanh toán và phối hợp phòng ban theo dự án.',
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: kStitchTaskFormGap),
             GridView.count(
               crossAxisCount: 2,
               childAspectRatio: 1.35,
@@ -1431,7 +1338,7 @@ class _CrmScreenState extends State<CrmScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: kStitchTaskFormGap),
             StitchFilterCard(
               title: 'Bộ lọc khách hàng',
               subtitle:
@@ -1453,7 +1360,7 @@ class _CrmScreenState extends State<CrmScreen> {
                       onSubmitted: (_) => _fetch(),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: kStitchTaskFormGap),
                   StaffMultiFilterRow(
                     users: clientFilterStaffOptions,
                     selectedIds: clientListStaffFilterIds,
@@ -1471,7 +1378,7 @@ class _CrmScreenState extends State<CrmScreen> {
                       label: const Text('Áp dụng lọc khách hàng'),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: kStitchTaskFormGap),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
@@ -1490,7 +1397,7 @@ class _CrmScreenState extends State<CrmScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: kStitchTaskFormGap),
             if (message.isNotEmpty) ...<Widget>[
               Text(message),
               const SizedBox(height: 8),
@@ -1605,7 +1512,7 @@ class _CrmScreenState extends State<CrmScreen> {
                                         ),
                                     ],
                                   ),
-                                  const SizedBox(height: 12),
+                                  SizedBox(height: kStitchTaskFormGap),
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,

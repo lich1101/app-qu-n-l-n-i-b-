@@ -35,19 +35,6 @@ class OverviewScreen extends StatelessWidget {
   final MobileApiService? apiService;
   final String currentUserRole;
 
-  int _readInt(List<String> keys, {int fallback = 0}) {
-    for (final String key in keys) {
-      final dynamic value = summary[key];
-      if (value is int) return value;
-      if (value is double) return value.round();
-      if (value is String) {
-        final int? parsed = int.tryParse(value);
-        if (parsed != null) return parsed;
-      }
-    }
-    return fallback;
-  }
-
   String _weekdayName(int weekday) {
     switch (weekday) {
       case DateTime.monday:
@@ -96,29 +83,6 @@ class OverviewScreen extends StatelessWidget {
     return <Map<String, dynamic>>[];
   }
 
-  List<Map<String, dynamic>> _extractActivities() {
-    final dynamic raw = summary['recent_activities'] ?? summary['activities'];
-    if (raw is List) {
-      return raw
-          .whereType<Map<String, dynamic>>()
-          .map((Map<String, dynamic> item) => item)
-          .toList();
-    }
-    return <Map<String, dynamic>>[];
-  }
-
-  List<Map<String, dynamic>> _extractOverloadList() {
-    final dynamic raw =
-        summary['workload_overload'] ?? summary['overload_list'];
-    if (raw is List) {
-      return raw
-          .whereType<Map<String, dynamic>>()
-          .map((Map<String, dynamic> item) => item)
-          .toList();
-    }
-    return <Map<String, dynamic>>[];
-  }
-
   @override
   Widget build(BuildContext context) {
     final MediaQueryData media = MediaQuery.of(context);
@@ -131,11 +95,6 @@ class OverviewScreen extends StatelessWidget {
     final double bottomInset = media.padding.bottom + (compact ? 94 : 90);
 
     final List<Map<String, dynamic>> progressItems = _extractProgressItems();
-    final List<Map<String, dynamic>> activities = _extractActivities();
-    final List<Map<String, dynamic>> overloadList = _extractOverloadList();
-    final int workloadThreshold = _readInt(<String>[
-      'workload_threshold',
-    ], fallback: 8);
 
     return SafeArea(
       child: ListView(
@@ -359,128 +318,6 @@ class OverviewScreen extends StatelessWidget {
                 },
               ),
             ),
-          const SizedBox(height: 24),
-          const StitchSectionHeader(title: 'Hoạt động gần đây'),
-          const SizedBox(height: 12),
-          if (activities.isEmpty)
-            const Text(
-              'Chưa có hoạt động gần đây.',
-              style: TextStyle(color: StitchTheme.textMuted),
-            )
-          else
-            ...List<Widget>.generate(activities.length, (int index) {
-              final Map<String, dynamic> activity = activities[index];
-              final String user =
-                  (activity['user'] ?? activity['name'] ?? 'Nhân sự')
-                      .toString();
-              final String content =
-                  (activity['content'] ?? activity['message'] ?? 'cập nhật')
-                      .toString();
-              final String time =
-                  (activity['time'] ?? activity['created_at'] ?? 'vừa xong')
-                      .toString();
-              return StitchTimelineItem(
-                title: '$user $content',
-                time: time,
-                isLast: index == activities.length - 1,
-              );
-            }),
-          const SizedBox(height: 24),
-          const StitchSectionHeader(title: 'Nhân sự quá tải'),
-          const SizedBox(height: 12),
-          if (overloadList.isEmpty)
-            const Text(
-              'Chưa có nhân sự quá tải.',
-              style: TextStyle(color: StitchTheme.textMuted),
-            )
-          else
-            ...overloadList.map((Map<String, dynamic> item) {
-              final String name = (item['name'] ?? 'Nhân sự').toString();
-              final String role = (item['role'] ?? '').toString();
-              final int active = _readInt(
-                <String>[],
-                fallback:
-                    (item['active_tasks'] ?? 0) is int
-                        ? item['active_tasks'] as int
-                        : int.tryParse('${item['active_tasks'] ?? 0}') ?? 0,
-              );
-              final int overdue = _readInt(
-                <String>[],
-                fallback:
-                    (item['overdue_tasks'] ?? 0) is int
-                        ? item['overdue_tasks'] as int
-                        : int.tryParse('${item['overdue_tasks'] ?? 0}') ?? 0,
-              );
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: StitchTheme.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      name,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    if (role.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          role,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: StitchTheme.textMuted,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        const Text(
-                          'Công việc đang xử lý',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: StitchTheme.textMuted,
-                          ),
-                        ),
-                        Text(
-                          '$active / $workloadThreshold',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: StitchTheme.warning,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        const Text(
-                          'Công việc quá hạn',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: StitchTheme.textMuted,
-                          ),
-                        ),
-                        Text(
-                          overdue.toString(),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: StitchTheme.danger,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }),
         ],
       ),
     );

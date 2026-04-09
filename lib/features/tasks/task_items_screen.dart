@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
-import '../../core/utils/vietnam_time.dart';
+import '../../core/utils/task_item_linear_pace.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'task_item_detail_screen.dart';
@@ -114,12 +114,6 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
 
   String _statusLabel(String value) {
     return _statusLabels[value] ?? (value.isEmpty ? '—' : value);
-  }
-
-  String _formatDate(dynamic value) {
-    final String ymd = VietnamTime.toYmdInput(value);
-    if (ymd.isEmpty) return '—';
-    return ymd;
   }
 
   Color _statusColor(String status) {
@@ -296,12 +290,17 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
                       rawProject is Map
                           ? rawProject.cast<String, dynamic>()
                           : null;
-                  final dynamic rawAssignee = item['assignee'];
-                  final Map<String, dynamic>? assignee =
-                      rawAssignee is Map
-                          ? rawAssignee.cast<String, dynamic>()
-                          : null;
                   final String status = (item['status'] ?? '').toString();
+                  final Color tone = _statusColor(status);
+                  final int pct = _toInt(item['progress_percent']);
+                  final Map<String, dynamic>? reviewer =
+                      item['reviewer'] is Map<String, dynamic>
+                          ? item['reviewer'] as Map<String, dynamic>
+                          : null;
+                  final String reviewerName =
+                      (reviewer?['name'] ?? reviewer?['email'] ?? '')
+                          .toString()
+                          .trim();
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 10),
@@ -310,68 +309,139 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: StitchTheme.border),
                     ),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => _openItem(item),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              (item['title'] ?? 'Đầu việc').toString(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: StitchTheme.textMain,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Công việc: ${(task?['title'] ?? '—').toString()}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: StitchTheme.textMuted,
-                              ),
-                            ),
-                            Text(
-                              'Dự án: ${(project?['name'] ?? '—').toString()}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: StitchTheme.textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        InkWell(
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(16),
+                          ),
+                          onTap: () => _openItem(item),
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
-                                _MiniPill(
-                                  label: _statusLabel(status),
-                                  color: _statusColor(status),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Text(
+                                        (item['title'] ?? 'Đầu việc')
+                                            .toString(),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                          color: StitchTheme.textMain,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: tone.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(
+                                          16,
+                                        ),
+                                        border: Border.all(
+                                          color: tone.withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        _statusLabel(status),
+                                        style: TextStyle(
+                                          color: tone,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                _MiniPill(
-                                  label:
-                                      'Tiến độ ${_toInt(item['progress_percent'])}%',
-                                  color: StitchTheme.primaryStrong,
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Công việc: ${(task?['title'] ?? '—').toString()}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: StitchTheme.textMuted,
+                                  ),
                                 ),
-                                _MiniPill(
-                                  label:
-                                      'Tỷ trọng ${_toInt(item['weight_percent'])}%',
-                                  color: StitchTheme.warningStrong,
+                                Text(
+                                  'Dự án: ${(project?['name'] ?? '—').toString()}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: StitchTheme.textMuted,
+                                  ),
                                 ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Tiến độ: $pct%',
+                                  style: const TextStyle(
+                                    color: StitchTheme.textMuted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: LinearProgressIndicator(
+                                    value: pct.clamp(0, 100) / 100,
+                                    minHeight: 6,
+                                    color: tone,
+                                    backgroundColor: StitchTheme.surfaceAlt,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: taskItemPaceStatusLine(
+                                    computeTaskItemLinearPace(item),
+                                  ),
+                                ),
+                                if (reviewerName.isNotEmpty) ...<Widget>[
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      const Icon(
+                                        Icons.fact_check_outlined,
+                                        size: 16,
+                                        color: StitchTheme.textMuted,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          'Người duyệt: $reviewerName',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: StitchTheme.textMuted,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Phụ trách: ${(assignee?['name'] ?? '—').toString()} • Deadline: ${_formatDate(item['deadline'])}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: StitchTheme.textMuted,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
+                        const Divider(height: 1),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                          child: TextButton.icon(
+                            onPressed: () => _openItem(item),
+                            icon: const Icon(
+                              Icons.visibility_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('Chi tiết'),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }),
@@ -410,32 +480,6 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniPill extends StatelessWidget {
-  const _MiniPill({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
         ),
       ),
     );

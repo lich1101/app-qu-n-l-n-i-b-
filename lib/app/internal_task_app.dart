@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../config/app_env.dart';
 import '../core/settings/app_settings.dart';
@@ -27,12 +28,19 @@ class InternalTaskApp extends StatelessWidget {
               minScaleFactor: 0.9,
               maxScaleFactor: 1.15,
             );
-            return GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-              child: MediaQuery(
-                data: media.copyWith(textScaler: scaler),
-                child: child ?? const SizedBox.shrink(),
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: SystemUiOverlayStyle.dark.copyWith(
+                statusBarColor: Colors.transparent,
+                systemNavigationBarColor: StitchTheme.surface,
+                systemNavigationBarDividerColor: Colors.transparent,
+              ),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                child: MediaQuery(
+                  data: media.copyWith(textScaler: scaler),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             );
           },

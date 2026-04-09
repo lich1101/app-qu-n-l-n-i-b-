@@ -234,9 +234,6 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Hạng doanh thu'),
-        actions: <Widget>[
-          IconButton(icon: const Icon(Icons.add), onPressed: () => _openForm()),
-        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(

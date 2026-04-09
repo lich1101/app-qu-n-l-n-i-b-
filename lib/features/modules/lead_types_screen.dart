@@ -206,9 +206,6 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Trạng thái khách hàng tiềm năng'),
-        actions: <Widget>[
-          IconButton(icon: const Icon(Icons.add), onPressed: () => _openForm()),
-        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(

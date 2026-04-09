@@ -532,7 +532,7 @@ InputDecoration stitchSheetInputDecoration(
     ),
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     floatingLabelBehavior: FloatingLabelBehavior.auto,
-  );
+  ).applyDefaults(Theme.of(context).inputDecorationTheme);
 }
 
 /// Thông báo lỗi / thành công ngắn trong sheet (API, validation).

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 
+import '../../config/app_env.dart';
 import '../auth/api_role_access.dart';
 import '../../data/services/mobile_api_service.dart';
 import '../../features/modules/client_detail_screen.dart';
@@ -17,7 +19,6 @@ import '../../features/tasks/task_item_detail_screen.dart';
 import '../../features/modules/opportunities_screen.dart';
 import '../../features/modules/opportunity_detail_screen.dart';
 import '../../features/modules/notifications_screen.dart';
-import '../../features/modules/lead_forms_screen.dart';
 import '../../features/modules/products_screen.dart';
 
 class NotificationRouter {
@@ -62,7 +63,6 @@ class NotificationRouter {
     final taskItemUpdateId = _extractInt(data, 'task_item_update_id');
     final opportunityId = _extractInt(data, 'opportunity_id');
     final meetingId = _extractInt(data, 'meeting_id');
-    final leadFormId = _extractInt(data, 'lead_form_id');
     final productId = _extractInt(data, 'product_id');
     final transferId = _extractInt(data, 'transfer_id');
     final bool isOpportunityNotification =
@@ -204,12 +204,8 @@ class NotificationRouter {
         );
       }
     } else if (type == 'lead_form' || _isLeadFormSettingsType(type)) {
-      screen = LeadFormsScreen(
-        token: token,
-        apiService: apiService,
-        canManage: apiRoleMatches(role, kApiLeadFormWrite),
-        initialLeadFormId: leadFormId,
-      );
+      await _openLeadFormWeb(context);
+      return;
     } else if (type == 'product' || type.startsWith('product_')) {
       screen = ProductsScreen(
         token: token,
@@ -428,5 +424,30 @@ class NotificationRouter {
     final messenger = ScaffoldMessenger.maybeOf(context);
     messenger?.hideCurrentSnackBar();
     messenger?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Cấu hình form chỉ trên web — mở `/form-tu-van`.
+  static Future<void> _openLeadFormWeb(BuildContext context) async {
+    final String base = AppEnv.webBaseUrl.replaceAll(RegExp(r'/$'), '');
+    final Uri uri = Uri.parse('$base/form-tu-van');
+    try {
+      final bool launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && context.mounted) {
+        _showMissingMessage(
+          context,
+          'Không thể mở trình duyệt. Hãy cấu hình form tư vấn trên web.',
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        _showMissingMessage(
+          context,
+          'Không thể mở trang form tư vấn trên web.',
+        );
+      }
+    }
   }
 }
