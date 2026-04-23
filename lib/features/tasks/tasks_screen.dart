@@ -8,9 +8,11 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_env.dart';
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/widgets/stitch_searchable_select.dart';
 import '../../core/widgets/stitch_task_form_sheet.dart';
+import '../../core/utils/timeline_defaults.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../core/utils/task_item_progress_input.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -139,14 +141,11 @@ class _TasksScreenState extends State<TasksScreen> {
       file,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
+    AppTagMessage.show(
           report['error'] != null
               ? 'Import thất bại.'
               : 'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới.',
-        ),
-      ),
+      isError: report['error'] != null,
     );
     await widget.onRefresh(status: widget.currentFilter, silent: true);
   }
@@ -187,12 +186,9 @@ class _TasksScreenState extends State<TasksScreen> {
     }
     if (projects.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
+      AppTagMessage.show(
             'Bạn chưa được gán phụ trách dự án nào để tạo công việc.',
-          ),
-        ),
+        isError: true,
       );
       return;
     }
@@ -209,17 +205,12 @@ class _TasksScreenState extends State<TasksScreen> {
               statuses: widget.statuses,
             ),
       ),
-    );
-    if (!mounted) return;
-    if (created == true) {
-      await widget.onRefresh(
-        status: widget.currentFilter,
-        silent: true,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã tạo công việc mới.')),
-      );
+    if (created == true) {
+      await widget.onRefresh(status: widget.currentFilter, silent: true);
+              if (!mounted) return;
+      AppTagMessage.show('Đã tạo công việc mới.');
     }
   }
 
@@ -737,8 +728,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     setModalState(() => localMessage = m);
                   },
                 );
-                if (progress == null &&
-                    progressCtrl.text.trim().isNotEmpty) {
+                if (progress == null && progressCtrl.text.trim().isNotEmpty) {
                   return;
                 }
                 setModalState(() {
@@ -1034,50 +1024,52 @@ class _TasksScreenState extends State<TasksScreen> {
             return AlertDialog(
               title: const Text('Sửa & duyệt báo cáo'),
               content: StatefulBuilder(
-                builder: (BuildContext dCtx, void Function(void Function()) setD) {
+                builder: (
+                  BuildContext dCtx,
+                  void Function(void Function()) setD,
+                ) {
                   return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
                       StitchSearchableSelectField<String>(
-                        value: statusValue.isEmpty ? null : statusValue,
+                    value: statusValue.isEmpty ? null : statusValue,
                         sheetTitle: 'Chọn trạng thái',
                         label: 'Trạng thái',
                         searchHint: 'Tìm trạng thái...',
                         options:
-                            widget.statuses
-                                .map(
+                        widget.statuses
+                            .map(
                                   (String s) => StitchSelectOption<String>(
-                                    value: s,
+                                value: s,
                                     label: _prettyStatus(s),
-                                  ),
-                                )
-                                .toList(),
+                              ),
+                            )
+                            .toList(),
                         onChanged:
-                            (String? v) =>
-                                setD(() => statusValue = v ?? ''),
+                            (String? v) => setD(() => statusValue = v ?? ''),
                         decoration: const InputDecoration(
                           labelText: 'Trạng thái',
                         ).applyDefaults(Theme.of(dCtx).inputDecorationTheme),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: progressCtrl,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: <TextInputFormatter>[
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(3),
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'Tiến độ (%)',
-                          helperText: 'Chỉ 0–100%',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: noteCtrl,
-                        decoration: const InputDecoration(labelText: 'Ghi chú'),
-                      ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: progressCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(3),
                     ],
+                    decoration: const InputDecoration(
+                      labelText: 'Tiến độ (%)',
+                      helperText: 'Chỉ 0–100%',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: noteCtrl,
+                    decoration: const InputDecoration(labelText: 'Ghi chú'),
+                  ),
+                ],
                   );
                 },
               ),
@@ -1103,9 +1095,7 @@ class _TasksScreenState extends State<TasksScreen> {
         final int? progress = TaskItemProgressInput.tryParseOptional(
           progressCtrl.text,
           onInvalid: (String m) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(m)),
-            );
+            AppTagMessage.show(m, isError: true);
           },
         );
         if (progress == null && progressCtrl.text.trim().isNotEmpty) {
@@ -1321,13 +1311,14 @@ class _TasksScreenState extends State<TasksScreen> {
       );
       final List<Map<String, dynamic>> existingItems = await widget.apiService
           .getTaskItems(token, taskId, perPage: 200);
-      if ((task['deadline'] ?? '').toString().isNotEmpty) {
-        deadlineCtrl.text =
-            VietnamTime.toYmdInput(task['deadline']);
-      }
-      if ((task['start_at'] ?? '').toString().isNotEmpty) {
-        startCtrl.text = VietnamTime.toYmdInput(task['start_at']);
-      }
+      final Map<String, dynamic>? projectMap =
+          task['project'] is Map<String, dynamic>
+              ? task['project'] as Map<String, dynamic>
+              : null;
+      final ({DateTime? start, DateTime? end}) itemFall =
+          TimelineDefaults.taskItemDefaults(task: task, project: projectMap);
+      startCtrl.text = VietnamTime.toYmdInput(itemFall.start);
+      deadlineCtrl.text = VietnamTime.toYmdInput(itemFall.end);
       int? assigneeId = taskOwnerId > 0 ? taskOwnerId : null;
       String priority = (task['priority'] ?? 'medium').toString();
       String status =
@@ -1337,12 +1328,16 @@ class _TasksScreenState extends State<TasksScreen> {
       bool submitting = false;
       String localMsg = '';
 
-      final DateTime? taskDeadlineCap =
-          VietnamTime.parseDateOnly(task['deadline']);
+      DateTime? taskDeadlineCap = VietnamTime.parseDateOnly(task['deadline']);
+      if (taskDeadlineCap == null && projectMap != null) {
+        taskDeadlineCap =
+            TimelineDefaults.taskDefaultsFromProject(projectMap).end;
+      }
 
       Future<void> pickDeadline(StateSetter setModalState) async {
-        final DateTime lastDate =
-            VietnamTime.pickerLastDateWithCap(taskDeadlineCap);
+        final DateTime lastDate = VietnamTime.pickerLastDateWithCap(
+          taskDeadlineCap,
+        );
         final DateTime firstDate = VietnamTime.pickerFirstDateSafe(lastDate);
         DateTime initial = VietnamTime.pickerInitialDate(deadlineCtrl.text);
         initial = VietnamTime.clampPickerInitial(initial, firstDate, lastDate);
@@ -1362,8 +1357,9 @@ class _TasksScreenState extends State<TasksScreen> {
       }
 
       Future<void> pickStart(StateSetter setModalState) async {
-        final DateTime lastDate =
-            VietnamTime.pickerLastDateWithCap(taskDeadlineCap);
+        final DateTime lastDate = VietnamTime.pickerLastDateWithCap(
+          taskDeadlineCap,
+        );
         final DateTime firstDate = VietnamTime.pickerFirstDateSafe(lastDate);
         DateTime initial = VietnamTime.pickerInitialDate(startCtrl.text);
         initial = VietnamTime.clampPickerInitial(initial, firstDate, lastDate);
@@ -1449,8 +1445,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     setModalState(() => localMsg = m);
                   },
                 );
-                if (progress == null &&
-                    progressCtrl.text.trim().isNotEmpty) {
+                if (progress == null && progressCtrl.text.trim().isNotEmpty) {
                   return;
                 }
                 final int? weight =
@@ -1464,15 +1459,20 @@ class _TasksScreenState extends State<TasksScreen> {
                 final DateTime? cap = taskDeadlineCap;
                 if (!VietnamTime.ymdNotAfterCap(startCtrl.text.trim(), cap)) {
                   setModalState(
-                    () => localMsg =
-                        'Ngày bắt đầu đầu việc không được sau deadline công việc.',
+                    () =>
+                        localMsg =
+                            'Ngày bắt đầu đầu việc không được sau deadline công việc.',
                   );
                   return;
                 }
-                if (!VietnamTime.ymdNotAfterCap(deadlineCtrl.text.trim(), cap)) {
+                if (!VietnamTime.ymdNotAfterCap(
+                  deadlineCtrl.text.trim(),
+                  cap,
+                )) {
                   setModalState(
-                    () => localMsg =
-                        'Hạn đầu việc không được sau deadline công việc.',
+                    () =>
+                        localMsg =
+                            'Hạn đầu việc không được sau deadline công việc.',
                   );
                   return;
                 }
@@ -1544,8 +1544,9 @@ class _TasksScreenState extends State<TasksScreen> {
                                     (Map<String, dynamic> d) =>
                                         StitchSelectOption<int>(
                                           value: d['id'] as int,
-                                          label: (d['name'] ?? 'Phòng ban')
-                                              .toString(),
+                                          label:
+                                            (d['name'] ?? 'Phòng ban')
+                                                .toString(),
                                         ),
                                   )
                                   .toList(),
@@ -1722,7 +1723,9 @@ class _TasksScreenState extends State<TasksScreen> {
                                       StitchSelectOption<int>(
                                         value: s['id'] as int,
                                         label:
-                                            (s['name'] ?? s['email'] ?? 'Nhân sự')
+                                            (s['name'] ??
+                                                    s['email'] ??
+                                                    'Nhân sự')
                                                 .toString(),
                                         subtitle:
                                             (s['email'] ?? '')
@@ -2685,38 +2688,38 @@ class _TasksScreenState extends State<TasksScreen> {
                                         (r['scheduled_at'] ?? '').toString(),
                                       ),
                                       trailing:
-                                          _canManageReminders
+                                            _canManageReminders
                                               ? Row(
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: <Widget>[
                                                   TextButton.icon(
                                                     onPressed: () {
-                                                      final int reminderId =
-                                                          (r['id'] ?? 0) as int;
-                                                      final String scheduled =
+                                                  final int reminderId =
+                                                      (r['id'] ?? 0) as int;
+                                                  final String scheduled =
                                                           (r['scheduled_at'] ??
                                                                   '')
-                                                              .toString();
-                                                      final String channel =
+                                                          .toString();
+                                                  final String channel =
                                                           (r['channel'] ??
                                                                   'in_app')
-                                                              .toString();
-                                                      final String trigger =
-                                                          (r['trigger_type'] ??
-                                                                  'custom')
-                                                              .toString();
-                                                      setSheetState(() {
-                                                        editingReminderId =
-                                                            reminderId;
-                                                        reminderAtCtrl.text =
-                                                            scheduled;
+                                                          .toString();
+                                                  final String trigger =
+                                                      (r['trigger_type'] ??
+                                                              'custom')
+                                                          .toString();
+                                                    setSheetState(() {
+                                                      editingReminderId =
+                                                          reminderId;
+                                                      reminderAtCtrl.text =
+                                                          scheduled;
                                                         reminderChannel =
                                                             channel;
                                                         reminderTrigger =
                                                             trigger;
-                                                        localMessage =
-                                                            'Đang sửa reminder #$editingReminderId';
-                                                      });
+                                                      localMessage =
+                                                          'Đang sửa reminder #$editingReminderId';
+                                                    });
                                                     },
                                                     icon: const Icon(
                                                       Icons.edit_outlined,
@@ -2728,22 +2731,23 @@ class _TasksScreenState extends State<TasksScreen> {
                                                     onPressed: () async {
                                                       final int reminderId =
                                                           (r['id'] ?? 0) as int;
-                                                      final bool ok = await widget
-                                                          .apiService
-                                                          .deleteTaskReminder(
-                                                            token,
-                                                            taskId,
-                                                            reminderId,
-                                                          );
-                                                      setSheetState(() {
-                                                        localMessage =
-                                                            ok
-                                                                ? 'Đã xoá reminder.'
-                                                                : 'Xoá reminder thất bại.';
-                                                      });
-                                                      await refresh(
-                                                        setSheetState,
-                                                      );
+                                                      final bool
+                                                      ok = await widget
+                                                        .apiService
+                                                        .deleteTaskReminder(
+                                                          token,
+                                                          taskId,
+                                                          reminderId,
+                                                        );
+                                                    setSheetState(() {
+                                                      localMessage =
+                                                          ok
+                                                              ? 'Đã xoá reminder.'
+                                                              : 'Xoá reminder thất bại.';
+                                                    });
+                                                    await refresh(
+                                                      setSheetState,
+                                                    );
                                                     },
                                                     icon: Icon(
                                                       Icons.delete_outline,
@@ -3345,30 +3349,30 @@ class _TasksScreenState extends State<TasksScreen> {
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: priorityStyle.background,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
+                  decoration: BoxDecoration(
+                    color: priorityStyle.background,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
                 mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(
-                    priorityStyle.icon,
-                    size: 14,
-                    color: priorityStyle.foreground,
+                    children: <Widget>[
+                      Icon(
+                        priorityStyle.icon,
+                        size: 14,
+                        color: priorityStyle.foreground,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        priorityStyle.label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: priorityStyle.foreground,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    priorityStyle.label,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: priorityStyle.foreground,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
             const SizedBox(height: 8),
             Text(
               projectName,
@@ -3406,22 +3410,22 @@ class _TasksScreenState extends State<TasksScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            Row(
-              children: <Widget>[
-                const Icon(
+                  Row(
+                    children: <Widget>[
+                      const Icon(
                   Icons.timer_outlined,
-                  size: 16,
+                        size: 16,
                   color: StitchTheme.textMuted,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     'Hạn: $deadlineLabel',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: StitchTheme.textMuted,
-                    ),
-                  ),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: StitchTheme.textMuted,
+                        ),
+                      ),
                 ),
               ],
             ),
@@ -3458,16 +3462,16 @@ class _TasksScreenState extends State<TasksScreen> {
                   ),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
+                  child: Text(
                       'Người duyệt: $reviewerName',
-                      style: const TextStyle(
+                    style: const TextStyle(
                         fontSize: 12,
-                        color: StitchTheme.textMuted,
-                      ),
+                      color: StitchTheme.textMuted,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
             ],
             if (comments > 0 || attachments > 0) ...<Widget>[
               const SizedBox(height: 8),
@@ -3478,7 +3482,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   if (comments > 0)
                     Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
+                children: <Widget>[
                         const Icon(
                           Icons.chat_bubble_outline,
                           size: 16,
@@ -3488,10 +3492,10 @@ class _TasksScreenState extends State<TasksScreen> {
                         Text(
                           '$comments bình luận',
                           style: const TextStyle(
-                            fontSize: 12,
-                            color: StitchTheme.textMuted,
-                          ),
-                        ),
+                      fontSize: 12,
+                      color: StitchTheme.textMuted,
+                    ),
+                  ),
                       ],
                     ),
                   if (attachments > 0)
@@ -3504,15 +3508,15 @@ class _TasksScreenState extends State<TasksScreen> {
                           color: StitchTheme.textSubtle,
                         ),
                         const SizedBox(width: 4),
-                        Text(
+                  Text(
                           '$attachments tệp đính kèm',
-                          style: const TextStyle(
-                            fontSize: 12,
+                    style: const TextStyle(
+                      fontSize: 12,
                             color: StitchTheme.textMuted,
-                          ),
-                        ),
-                      ],
                     ),
+                  ),
+                ],
+              ),
                 ],
               ),
             ],
@@ -3525,13 +3529,13 @@ class _TasksScreenState extends State<TasksScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: progress.clamp(0, 100) / 100,
-                minHeight: 6,
-                color: statusTone,
-                backgroundColor: StitchTheme.surfaceAlt,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: progress.clamp(0, 100) / 100,
+                  minHeight: 6,
+                color: StitchTheme.progressPercentFillColor(progress),
+                  backgroundColor: StitchTheme.surfaceAlt,
               ),
             ),
             const SizedBox(height: 10),
@@ -3574,9 +3578,9 @@ class _TasksScreenState extends State<TasksScreen> {
                         fontSize: 11,
                         color: StitchTheme.textMuted.withValues(alpha: 0.9),
                       ),
-                    ),
-                  ),
-              ],
+                ),
+              ),
+            ],
             ),
           ],
         ),
@@ -4479,9 +4483,7 @@ Future<void> _openExternalUrl(BuildContext context, String rawValue) async {
   final String resolved = _resolveExternalUrl(rawValue);
   final Uri? uri = Uri.tryParse(resolved);
   if (uri == null) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Liên kết không hợp lệ.')));
+    AppTagMessage.show('Liên kết không hợp lệ.', isError: true);
     return;
   }
 
@@ -4490,10 +4492,9 @@ Future<void> _openExternalUrl(BuildContext context, String rawValue) async {
     mode: LaunchMode.externalApplication,
   );
   if (!opened && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Không mở được liên kết hoặc tệp đính kèm.'),
-      ),
+    AppTagMessage.show(
+      'Không mở được liên kết hoặc tệp đính kèm.',
+      isError: true,
     );
   }
 }

@@ -2,12 +2,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/messaging/app_tag_message.dart';
+import '../../core/utils/timeline_defaults.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'create_project_screen.dart';
 import '../tasks/project_task_form_screen.dart';
 import '../tasks/task_detail_screen.dart';
+import '../tasks/task_item_detail_screen.dart';
 
 class ProjectDetailScreen extends StatefulWidget {
   const ProjectDetailScreen({
@@ -127,6 +130,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               apiService: widget.apiService,
               projectId: widget.projectId,
               initialProject: Map<String, dynamic>.from(project!),
+              canEditAllProjectFields:
+                  (project!['permissions']?['can_edit_all_project_fields'] ??
+                      false) ==
+                  true,
             ),
       ),
     );
@@ -148,6 +155,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     if (!mounted) return;
 
     final bool isEdit = editingTask != null;
+    final ({DateTime? start, DateTime? end}) taskDefaults =
+        TimelineDefaults.taskDefaultsFromProject(project);
     final bool? saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder:
@@ -158,8 +167,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               projectName: (project?['name'] ?? '').toString(),
               departments: departments,
               existingTasksForWeightHint: tasks,
-              defaultStartDate: project?['start_date'],
-              defaultDeadline: project?['deadline'],
+              defaultStartDate: taskDefaults.start ?? project?['start_date'],
+              defaultDeadline: taskDefaults.end ?? project?['deadline'],
               editingTask: editingTask,
             ),
       ),
@@ -168,14 +177,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     if (saved == true) {
       await _fetch();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isEdit
-                ? 'Đã cập nhật công việc.'
-                : 'Đã tạo công việc mới trong dự án.',
-          ),
-        ),
+      AppTagMessage.show(
+        isEdit ? 'Đã cập nhật công việc.' : 'Đã tạo công việc mới trong dự án.',
       );
     }
   }
@@ -218,10 +221,148 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       await _fetch();
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'Đã xóa công việc.' : 'Không thể xóa công việc.'),
-      ),
+    AppTagMessage.show(
+      ok ? 'Đã xóa công việc.' : 'Không thể xóa công việc.',
+      isError: !ok,
+    );
+  }
+
+  Future<String?> _promptRejectNote() async {
+    final TextEditingController controller = TextEditingController();
+    final String? submitted = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Lý do từ chối'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'Bắt buộc (tối đa 500 ký tự)',
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final String t = controller.text.trim();
+                if (t.isEmpty) {
+                  return;
+                }
+                Navigator.pop(ctx, t);
+              },
+              child: const Text('Gửi'),
+            ),
+          ],
+        );
+      },
+    );
+    return submitted;
+  }
+
+  Future<void> _openApprovalQueue() async {
+    final Map<String, dynamic>? data = await widget.apiService
+        .getProjectApprovalQueue(widget.token, widget.projectId);
+    if (!mounted) {
+      return;
+    }
+    if (data == null) {
+      AppTagMessage.show(
+        'Không tải được danh sách phiếu duyệt.',
+        isError: true,
+      );
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.88,
+          minChildSize: 0.45,
+          maxChildSize: 0.96,
+          expand: false,
+          builder: (_, ScrollController scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 4, 8),
+                    child: Row(
+                      children: <Widget>[
+                        const Expanded(
+                          child: Text(
+                            'Phiếu duyệt trong dự án',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 17,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Đóng',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: _ProjectApprovalQueueBody(
+                      token: widget.token,
+                      apiService: widget.apiService,
+                      projectId: widget.projectId,
+                      initialData: data,
+                      scrollController: scrollController,
+                      onNavigateTask: (int taskId) {
+                        Navigator.of(sheetContext).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder:
+                                (_) => TaskDetailScreen(
+                                  token: widget.token,
+                                  apiService: widget.apiService,
+                                  taskId: taskId,
+                                ),
+                          ),
+                        );
+                      },
+                      onNavigateItem: (int taskId, int itemId) {
+                        Navigator.of(sheetContext).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder:
+                                (_) => TaskItemDetailScreen(
+                                  token: widget.token,
+                                  apiService: widget.apiService,
+                                  taskId: taskId,
+                                  itemId: itemId,
+                                ),
+                          ),
+                        );
+                      },
+                      onChanged: () async {
+                        await _fetch();
+                      },
+                      promptRejectNote: _promptRejectNote,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -291,7 +432,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         gscMessage = err;
         gsc = payload ?? _appendSyncError(gsc, err);
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      AppTagMessage.show(err, isError: true);
       return;
     }
 
@@ -322,9 +463,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       if (!mounted) return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(okMessage)));
+    AppTagMessage.show(okMessage);
   }
 
   String _statusLabel(String value) {
@@ -433,14 +572,11 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
     if (!mounted) return;
     setState(() => submittingHandover = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok
-              ? 'Đã gửi duyệt bàn giao dự án.'
-              : 'Gửi duyệt bàn giao thất bại. Kiểm tra tiến độ tối thiểu hoặc quyền thao tác.',
-        ),
-      ),
+    AppTagMessage.show(
+      ok
+          ? 'Đã gửi duyệt bàn giao dự án.'
+          : 'Gửi duyệt bàn giao thất bại. Kiểm tra tiến độ tối thiểu hoặc quyền thao tác.',
+      isError: !ok,
     );
     if (ok) {
       await _fetch();
@@ -524,12 +660,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
     if (!mounted) return;
     setState(() => submittingHandover = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok ? 'Đã xử lý phiếu bàn giao.' : 'Xử lý thất bại. Vui lòng thử lại.',
-        ),
-      ),
+    AppTagMessage.show(
+      ok ? 'Đã xử lý phiếu bàn giao.' : 'Xử lý thất bại. Vui lòng thử lại.',
+      isError: !ok,
     );
     if (ok) {
       await _fetch();
@@ -615,6 +748,53 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết dự án'),
         actions: <Widget>[
+          if (project != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: <Widget>[
+                  IconButton(
+                    onPressed: _openApprovalQueue,
+                    icon: const Icon(Icons.fact_check_outlined),
+                    tooltip: 'Danh sách phiếu duyệt',
+                  ),
+                  if ((int.tryParse(
+                            '${project?['pending_review_count'] ?? 0}',
+                          ) ??
+                          0) >
+                      0)
+                    Positioned(
+                      right: 4,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 18,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          '${int.tryParse('${project?['pending_review_count'] ?? 0}') ?? 0}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           if (_canEditProject)
             IconButton(
               onPressed: _openEditProject,
@@ -1213,6 +1393,468 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   }
 }
 
+class _ProjectApprovalQueueBody extends StatefulWidget {
+  const _ProjectApprovalQueueBody({
+    required this.token,
+    required this.apiService,
+    required this.projectId,
+    required this.initialData,
+    required this.scrollController,
+    required this.onNavigateTask,
+    required this.onNavigateItem,
+    required this.onChanged,
+    required this.promptRejectNote,
+  });
+
+  final String token;
+  final MobileApiService apiService;
+  final int projectId;
+  final Map<String, dynamic> initialData;
+  final ScrollController scrollController;
+  final void Function(int taskId) onNavigateTask;
+  final void Function(int taskId, int itemId) onNavigateItem;
+  final Future<void> Function() onChanged;
+  final Future<String?> Function() promptRejectNote;
+
+  @override
+  State<_ProjectApprovalQueueBody> createState() =>
+      _ProjectApprovalQueueBodyState();
+}
+
+class _ProjectApprovalQueueBodyState extends State<_ProjectApprovalQueueBody> {
+  late Map<String, dynamic> _data;
+  String? _busyKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _data = Map<String, dynamic>.from(widget.initialData);
+  }
+
+  int _toId(dynamic v) {
+    if (v is int) {
+      return v;
+    }
+    return int.tryParse('${v ?? ''}') ?? 0;
+  }
+
+  Future<void> _reload() async {
+    final Map<String, dynamic>? next = await widget.apiService
+        .getProjectApprovalQueue(widget.token, widget.projectId);
+    if (!mounted || next == null) {
+      return;
+    }
+    setState(() => _data = next);
+    await widget.onChanged();
+  }
+
+  Future<void> _approveTaskUpdate(int taskId, int updateId) async {
+    final String key = 't-$taskId-$updateId';
+    setState(() => _busyKey = key);
+    final bool ok = await widget.apiService.approveTaskUpdate(
+      widget.token,
+      taskId,
+      updateId,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busyKey = null);
+    if (ok) {
+      AppTagMessage.show('Đã duyệt báo cáo.');
+      await _reload();
+    } else {
+      AppTagMessage.show('Duyệt thất bại.', isError: true);
+    }
+  }
+
+  Future<void> _rejectTaskUpdate(int taskId, int updateId) async {
+    final String? note = await widget.promptRejectNote();
+    if (note == null || note.isEmpty) {
+      return;
+    }
+    final String key = 't-$taskId-$updateId';
+    setState(() => _busyKey = key);
+    final bool ok = await widget.apiService.rejectTaskUpdate(
+      widget.token,
+      taskId,
+      updateId,
+      reviewNote: note,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busyKey = null);
+    if (ok) {
+      AppTagMessage.show('Đã từ chối báo cáo.');
+      await _reload();
+    } else {
+      AppTagMessage.show('Từ chối thất bại.', isError: true);
+    }
+  }
+
+  Future<void> _approveItemUpdate(int taskId, int itemId, int updateId) async {
+    final String key = 'i-$taskId-$itemId-$updateId';
+    setState(() => _busyKey = key);
+    final bool ok = await widget.apiService.approveTaskItemUpdate(
+      widget.token,
+      taskId,
+      itemId,
+      updateId,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busyKey = null);
+    if (ok) {
+      AppTagMessage.show('Đã duyệt phiếu.');
+      await _reload();
+    } else {
+      AppTagMessage.show('Duyệt thất bại.', isError: true);
+    }
+  }
+
+  Future<void> _rejectItemUpdate(int taskId, int itemId, int updateId) async {
+    final String? note = await widget.promptRejectNote();
+    if (note == null || note.isEmpty) {
+      return;
+    }
+    final String key = 'i-$taskId-$itemId-$updateId';
+    setState(() => _busyKey = key);
+    final bool ok = await widget.apiService.rejectTaskItemUpdate(
+      widget.token,
+      taskId,
+      itemId,
+      updateId,
+      reviewNote: note,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busyKey = null);
+    if (ok) {
+      AppTagMessage.show('Đã từ chối phiếu.');
+      await _reload();
+    } else {
+      AppTagMessage.show('Từ chối thất bại.', isError: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<dynamic> taskRows =
+        (_data['tasks'] is List)
+            ? (_data['tasks'] as List<dynamic>)
+            : <dynamic>[];
+    final bool canReview = _data['can_review_progress'] == true;
+
+    if (taskRows.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Không có phiếu nào đang chờ duyệt.',
+            style: TextStyle(color: StitchTheme.textMuted),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      itemCount: taskRows.length,
+      itemBuilder: (BuildContext context, int index) {
+        final Map<String, dynamic> t =
+            (taskRows[index] is Map)
+                ? (taskRows[index] as Map).cast<String, dynamic>()
+                : <String, dynamic>{};
+        final int taskId = _toId(t['id']);
+        final String taskTitle = (t['title'] ?? 'Công việc').toString();
+        final List<dynamic> taskUpdates =
+            (t['task_updates_pending'] is List)
+                ? (t['task_updates_pending'] as List<dynamic>)
+                : <dynamic>[];
+        final List<dynamic> items =
+            (t['items'] is List) ? (t['items'] as List<dynamic>) : <dynamic>[];
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: StitchTheme.border),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                InkWell(
+                  onTap:
+                      taskId > 0 ? () => widget.onNavigateTask(taskId) : null,
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          taskTitle,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '#$taskId',
+                        style: const TextStyle(
+                          color: StitchTheme.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (taskUpdates.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Báo cáo cấp công việc',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: StitchTheme.textMuted,
+                    ),
+                  ),
+                  ...taskUpdates.map((dynamic u) {
+                    final Map<String, dynamic> row =
+                        (u is Map)
+                            ? u.cast<String, dynamic>()
+                            : <String, dynamic>{};
+                    final int uid = _toId(row['id']);
+                    final String key = 't-$taskId-$uid';
+                    final bool busy = _busyKey == key;
+                    final Map<String, dynamic>? sub =
+                        row['submitter'] is Map
+                            ? (row['submitter'] as Map).cast<String, dynamic>()
+                            : null;
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: StitchTheme.surfaceAlt,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              '${(sub?['name'] ?? '—').toString()} · ${_formatQueueDate((row['created_at'] ?? '').toString())}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: StitchTheme.textMuted,
+                              ),
+                            ),
+                            if ((row['note'] ?? '')
+                                .toString()
+                                .trim()
+                                .isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  (row['note'] ?? '').toString(),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            if (canReview) ...<Widget>[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: <Widget>[
+                                  TextButton(
+                                    onPressed:
+                                        busy
+                                            ? null
+                                            : () =>
+                                                _approveTaskUpdate(taskId, uid),
+                                    child: const Text('Duyệt'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        busy
+                                            ? null
+                                            : () =>
+                                                _rejectTaskUpdate(taskId, uid),
+                                    child: Text(
+                                      'Từ chối',
+                                      style: TextStyle(
+                                        color: StitchTheme.danger,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+                ...items.map((dynamic it) {
+                  final Map<String, dynamic> item =
+                      (it is Map)
+                          ? it.cast<String, dynamic>()
+                          : <String, dynamic>{};
+                  final int itemId = _toId(item['id']);
+                  final String itemTitle =
+                      (item['title'] ?? 'Đầu việc').toString();
+                  final List<dynamic> pending =
+                      (item['pending_updates'] is List)
+                          ? (item['pending_updates'] as List<dynamic>)
+                          : <dynamic>[];
+
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        InkWell(
+                          onTap:
+                              taskId > 0 && itemId > 0
+                                  ? () => widget.onNavigateItem(taskId, itemId)
+                                  : null,
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  itemTitle,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '#$itemId',
+                                style: const TextStyle(
+                                  color: StitchTheme.textMuted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ...pending.map((dynamic u) {
+                          final Map<String, dynamic> row =
+                              (u is Map)
+                                  ? u.cast<String, dynamic>()
+                                  : <String, dynamic>{};
+                          final int uid = _toId(row['id']);
+                          final String key = 'i-$taskId-$itemId-$uid';
+                          final bool busy = _busyKey == key;
+                          final Map<String, dynamic>? sub =
+                              row['submitter'] is Map
+                                  ? (row['submitter'] as Map)
+                                      .cast<String, dynamic>()
+                                  : null;
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: StitchTheme.border.withValues(
+                                    alpha: 0.7,
+                                  ),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    '${(sub?['name'] ?? '—').toString()} · ${_formatQueueDate((row['created_at'] ?? '').toString())}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: StitchTheme.textMuted,
+                                    ),
+                                  ),
+                                  if ((row['note'] ?? '')
+                                      .toString()
+                                      .trim()
+                                      .isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Text(
+                                        (row['note'] ?? '').toString(),
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                    ),
+                                  if (canReview) ...<Widget>[
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: <Widget>[
+                                        TextButton(
+                                          onPressed:
+                                              busy
+                                                  ? null
+                                                  : () => _approveItemUpdate(
+                                                    taskId,
+                                                    itemId,
+                                                    uid,
+                                                  ),
+                                          child: const Text('Duyệt'),
+                                        ),
+                                        TextButton(
+                                          onPressed:
+                                              busy
+                                                  ? null
+                                                  : () => _rejectItemUpdate(
+                                                    taskId,
+                                                    itemId,
+                                                    uid,
+                                                  ),
+                                          child: Text(
+                                            'Từ chối',
+                                            style: TextStyle(
+                                              color: StitchTheme.danger,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+String _formatQueueDate(String raw) {
+  if (raw.isEmpty) {
+    return '—';
+  }
+  final DateTime? dt = VietnamTime.parse(raw);
+  if (dt == null) {
+    return '—';
+  }
+  return VietnamTime.formatDate(dt);
+}
+
 class _ProjectPriStyle {
   const _ProjectPriStyle({
     required this.label,
@@ -1480,7 +2122,7 @@ class _ProjectTaskListTile extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: progress.clamp(0, 100) / 100,
                   minHeight: 6,
-                  color: StitchTheme.primary,
+                  color: StitchTheme.progressPercentFillColor(progress),
                   backgroundColor: StitchTheme.surfaceAlt,
                 ),
               ),

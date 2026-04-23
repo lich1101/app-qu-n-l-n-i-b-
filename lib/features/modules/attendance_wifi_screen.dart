@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/services/attendance_device_identity_service.dart';
 import '../../core/services/attendance_wifi_service.dart';
 import '../../core/theme/stitch_theme.dart';
@@ -73,6 +74,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
   AttendanceWifiPermissionState? _wifiPermissionState;
 
   bool get _canManage => _managerRoles.contains(widget.currentUserRole);
+  bool get _canReviewRequests =>
+      _canManage || widget.currentUserRole == 'quan_ly';
   bool get _canViewReport =>
       _canManage ||
       widget.currentUserRole == 'quan_ly' ||
@@ -405,6 +408,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         return 'Đi muộn${minutesLate > 0 ? ' $minutesLate phút' : ''}';
       case 'approved_full':
         return 'Duyệt đủ công';
+      case 'approved_no_count':
+        return 'Nghỉ duyệt không công';
       case 'approved_partial':
         return 'Duyệt công';
       case 'holiday_auto':
@@ -464,6 +469,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       case 'approved_full':
       case 'holiday_auto':
         return StitchTheme.successStrong;
+      case 'approved_no_count':
+        return Colors.blue.shade700;
       case 'late_pending':
       case 'late':
       case 'pending':
@@ -499,76 +506,75 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
-          builder:
-              (
-                BuildContext context,
-                void Function(void Function()) setLocal,
-              ) {
-                return AlertDialog(
-                  title: const Text('Xuất báo cáo công'),
-                  content: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+          builder: (
+            BuildContext context,
+            void Function(void Function()) setLocal,
+          ) {
+            return AlertDialog(
+              title: const Text('Xuất báo cáo công'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    const Text(
+                      'Chọn khoảng ngày để tải file Excel (công và phút trễ theo ngày, tổng hợp kỳ và đơn xin phép).',
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
                       children: <Widget>[
-                        const Text(
-                          'Chọn khoảng ngày để tải file Excel (công và phút trễ theo ngày, tổng hợp kỳ và đơn xin phép).',
+                        Expanded(
+                          child: _PickerField(
+                            value: _formatDateLabel(start),
+                            icon: Icons.event_outlined,
+                            onTap: () async {
+                              await _pickDate(
+                                currentValue: start,
+                                onChanged: (String value) {
+                                  setLocal(() => start = value);
+                                },
+                              );
+                            },
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _PickerField(
-                                value: _formatDateLabel(start),
-                                icon: Icons.event_outlined,
-                                onTap: () async {
-                                  await _pickDate(
-                                    currentValue: start,
-                                    onChanged: (String value) {
-                                      setLocal(() => start = value);
-                                    },
-                                  );
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _PickerField(
+                            value: _formatDateLabel(end),
+                            icon: Icons.event_outlined,
+                            onTap: () async {
+                              await _pickDate(
+                                currentValue: end,
+                                onChanged: (String value) {
+                                  setLocal(() => end = value);
                                 },
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _PickerField(
-                                value: _formatDateLabel(end),
-                                icon: Icons.event_outlined,
-                                onTap: () async {
-                                  await _pickDate(
-                                    currentValue: end,
-                                    onChanged: (String value) {
-                                      setLocal(() => end = value);
-                                    },
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
+                              );
+                            },
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  actions: <Widget>[
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Hủy'),
-                    ),
-                    FilledButton(
-                      onPressed:
-                          _submitting
-                              ? null
-                              : () async {
-                                Navigator.of(context).pop();
-                                await _runAttendanceExport(start, end);
-                              },
-                      child: const Text('Tải file'),
-                    ),
                   ],
-                );
-              },
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton(
+                  onPressed:
+                      _submitting
+                          ? null
+                          : () async {
+                            Navigator.of(context).pop();
+                            await _runAttendanceExport(start, end);
+                          },
+                  child: const Text('Tải file'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -586,15 +592,10 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       final String name = 'bao-cao-cong-$start-den-$end.xlsx';
       final File file = File('${dir.path}/$name');
       await file.writeAsBytes(bytes);
-      await Share.shareXFiles(
-        <XFile>[XFile(file.path)],
-        text: 'Báo cáo công',
-      );
+      await Share.shareXFiles(<XFile>[XFile(file.path)], text: 'Báo cáo công');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      AppTagMessage.show(e.toString(), isError: true);
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
@@ -739,7 +740,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     }
     if (_dashboard['check_in_allowed'] == false) {
       final String reason =
-          (_dashboard['check_in_block_reason'] ?? 'Chưa đến giờ hoặc ngoài ca làm.')
+          (_dashboard['check_in_block_reason'] ??
+                  'Chưa đến giờ hoặc ngoài ca làm.')
               .toString();
       _showSnack(reason);
       return;
@@ -1758,8 +1760,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
           0,
       'user_name': (reportRow['user_name'] ?? 'Nhân sự').toString(),
       'role': (reportRow['role'] ?? '—').toString(),
-      'work_date': (record['work_date'] ?? reportRow['work_date'] ?? '')
-          .toString(),
+      'work_date':
+          (record['work_date'] ?? reportRow['work_date'] ?? '').toString(),
       'check_in_at': (record['check_in_at'] ?? '').toString(),
       'work_units': record['work_units'],
       'note': (record['note'] ?? '').toString(),
@@ -1826,9 +1828,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppTagMessage.show(message);
   }
 
   Future<void> _showCheckInSuccessSheet(Map<String, dynamic> record) async {
@@ -1899,7 +1899,11 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                             ),
                           ],
                         ),
-                        child: const Icon(Icons.check_rounded, color: Colors.white, size: 36),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 36,
+                        ),
                       ),
                     ),
                   ),
@@ -1937,13 +1941,31 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                             children: [
                               const Row(
                                 children: [
-                                  Icon(Icons.schedule_rounded, size: 16, color: StitchTheme.textMuted),
+                                  Icon(
+                                    Icons.schedule_rounded,
+                                    size: 16,
+                                    color: StitchTheme.textMuted,
+                                  ),
                                   SizedBox(width: 6),
-                                  Text('Giờ vào làm', style: TextStyle(color: StitchTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w500)),
+                                  Text(
+                                    'Giờ vào làm',
+                                    style: TextStyle(
+                                      color: StitchTheme.textMuted,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text(checkInTime, style: const TextStyle(color: StitchTheme.textMain, fontSize: 22, fontWeight: FontWeight.bold)),
+                              Text(
+                                checkInTime,
+                                style: const TextStyle(
+                                  color: StitchTheme.textMain,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -1962,13 +1984,33 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                             children: [
                               const Row(
                                 children: [
-                                  Icon(Icons.fact_check_outlined, size: 16, color: StitchTheme.textMuted),
+                                  Icon(
+                                    Icons.fact_check_outlined,
+                                    size: 16,
+                                    color: StitchTheme.textMuted,
+                                  ),
                                   SizedBox(width: 6),
-                                  Text('Trạng thái', style: TextStyle(color: StitchTheme.textMuted, fontSize: 13, fontWeight: FontWeight.w500)),
+                                  Text(
+                                    'Trạng thái',
+                                    style: TextStyle(
+                                      color: StitchTheme.textMuted,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text(statusLabel, style: TextStyle(color: _statusColor((record['status'] ?? '').toString()), fontSize: 16, fontWeight: FontWeight.bold)),
+                              Text(
+                                statusLabel,
+                                style: TextStyle(
+                                  color: _statusColor(
+                                    (record['status'] ?? '').toString(),
+                                  ),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -1990,7 +2032,13 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                         Navigator.of(context).pop();
                         setState(() => _activeTab = 'timesheet');
                       },
-                      child: const Text('Xem bảng công', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                      child: const Text(
+                        'Xem bảng công',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -2179,11 +2227,15 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     final bool alreadyCheckedIn =
         todayRecord != null &&
         (todayRecord['check_in_at'] ?? '').toString().trim().isNotEmpty;
+    final bool shiftBlocked = _dashboard['check_in_allowed'] == false;
+    final String shiftReason =
+        (_dashboard['check_in_block_reason'] ?? '').toString().trim();
     final bool canCheckInNow =
         _attendanceEnabled &&
         wifiPermissionReady &&
         wifiConnected &&
         deviceApproved &&
+        !shiftBlocked &&
         !alreadyCheckedIn;
     final double todayWorkUnits =
         ((todayRecord?['work_units'] as num?) ?? 0).toDouble();
@@ -2224,6 +2276,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
             ? (todayMinutesLate > 0
                 ? 'Bạn đi muộn $todayMinutesLate phút. Hệ thống đã tự tính ${formatUnits(todayWorkUnits)} công.'
                 : 'Giờ vào làm của bạn đã được ghi nhận.')
+            : shiftBlocked && shiftReason.isNotEmpty
+            ? shiftReason
             : 'Khi bắt đầu vào làm, bạn chỉ cần bấm nút bên dưới. Hệ thống sẽ tự kiểm tra Wi‑Fi công ty và trạng thái thiết bị trước khi ghi nhận công.';
 
     return <Widget>[
@@ -2245,7 +2299,9 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                           ? 'Chưa chấm công'
                           : _statusLabel(
                             (todayRecord['status'] ?? '').toString(),
-                            minutesLate: ((todayRecord['minutes_late'] as num?) ?? 0).toInt(),
+                            minutesLate:
+                                ((todayRecord['minutes_late'] as num?) ?? 0)
+                                    .toInt(),
                           )),
               color:
                   alreadyCheckedIn
@@ -2411,7 +2467,11 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                   subtitle:
                       'Giờ vào: ${_formatDateTimeLabel((item['check_in_at'] ?? '').toString())}',
                   trailing: _StatusPill(
-                    label: _statusLabel((item['status'] ?? '').toString(), minutesLate: ((item['minutes_late'] as num?) ?? 0).toInt()),
+                    label: _statusLabel(
+                      (item['status'] ?? '').toString(),
+                      minutesLate:
+                          ((item['minutes_late'] as num?) ?? 0).toInt(),
+                    ),
                     color: _statusColor((item['status'] ?? '').toString()),
                   ),
                   details: <Widget>[
@@ -2536,7 +2596,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                     color: _statusColor((item['status'] ?? '').toString()),
                   ),
                   actions:
-                      _canManage && (item['status'] ?? '') == 'pending'
+                      _canReviewRequests && (item['status'] ?? '') == 'pending'
                           ? <Widget>[
                             FilledButton(
                               onPressed:
@@ -2722,9 +2782,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                     onPressed:
                         _submitting
                             ? null
-                            : () => _refreshWifiSnapshot(
-                              requestPermissions: true,
-                            ),
+                            : () =>
+                                _refreshWifiSnapshot(requestPermissions: true),
                     icon: const Icon(Icons.wifi_tethering_outlined),
                     label: const Text('Lấy Wi‑Fi hiện tại'),
                   ),
@@ -3238,8 +3297,7 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                   ],
                   rows:
                       _reportRows.map((Map<String, dynamic> item) {
-                        final String tone =
-                            (item['dot_tone'] ?? '').toString();
+                        final String tone = (item['dot_tone'] ?? '').toString();
                         return DataRow(
                           onSelectChanged: (bool? selected) {
                             if (selected == true) {
@@ -3295,8 +3353,9 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                                   onPressed:
                                       _submitting
                                           ? null
-                                          : () =>
-                                              _showManualRecordSheet(item: item),
+                                          : () => _showManualRecordSheet(
+                                            item: item,
+                                          ),
                                   child: const Text('Sửa công'),
                                 ),
                               ),
@@ -3573,7 +3632,10 @@ class _AttendancePrimaryCard extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: accent.withValues(alpha: 0.12),
-              border: Border.all(color: accent.withValues(alpha: 0.2), width: 2),
+              border: Border.all(
+                color: accent.withValues(alpha: 0.2),
+                width: 2,
+              ),
             ),
             child: Center(
               child: Container(
@@ -4132,6 +4194,8 @@ String _attendanceDetailStatusLabel(String? status, int minutesLate) {
       return 'Đi muộn${minutesLate > 0 ? ' $minutesLate phút' : ''}';
     case 'approved_full':
       return 'Duyệt đủ công';
+    case 'approved_no_count':
+      return 'Nghỉ duyệt không công';
     case 'approved_partial':
       return 'Duyệt công thủ công';
     case 'holiday_auto':
@@ -4253,10 +4317,7 @@ class _ReportRecordDetailSheetState extends State<_ReportRecordDetailSheet> {
           const SizedBox(height: 4),
           SelectableText(
             value,
-            style: const TextStyle(
-              fontSize: 14,
-              color: StitchTheme.textMain,
-            ),
+            style: const TextStyle(fontSize: 14, color: StitchTheme.textMain),
           ),
         ],
       ),
@@ -4293,15 +4354,9 @@ class _ReportRecordDetailSheetState extends State<_ReportRecordDetailSheet> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_error != null)
-            Text(
-              _error!,
-              style: TextStyle(color: StitchTheme.dangerStrong),
-            )
+            Text(_error!, style: TextStyle(color: StitchTheme.dangerStrong))
           else if (_record != null) ...<Widget>[
-            _kv(
-              'Số công',
-              (_record!['work_units'] ?? '0').toString(),
-            ),
+            _kv('Số công', (_record!['work_units'] ?? '0').toString()),
             _kv(
               'Giờ vào (check-in)',
               _AttendanceWifiScreenState._formatDateTimeLabel(
@@ -4367,14 +4422,20 @@ class _ReportRecordDetailSheetState extends State<_ReportRecordDetailSheet> {
                 ],
               ),
             ),
-            _kv('Ghi chú', (_record!['note'] ?? '').toString().trim().isEmpty
-                ? '—'
-                : (_record!['note'] ?? '').toString(),),
+            _kv(
+              'Ghi chú',
+              (_record!['note'] ?? '').toString().trim().isEmpty
+                  ? '—'
+                  : (_record!['note'] ?? '').toString(),
+            ),
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(
                 'Thiết bị / Wi‑Fi: ${_record!['device_name'] ?? '—'} • ${_record!['wifi_ssid'] ?? '—'}',
-                style: const TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: StitchTheme.textMuted,
+                ),
               ),
             ),
             if (_editLogs.isNotEmpty) ...<Widget>[
@@ -4396,10 +4457,10 @@ class _ReportRecordDetailSheetState extends State<_ReportRecordDetailSheet> {
                   separatorBuilder: (_, __) => const Divider(height: 12),
                   itemBuilder: (BuildContext context, int i) {
                     final Map<String, dynamic> log = _editLogs[i];
-                    final String when = _AttendanceWifiScreenState
-                        ._formatDateTimeLabel(
-                      (log['created_at'] ?? '').toString(),
-                    );
+                    final String when =
+                        _AttendanceWifiScreenState._formatDateTimeLabel(
+                          (log['created_at'] ?? '').toString(),
+                        );
                     final String actor =
                         (log['actor'] is Map
                                 ? (log['actor'] as Map)['name']
@@ -4414,8 +4475,9 @@ class _ReportRecordDetailSheetState extends State<_ReportRecordDetailSheet> {
                         payloadText = payload;
                       } else {
                         try {
-                          payloadText = const JsonEncoder.withIndent('  ')
-                              .convert(payload);
+                          payloadText = const JsonEncoder.withIndent(
+                            '  ',
+                          ).convert(payload);
                         } catch (_) {
                           payloadText = payload.toString();
                         }
@@ -4464,12 +4526,16 @@ class _ReportRecordDetailSheetState extends State<_ReportRecordDetailSheet> {
                     child: const Text('Đóng'),
                   ),
                 ),
-                if (widget.canManualAdjust && !_formReadOnly && _record != null) ...<Widget>[
+                if (widget.canManualAdjust &&
+                    !_formReadOnly &&
+                    _record != null) ...<Widget>[
                   const SizedBox(width: 10),
                   Expanded(
                     child: FilledButton(
-                      onPressed: () =>
-                          widget.onOpenManualEdit(Map<String, dynamic>.from(_record!)),
+                      onPressed:
+                          () => widget.onOpenManualEdit(
+                            Map<String, dynamic>.from(_record!),
+                          ),
                       child: const Text('Sửa công tay'),
                     ),
                   ),

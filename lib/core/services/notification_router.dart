@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 
 import '../../config/app_env.dart';
+import '../messaging/app_tag_message.dart';
 import '../auth/api_role_access.dart';
 import '../../data/services/mobile_api_service.dart';
 import '../../features/modules/client_detail_screen.dart';
@@ -66,7 +67,8 @@ class NotificationRouter {
     final productId = _extractInt(data, 'product_id');
     final transferId = _extractInt(data, 'transfer_id');
     final bool isOpportunityNotification =
-        _isOpportunityType(type) || (opportunityId != null && opportunityId > 0);
+        _isOpportunityType(type) ||
+        (opportunityId != null && opportunityId > 0);
 
     debugPrint('[NotificationRouter] Routing type=$type data=$data');
 
@@ -168,7 +170,7 @@ class NotificationRouter {
           apiService: apiService,
           canManage: apiRoleMatches(role, kApiContractUpdateDelete),
           canCreate: apiRoleMatches(role, kApiContractReadCreate),
-          canDelete: apiRoleMatches(role, kApiContractUpdateDelete),
+          canDelete: false,
           canApprove: apiRoleMatches(role, kApiContractApprove),
           canCreateContractFinanceLines: apiRoleMatches(
             role,
@@ -421,9 +423,8 @@ class NotificationRouter {
 
   static void _showMissingMessage(BuildContext context, String message) {
     if (!context.mounted) return;
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    messenger?.hideCurrentSnackBar();
-    messenger?.showSnackBar(SnackBar(content: Text(message)));
+    AppTagMessage.hide();
+    AppTagMessage.show(message);
   }
 
   /// Cấu hình form chỉ trên web — mở `/form-tu-van`.

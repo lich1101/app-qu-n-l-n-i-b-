@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/widgets/stitch_searchable_select.dart';
 import '../../core/utils/task_item_progress_input.dart';
@@ -328,9 +329,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                   children: <Widget>[
                     _MetaChip(
                       label: 'Ưu tiên',
-                      value: _priorityLabel(
-                        '${item!['priority'] ?? 'medium'}',
-                      ),
+                      value: _priorityLabel('${item!['priority'] ?? 'medium'}'),
                     ),
                     if (task != null) ...<Widget>[
                       _MetaChip(
@@ -385,7 +384,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                         child: LinearProgressIndicator(
                           value: progress / 100,
                           backgroundColor: Colors.grey.shade200,
-                          color: StitchTheme.primary,
+                          color: StitchTheme.progressPercentFillColor(progress),
                           minHeight: 8,
                         ),
                       ),
@@ -811,9 +810,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
               ElevatedButton(
                 onPressed: () {
                   if (!isApprove && reasonCtrl.text.trim().isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Cần nhập lý do!')),
-                    );
+                    AppTagMessage.show('Cần nhập lý do!', isError: true);
                     return;
                   }
                   Navigator.pop(ctx, true);
@@ -851,9 +848,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
       if (ok) {
         _fetch(); // reload all
       } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Thao tác thất bại.')));
+        AppTagMessage.show('Thao tác thất bại.', isError: true);
       }
     }
   }
@@ -965,15 +960,14 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                                     : () async {
                                       final int? p =
                                           TaskItemProgressInput.tryParseOptional(
-                                        progressCtrl.text,
-                                        onInvalid: (String m) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(content: Text(m)),
+                                            progressCtrl.text,
+                                            onInvalid: (String m) {
+                                              AppTagMessage.show(
+                                                m,
+                                                isError: true,
+                                              );
+                                            },
                                           );
-                                        },
-                                      );
                                       if (p == null &&
                                           progressCtrl.text.trim().isNotEmpty) {
                                         return;
@@ -993,12 +987,9 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                                         _fetch();
                                       } else {
                                         setModal(() => submitting = false);
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Gửi thất bại'),
-                                          ),
+                                        AppTagMessage.show(
+                                          'Gửi thất bại',
+                                          isError: true,
                                         );
                                       }
                                     },

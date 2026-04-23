@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/theme/stitch_theme.dart';
 import '../../core/utils/task_item_progress_input.dart';
+import '../../core/utils/timeline_defaults.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/stitch_form_layout.dart';
 import '../../core/widgets/stitch_searchable_select.dart';
@@ -20,6 +21,7 @@ class TaskItemFormScreen extends StatefulWidget {
     required this.taskDepartmentId,
     this.taskStartAt,
     this.taskDeadline,
+    this.projectSummary,
     this.editingItem,
   });
 
@@ -30,6 +32,9 @@ class TaskItemFormScreen extends StatefulWidget {
   final int taskDepartmentId;
   final dynamic taskStartAt;
   final dynamic taskDeadline;
+
+  /// Dự án (có thể kèm contract) để fallback khi công việc chưa có ngày.
+  final Map<String, dynamic>? projectSummary;
   final Map<String, dynamic>? editingItem;
 
   bool get isEdit => editingItem != null;
@@ -64,9 +69,7 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
     super.initState();
     final Map<String, dynamic>? item = widget.editingItem;
     final bool edit = item != null;
-    titleCtrl = TextEditingController(
-      text: (item?['title'] ?? '').toString(),
-    );
+    titleCtrl = TextEditingController(text: (item?['title'] ?? '').toString());
     descCtrl = TextEditingController(
       text: (item?['description'] ?? '').toString(),
     );
@@ -76,18 +79,27 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
     weightCtrl = TextEditingController(
       text: edit ? '${item['weight_percent'] ?? 0}' : '10',
     );
-    startCtrl = TextEditingController(
-      text:
-          edit
-              ? _toDateInput(item['start_date'])
-              : _toDateInput(widget.taskStartAt),
-    );
-    deadlineCtrl = TextEditingController(
-      text:
-          edit
-              ? _toDateInput(item['deadline'])
-              : _toDateInput(widget.taskDeadline),
-    );
+    if (edit) {
+      startCtrl = TextEditingController(text: _toDateInput(item['start_date']));
+      deadlineCtrl = TextEditingController(
+        text: _toDateInput(item['deadline']),
+      );
+    } else {
+      final ({DateTime? start, DateTime? end}) fall =
+          TimelineDefaults.taskItemDefaults(
+            task: <String, dynamic>{
+              'start_at': widget.taskStartAt,
+              'deadline': widget.taskDeadline,
+            },
+            project: widget.projectSummary,
+          );
+      startCtrl = TextEditingController(
+        text: VietnamTime.toYmdInput(fall.start),
+      );
+      deadlineCtrl = TextEditingController(
+        text: VietnamTime.toYmdInput(fall.end),
+      );
+    }
     status = (item?['status'] ?? 'todo').toString();
     priority = (item?['priority'] ?? 'medium').toString();
     assigneeId =
@@ -109,8 +121,9 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
       VietnamTime.parseDateOnly(widget.taskDeadline);
 
   Future<void> _pickDate(TextEditingController controller) async {
-    final DateTime lastDate =
-        VietnamTime.pickerLastDateWithCap(_taskDeadlineCap);
+    final DateTime lastDate = VietnamTime.pickerLastDateWithCap(
+      _taskDeadlineCap,
+    );
     final DateTime firstDate = VietnamTime.pickerFirstDateSafe(lastDate);
     DateTime initial = VietnamTime.pickerInitialDate(controller.text);
     initial = VietnamTime.clampPickerInitial(initial, firstDate, lastDate);
@@ -154,15 +167,15 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
     final DateTime? cap = _taskDeadlineCap;
     if (!VietnamTime.ymdNotAfterCap(startCtrl.text.trim(), cap)) {
       setState(
-        () => localMessage =
-            'Ngày bắt đầu đầu việc không được sau deadline công việc.',
+        () =>
+            localMessage =
+                'Ngày bắt đầu đầu việc không được sau deadline công việc.',
       );
       return;
     }
     if (!VietnamTime.ymdNotAfterCap(deadlineCtrl.text.trim(), cap)) {
       setState(
-        () => localMessage =
-            'Hạn đầu việc không được sau deadline công việc.',
+        () => localMessage = 'Hạn đầu việc không được sau deadline công việc.',
       );
       return;
     }
@@ -251,8 +264,7 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
                 ? 'Đang lưu...'
                 : (widget.isEdit ? 'Lưu thay đổi' : 'Tạo đầu việc'),
         onPrimary: submitting ? null : _submit,
-        onSecondary:
-            submitting ? null : () => Navigator.of(context).maybePop(),
+        onSecondary: submitting ? null : () => Navigator.of(context).maybePop(),
         secondaryLabel: 'Hủy',
       ),
       body: SafeArea(
@@ -370,9 +382,8 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
                             ),
                           ],
                           onChanged:
-                              (String? value) => setState(
-                                () => priority = value ?? 'medium',
-                              ),
+                              (String? value) =>
+                                  setState(() => priority = value ?? 'medium'),
                           decoration: stitchTaskDropdownDecoration(
                             context,
                             'Ưu tiên',
@@ -473,8 +484,8 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
                                   ),
                             )
                             .toList(),
-                    onChanged: (int? value) =>
-                        setState(() => assigneeId = value),
+                    onChanged:
+                        (int? value) => setState(() => assigneeId = value),
                     decoration: stitchTaskDropdownDecoration(
                       context,
                       'Nhân sự phụ trách',

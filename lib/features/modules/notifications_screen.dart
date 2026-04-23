@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/services/notification_router.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/services/app_firebase.dart';
@@ -101,21 +102,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _markAllRead() async {
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final bool ok = await widget.apiService.markAllNotificationsRead(
       widget.token,
     );
     if (!mounted) return;
     await _fetch();
     if (!mounted) return;
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          ok
-              ? 'Đã đánh dấu toàn bộ thông báo là đã đọc.'
-              : 'Không thể cập nhật trạng thái thông báo.',
-        ),
-      ),
+    AppTagMessage.show(
+      ok
+          ? 'Đã đánh dấu toàn bộ thông báo là đã đọc.'
+          : 'Không thể cập nhật trạng thái thông báo.',
+      isError: !ok,
     );
   }
 

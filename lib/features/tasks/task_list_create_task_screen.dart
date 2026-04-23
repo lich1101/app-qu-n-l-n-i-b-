@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/timeline_defaults.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/stitch_form_layout.dart';
 import '../../core/widgets/stitch_searchable_select.dart';
@@ -80,8 +81,7 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
     deadlineCtrl = TextEditingController();
     weightCtrl = TextEditingController(text: '100');
     priority = 'medium';
-    status =
-        widget.statuses.isNotEmpty ? widget.statuses.first : 'todo';
+    status = widget.statuses.isNotEmpty ? widget.statuses.first : 'todo';
   }
 
   @override
@@ -98,15 +98,16 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
     if (projectId == null) return null;
     for (final Map<String, dynamic> p in widget.projects) {
       if (p['id'] == projectId) {
-        return VietnamTime.parseDateOnly(p['deadline']);
+        return TimelineDefaults.taskDefaultsFromProject(p).end;
       }
     }
     return null;
   }
 
   Future<void> _pickDeadline() async {
-    final DateTime lastDate =
-        VietnamTime.pickerLastDateWithCap(_deadlineCapForSelectedProject());
+    final DateTime lastDate = VietnamTime.pickerLastDateWithCap(
+      _deadlineCapForSelectedProject(),
+    );
     final DateTime firstDate = VietnamTime.pickerFirstDateSafe(lastDate);
     DateTime initial = VietnamTime.pickerInitialDate(deadlineCtrl.text);
     initial = VietnamTime.clampPickerInitial(initial, firstDate, lastDate);
@@ -126,8 +127,9 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
   }
 
   Future<void> _pickStart() async {
-    final DateTime lastDate =
-        VietnamTime.pickerLastDateWithCap(_deadlineCapForSelectedProject());
+    final DateTime lastDate = VietnamTime.pickerLastDateWithCap(
+      _deadlineCapForSelectedProject(),
+    );
     final DateTime firstDate = VietnamTime.pickerFirstDateSafe(lastDate);
     DateTime initial = VietnamTime.pickerInitialDate(startCtrl.text);
     initial = VietnamTime.clampPickerInitial(initial, firstDate, lastDate);
@@ -213,15 +215,15 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
     final DateTime? projectCap = _deadlineCapForSelectedProject();
     if (!VietnamTime.ymdNotAfterCap(startCtrl.text.trim(), projectCap)) {
       setState(
-        () => localMessage =
-            'Ngày bắt đầu không được sau ngày kết thúc dự án.',
+        () => localMessage = 'Ngày bắt đầu không được sau ngày kết thúc dự án.',
       );
       return;
     }
     if (!VietnamTime.ymdNotAfterCap(deadlineCtrl.text.trim(), projectCap)) {
       setState(
-        () => localMessage =
-            'Deadline công việc không được sau ngày kết thúc dự án.',
+        () =>
+            localMessage =
+                'Deadline công việc không được sau ngày kết thúc dự án.',
       );
       return;
     }
@@ -297,8 +299,7 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
         primaryLoading: submitting,
         primaryLabel: submitting ? 'Đang tạo...' : 'Tạo công việc',
         onPrimary: submitting ? null : _submit,
-        onSecondary:
-            submitting ? null : () => Navigator.of(context).maybePop(),
+        onSecondary: submitting ? null : () => Navigator.of(context).maybePop(),
         secondaryLabel: 'Hủy',
       ),
       body: SafeArea(
@@ -344,8 +345,8 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
                             .toList(),
                     onChanged: (int? v) async {
                       if (v == null) return;
-                      final Map<String, dynamic> nextProject =
-                          widget.projects.firstWhere(
+                      final Map<String, dynamic> nextProject = widget.projects
+                          .firstWhere(
                             (Map<String, dynamic> p) => p['id'] == v,
                             orElse: () => <String, dynamic>{},
                           );
@@ -356,20 +357,17 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
                       final int? nextDepartmentId = int.tryParse(
                         '${nextProject['owner']?['department_id'] ?? nextProject['department_id'] ?? ''}',
                       );
-                      final String nextDeadline =
-                          '${nextProject['deadline'] ?? ''}'.toString();
                       final String nextRequirement =
                           '${nextProject['customer_requirement'] ?? ''}'
                               .toString();
+                      final ({DateTime? start, DateTime? end}) td =
+                          TimelineDefaults.taskDefaultsFromProject(nextProject);
                       setState(() {
                         projectId = v;
                         departmentId = nextDepartmentId ?? departmentId;
                         assigneeId = nextOwnerId ?? assigneeId;
-                        if (deadlineCtrl.text.trim().isEmpty &&
-                            nextDeadline.trim().isNotEmpty) {
-                          deadlineCtrl.text =
-                              VietnamTime.toYmdInput(nextDeadline);
-                        }
+                        startCtrl.text = VietnamTime.toYmdInput(td.start);
+                        deadlineCtrl.text = VietnamTime.toYmdInput(td.end);
                         if (descCtrl.text.trim().isEmpty &&
                             nextRequirement.trim().isNotEmpty) {
                           descCtrl.text = nextRequirement;
@@ -473,9 +471,8 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
                             ),
                           ],
                           onChanged:
-                              (String? v) => setState(
-                                () => priority = v ?? 'medium',
-                              ),
+                              (String? v) =>
+                                  setState(() => priority = v ?? 'medium'),
                           decoration: stitchTaskDropdownDecoration(
                             context,
                             'Ưu tiên',
@@ -568,7 +565,8 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
                               (Map<String, dynamic> d) =>
                                   StitchSelectOption<int>(
                                     value: d['id'] as int,
-                                    label: (d['name'] ?? 'Phòng ban').toString(),
+                                    label:
+                                        (d['name'] ?? 'Phòng ban').toString(),
                                   ),
                             )
                             .toList(),

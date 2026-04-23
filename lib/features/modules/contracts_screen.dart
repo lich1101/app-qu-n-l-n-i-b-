@@ -2,14 +2,17 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 import '../projects/create_project_screen.dart';
@@ -32,6 +35,23 @@ List<Map<String, dynamic>> _normalizeCostDisplayRows(dynamic raw) {
     m.putIfAbsent('row_type', () => 'record');
     return m;
   }).toList();
+}
+
+/// Cùng quy tắc API: `start >= signed`, `end > start` (chuỗi `yyyy-MM-dd`).
+String? _validateContractYmdOrder(String signed, String start, String end) {
+  final String s = signed.trim();
+  final String a = start.trim();
+  final String e = end.trim();
+  if (s.isEmpty || a.isEmpty || e.isEmpty) {
+    return 'Vui lòng nhập đủ ngày ký, ngày bắt đầu hiệu lực và ngày kết thúc.';
+  }
+  if (a.compareTo(s) < 0) {
+    return 'Ngày bắt đầu hiệu lực phải từ ngày ký trở đi.';
+  }
+  if (e.compareTo(a) <= 0) {
+    return 'Ngày kết thúc phải sau ngày bắt đầu hiệu lực.';
+  }
+  return null;
 }
 
 class _VnCurrencyInputFormatter extends TextInputFormatter {
@@ -116,9 +136,6 @@ class _ContractsScreenState extends State<ContractsScreen> {
   final TextEditingController searchCtrl = TextEditingController();
   final TextEditingController titleCtrl = TextEditingController();
   final TextEditingController valueCtrl = TextEditingController();
-  final TextEditingController subtotalValueCtrl = TextEditingController();
-  final TextEditingController vatRateCtrl = TextEditingController();
-  final TextEditingController vatAmountCtrl = TextEditingController();
   final TextEditingController paymentTimesCtrl = TextEditingController(
     text: '1',
   );
@@ -130,12 +147,16 @@ class _ContractsScreenState extends State<ContractsScreen> {
   final TextEditingController careNoteDetailCtrl = TextEditingController();
 
   bool loading = false;
+
+  /// Đang tải lại khi đã có danh sách — không thay toàn bộ list bằng spinner (tránh nhảy scroll).
+  bool _listRefreshing = false;
   bool loadingMore = false;
   bool _savingContractForm = false;
   String message = '';
   String filterStatus = '';
   int? filterClientId;
   int? formClientId;
+  int? formOpportunityId;
   int? editingId;
   String status = 'draft';
 
@@ -153,6 +174,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
   List<Map<String, dynamic>> contracts = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> clients = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> formClients = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> linkableOpportunities = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> products = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> collectors = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> careStaffUsers = <Map<String, dynamic>>[];
@@ -163,8 +186,6 @@ class _ContractsScreenState extends State<ContractsScreen> {
   List<int> careStaffIds = <int>[];
   List<int> contractListStaffFilterIds = <int>[];
   bool editingCanManage = true;
-  bool vatEnabled = false;
-  String vatMode = 'percent';
 
   @override
   void initState() {
@@ -205,9 +226,6 @@ class _ContractsScreenState extends State<ContractsScreen> {
     searchCtrl.dispose();
     titleCtrl.dispose();
     valueCtrl.dispose();
-    subtotalValueCtrl.dispose();
-    vatRateCtrl.dispose();
-    vatAmountCtrl.dispose();
     paymentTimesCtrl.dispose();
     signedCtrl.dispose();
     startCtrl.dispose();
@@ -221,55 +239,77 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
   Future<void> _fetch() async {
     setState(() {
-      loading = true;
+      if (contracts.isEmpty) {
+        loading = true;
+        _listRefreshing = false;
+      } else {
+        loading = false;
+        _listRefreshing = true;
+      }
       currentPage = 1;
     });
 
-    // Clients might also be paginated now, let's take a reasonable amount for the dropdown
-    final Map<String, dynamic> clientPayload = await widget.apiService
-        .getClients(widget.token, perPage: 100);
-    final List<Map<String, dynamic>> productRows = await widget.apiService
-        .getProducts(widget.token);
-    final List<Map<String, dynamic>> collectorRows = await widget.apiService
-        .getUsersLookup(widget.token, purpose: 'contract_collector');
-    final List<Map<String, dynamic>> careStaffRows = await widget.apiService
-        .getUsersLookup(widget.token, purpose: 'contract_care_staff');
+    try {
+      // Clients might also be paginated now, let's take a reasonable amount for the dropdown
+      final Map<String, dynamic> clientPayload = await widget.apiService
+          .getClients(widget.token, perPage: 100);
+      final Map<String, dynamic> formClientPayload = await widget.apiService
+          .getClients(widget.token, perPage: 100, assignedOnly: true);
+      final List<Map<String, dynamic>> productRows = await widget.apiService
+          .getProducts(widget.token);
+      final List<Map<String, dynamic>> collectorRows = await widget.apiService
+          .getUsersLookup(widget.token, purpose: 'contract_collector');
+      final List<Map<String, dynamic>> careStaffRows = await widget.apiService
+          .getUsersLookup(widget.token, purpose: 'contract_care_staff');
 
-    final Map<String, dynamic> contractPayload = await widget.apiService
-        .getContracts(
-          widget.token,
-          page: 1,
-          perPage: 20,
-          search: searchCtrl.text.trim(),
-          status: filterStatus,
-          clientId: filterClientId,
-          withItems: true,
-          staffIds:
-              contractListStaffFilterIds.isEmpty
-                  ? null
-                  : contractListStaffFilterIds,
-        );
+      final Map<String, dynamic> contractPayload = await widget.apiService
+          .getContracts(
+            widget.token,
+            page: 1,
+            perPage: 20,
+            search: searchCtrl.text.trim(),
+            status: filterStatus,
+            clientId: filterClientId,
+            withItems: true,
+            staffIds:
+                contractListStaffFilterIds.isEmpty
+                    ? null
+                    : contractListStaffFilterIds,
+          );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    final List<dynamic> clientData =
-        (clientPayload['data'] ?? []) as List<dynamic>;
-    final List<dynamic> contractData =
-        (contractPayload['data'] ?? []) as List<dynamic>;
+      final List<dynamic> clientData =
+          (clientPayload['data'] ?? []) as List<dynamic>;
+      final List<dynamic> formClientData =
+          (formClientPayload['data'] ?? []) as List<dynamic>;
+      final List<dynamic> contractData =
+          (contractPayload['data'] ?? []) as List<dynamic>;
 
-    _applyContractAggregates(contractPayload['aggregates']);
+      _applyContractAggregates(contractPayload['aggregates']);
 
-    setState(() {
-      loading = false;
-      clients = clientData.map((e) => e as Map<String, dynamic>).toList();
-      products = productRows;
-      collectors = collectorRows;
-      careStaffUsers = careStaffRows;
-      contracts = contractData.map((e) => e as Map<String, dynamic>).toList();
-      lastPage = (contractPayload['last_page'] ?? 1) as int;
-      totalContracts = (contractPayload['total'] ?? 0) as int;
-    });
-    _maybeOpenInitialContractDetail();
+      setState(() {
+        loading = false;
+        _listRefreshing = false;
+        clients = clientData.map((e) => e as Map<String, dynamic>).toList();
+        formClients =
+            formClientData.map((e) => e as Map<String, dynamic>).toList();
+        products = productRows;
+        collectors = collectorRows;
+        careStaffUsers = careStaffRows;
+        contracts = contractData.map((e) => e as Map<String, dynamic>).toList();
+        lastPage = (contractPayload['last_page'] ?? 1) as int;
+        totalContracts = (contractPayload['total'] ?? 0) as int;
+      });
+      _maybeOpenInitialContractDetail();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          loading = false;
+          _listRefreshing = false;
+        });
+      }
+    }
   }
 
   Future<void> _fetchMore() async {
@@ -407,148 +447,28 @@ class _ContractsScreenState extends State<ContractsScreen> {
     return VietnamTime.todayIso();
   }
 
-  List<Map<String, dynamic>> _extractClientCompanyProfiles(dynamic clientRaw) {
-    if (clientRaw is! Map) return <Map<String, dynamic>>[];
-    final dynamic rawProfiles = clientRaw['company_profiles'];
-    if (rawProfiles is! List) return <Map<String, dynamic>>[];
-    return rawProfiles
-        .whereType<Map>()
-        .map((Map profile) => profile.map(
-              (dynamic key, dynamic value) =>
-                  MapEntry(key.toString(), value),
-            ))
-        .where((Map<String, dynamic> profile) =>
-            (profile['company_name'] ?? '').toString().trim().isNotEmpty)
-        .toList();
-  }
-
-  Future<String?> _pickCompanyProfileId(
-    List<Map<String, dynamic>> profiles,
-  ) async {
-    if (profiles.isEmpty) return null;
-    if (profiles.length == 1) {
-      return (profiles.first['id'] ?? '').toString();
-    }
-    String selectedId =
-        ((profiles.firstWhere(
-                      (Map<String, dynamic> profile) =>
-                          profile['is_default'] == true,
-                      orElse: () => profiles.first,
-                    )['id']) ??
-                '')
-            .toString();
-
-    return showDialog<String>(
+  Future<void> _openContractSoftCopyModal({
+    required BuildContext context,
+    required int contractId,
+    required bool canManage,
+    required Future<void> Function() onChanged,
+  }) async {
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setLocalState) {
-            final Map<String, dynamic> active = profiles.firstWhere(
-              (Map<String, dynamic> profile) =>
-                  (profile['id'] ?? '').toString() == selectedId,
-              orElse: () => profiles.first,
-            );
-            return AlertDialog(
-              title: const Text('Chọn công ty bên A'),
-              content: SizedBox(
-                width: 420,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    DropdownButtonFormField<String>(
-                      value: selectedId,
-                      decoration: const InputDecoration(
-                        labelText: 'Công ty pháp lý',
-                      ),
-                      items: profiles
-                          .map(
-                            (Map<String, dynamic> profile) =>
-                                DropdownMenuItem<String>(
-                              value: (profile['id'] ?? '').toString(),
-                              child: Text(
-                                (profile['company_name'] ?? 'Công ty')
-                                    .toString(),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (String? value) {
-                        if (value == null || value.isEmpty) return;
-                        setLocalState(() => selectedId = value);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Người đại diện: ${(active['representative'] ?? '—').toString()}',
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Chức vụ: ${(active['position'] ?? '—').toString()}',
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'MST: ${(active['tax_code'] ?? '—').toString()}',
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Địa chỉ: ${(active['address'] ?? '—').toString()}',
-                    ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Hủy'),
-                ),
-                FilledButton(
-                  onPressed: () =>
-                      Navigator.of(dialogContext).pop(selectedId),
-                  child: const Text('Xuất .docx'),
-                ),
-              ],
-            );
-          },
+      isScrollControlled: true,
+      builder: (BuildContext ctx) {
+        return SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.62,
+          child: _ContractSoftCopySheet(
+            token: widget.token,
+            api: widget.apiService,
+            contractId: contractId,
+            canManage: canManage,
+            onChanged: onChanged,
+          ),
         );
       },
     );
-  }
-
-  Future<void> _downloadContractDocument(
-    int contractId, {
-    String? title,
-    String? code,
-    String? companyProfileId,
-  }) async {
-    try {
-      final Uint8List bytes = await widget.apiService.downloadContractDocument(
-        widget.token,
-        contractId,
-        companyProfileId: companyProfileId,
-      );
-      final Directory dir = await getTemporaryDirectory();
-      final String safeBase =
-          ((code ?? title ?? 'hop-dong-$contractId')
-                  .toLowerCase()
-                  .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-                  .replaceAll(RegExp(r'-+'), '-')
-                  .replaceAll(RegExp(r'^-|-$'), ''))
-              .trim();
-      final String fileName =
-          '${safeBase.isEmpty ? 'hop-dong-$contractId' : safeBase}.docx';
-      final File file = File('${dir.path}/$fileName');
-      await file.writeAsBytes(bytes, flush: true);
-      await Share.shareXFiles(
-        <XFile>[XFile(file.path)],
-        text: 'Hợp đồng ${title ?? code ?? '#$contractId'}',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        message = 'Không tải được file hợp đồng.';
-      });
-    }
   }
 
   double _itemTotal(Map<String, dynamic> item) {
@@ -562,40 +482,22 @@ class _ContractsScreenState extends State<ContractsScreen> {
     if (rows.isNotEmpty) {
       return _itemsTotalFromRows(rows);
     }
-    return _parseNumberInput(
-      vatEnabled ? subtotalValueCtrl.text.trim() : valueCtrl.text.trim(),
-    );
-  }
-
-  double _currentVatValue([List<Map<String, dynamic>>? sourceItems]) {
-    if (!vatEnabled) return 0;
-    final double subtotal = _currentSubtotalValue(sourceItems);
-    if (vatMode == 'amount') {
-      return math.max(0, _parseNumberInput(vatAmountCtrl.text.trim()));
-    }
-    return math.max(0, subtotal * _parseNumberInput(vatRateCtrl.text.trim()) / 100);
+    return _parseNumberInput(valueCtrl.text.trim());
   }
 
   double _currentContractTotal([List<Map<String, dynamic>>? sourceItems]) {
-    return _currentSubtotalValue(sourceItems) + _currentVatValue(sourceItems);
+    return _currentSubtotalValue(sourceItems);
   }
 
   void _syncValueController([List<Map<String, dynamic>>? sourceItems]) {
     final List<Map<String, dynamic>> rows = sourceItems ?? items;
     if (rows.isNotEmpty) {
       final double subtotal = _itemsTotalFromRows(rows);
-      subtotalValueCtrl.text = _formatMoneyInput(subtotal.toStringAsFixed(0));
-      valueCtrl.text = _formatMoneyInput(
-        (subtotal + _currentVatValue(rows)).toStringAsFixed(0),
-      );
+      valueCtrl.text = _formatMoneyInput(subtotal.toStringAsFixed(0));
       return;
     }
-
-    if (vatEnabled) {
-      final double subtotal = _parseNumberInput(subtotalValueCtrl.text.trim());
-      valueCtrl.text = _formatMoneyInput(
-        (subtotal + _currentVatValue()).toStringAsFixed(0),
-      );
+    if (sourceItems != null) {
+      valueCtrl.clear();
     }
   }
 
@@ -787,6 +689,85 @@ class _ContractsScreenState extends State<ContractsScreen> {
     return '${_fmtDate(date)} $hh:$mm';
   }
 
+  /// Lịch sử thao tác sau duyệt (API: activity_logs).
+  List<Widget> _contractActivityLogSection(Map<String, dynamic> detailData) {
+    final List<dynamic> logs =
+        (detailData['activity_logs'] ??
+                detailData['activityLogs'] ??
+                <dynamic>[])
+            as List<dynamic>;
+    final List<Widget> out = <Widget>[
+      const SizedBox(height: 24),
+      const Text(
+        'Lịch sử thao tác (sau duyệt)',
+        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        'Chỉnh sửa và thao tác sau khi hợp đồng đã được duyệt.',
+        style: TextStyle(color: StitchTheme.textMuted, fontSize: 13),
+      ),
+      const SizedBox(height: 12),
+    ];
+    if (logs.isEmpty) {
+      out.add(
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(
+            child: Text(
+              'Chưa có lịch sử thao tác.',
+              style: TextStyle(
+                color: StitchTheme.textSubtle,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ),
+      );
+      return out;
+    }
+    for (final dynamic raw in logs) {
+      final Map<String, dynamic> log = Map<String, dynamic>.from(
+        raw as Map<dynamic, dynamic>,
+      );
+      final Map<String, dynamic>? u = log['user'] as Map<String, dynamic>?;
+      final String actor = (u?['name'] ?? '—').toString();
+      out.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: StitchTheme.surfaceAlt,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: StitchTheme.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '$actor • ${_safeDateTime(log['created_at'])}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: StitchTheme.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  (log['summary'] ?? '').toString(),
+                  style: const TextStyle(fontSize: 13, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return out;
+  }
+
   bool get _isEmployee => widget.currentUserRole == 'nhan_vien';
 
   bool get _canChooseCollector =>
@@ -947,29 +928,48 @@ class _ContractsScreenState extends State<ContractsScreen> {
       setState(() => message = 'Giá trị hợp đồng không hợp lệ.');
       return false;
     }
+    final String? contractDateErr = _validateContractYmdOrder(
+      signedCtrl.text,
+      startCtrl.text,
+      endCtrl.text,
+    );
+    if (contractDateErr != null) {
+      setState(() => message = contractDateErr);
+      return false;
+    }
+    final int validProductLines =
+        items.where((Map<String, dynamic> item) {
+          final int? pid = _readInt(item['product_id']);
+          final String name = (item['product_name'] ?? '').toString().trim();
+          return (pid != null && pid > 0) || name.isNotEmpty;
+        }).length;
+    if (validProductLines < 1) {
+      setState(
+        () =>
+            message =
+                'Vui lòng thêm ít nhất một dòng sản phẩm hoặc dịch vụ vào hợp đồng.',
+      );
+      return false;
+    }
     final double subtotalValue = _currentSubtotalValue();
     final double value = _currentContractTotal();
     final int? paymentTimes = int.tryParse(paymentTimesCtrl.text.trim());
     final List<Map<String, dynamic>> payloadItems =
-        items
-            .map(
-              (Map<String, dynamic> item) {
-                final Map<String, dynamic> row = <String, dynamic>{
-                  'product_id': item['product_id'],
-                  'product_name': item['product_name'],
-                  'unit': item['unit'],
-                  'unit_price': item['unit_price'],
-                  'quantity': item['quantity'],
-                  'note': item['note'],
-                };
-                final int? lineId = _readInt(item['id']);
-                if (editingId != null && lineId != null && lineId > 0) {
-                  row['id'] = lineId;
-                }
-                return row;
-              },
-            )
-            .toList();
+        items.map((Map<String, dynamic> item) {
+          final Map<String, dynamic> row = <String, dynamic>{
+            'product_id': item['product_id'],
+            'product_name': item['product_name'],
+            'unit': item['unit'],
+            'unit_price': item['unit_price'],
+            'quantity': item['quantity'],
+            'note': item['note'],
+          };
+          final int? lineId = _readInt(item['id']);
+          if (editingId != null && lineId != null && lineId > 0) {
+            row['id'] = lineId;
+          }
+          return row;
+        }).toList();
     final List<Map<String, dynamic>> pendingPaymentRequests =
         editingId == null
             ? payments
@@ -1030,19 +1030,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
               widget.token,
               title: titleCtrl.text.trim(),
               clientId: formClientId!,
+              opportunityId: formOpportunityId,
               collectorUserId: collectorUserId,
               subtotalValue: subtotalValue,
               value: value,
-              vatEnabled: vatEnabled,
-              vatMode: vatEnabled ? vatMode : null,
-              vatRate:
-                  vatEnabled && vatMode == 'percent'
-                      ? _parseNumberInput(vatRateCtrl.text.trim())
-                      : null,
-              vatAmount:
-                  vatEnabled && vatMode == 'amount'
-                      ? _parseNumberInput(vatAmountCtrl.text.trim())
-                      : null,
               paymentTimes: paymentTimes,
               createAndApprove: createAndApprove,
               signedAt:
@@ -1063,19 +1054,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
               editingId!,
               title: titleCtrl.text.trim(),
               clientId: formClientId!,
+              opportunityId: formOpportunityId,
               collectorUserId: collectorUserId,
               subtotalValue: subtotalValue,
               value: value,
-              vatEnabled: vatEnabled,
-              vatMode: vatEnabled ? vatMode : null,
-              vatRate:
-                  vatEnabled && vatMode == 'percent'
-                      ? _parseNumberInput(vatRateCtrl.text.trim())
-                      : null,
-              vatAmount:
-                  vatEnabled && vatMode == 'amount'
-                      ? _parseNumberInput(vatAmountCtrl.text.trim())
-                      : null,
               paymentTimes: paymentTimes,
               signedAt:
                   signedCtrl.text.trim().isEmpty
@@ -1130,34 +1112,64 @@ class _ContractsScreenState extends State<ContractsScreen> {
     }
     final bool? confirm = await showDialog<bool>(
       context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('Không duyệt hợp đồng'),
-        content: const Text(
-          'Xác nhận không duyệt hợp đồng này? Trạng thái sẽ chuyển sang «Hủy».',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Đóng'),
+      builder:
+          (BuildContext ctx) => AlertDialog(
+            title: const Text('Không duyệt hợp đồng'),
+            content: const Text(
+              'Xác nhận không duyệt hợp đồng này? Trạng thái sẽ chuyển sang «Hủy».',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Đóng'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Không duyệt'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Không duyệt'),
-          ),
-        ],
-      ),
     );
     if (confirm != true || !mounted) return false;
 
-    final bool ok = await widget.apiService.rejectContract(widget.token, contractId);
+    final bool ok = await widget.apiService.rejectContract(
+      widget.token,
+      contractId,
+    );
     if (!mounted) return false;
     setState(() {
-      message = ok ? 'Đã không duyệt hợp đồng.' : 'Không duyệt hợp đồng thất bại.';
+      message =
+          ok ? 'Đã không duyệt hợp đồng.' : 'Không duyệt hợp đồng thất bại.';
     });
     if (ok) {
       await _fetch();
     }
     return ok;
+  }
+
+  Future<void> _loadLinkableOpportunitiesForForm() async {
+    final int? cid = formClientId;
+    if (cid == null || cid <= 0) {
+      if (!mounted) return;
+      setState(() => linkableOpportunities = <Map<String, dynamic>>[]);
+      return;
+    }
+    final Map<String, dynamic> payload = await widget.apiService
+        .getOpportunities(
+          widget.token,
+          perPage: 80,
+          page: 1,
+          clientId: cid,
+          linkableForContract: true,
+          excludeContractId: editingId,
+        );
+    final List<dynamic> rows =
+        (payload['data'] ?? <dynamic>[]) as List<dynamic>;
+    if (!mounted) return;
+    setState(() {
+      linkableOpportunities =
+          rows.map((e) => e as Map<String, dynamic>).toList();
+    });
   }
 
   Future<void> _openForm({Map<String, dynamic>? contract}) async {
@@ -1189,18 +1201,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
         editingCanManage = _canManageContract(detail);
         editingId = _readInt(detail['id']) ?? 0;
         titleCtrl.text = (detail['title'] ?? '').toString();
-        vatEnabled = _readBool(detail['vat_enabled']) ?? false;
-        vatMode =
-            ((detail['vat_mode'] ?? 'percent').toString() == 'amount')
-                ? 'amount'
-                : 'percent';
-        subtotalValueCtrl.text = _formatMoneyInput(
+        valueCtrl.text = _formatMoneyInput(
           detail['subtotal_value'] ?? detail['value'],
         );
-        vatRateCtrl.text =
-            detail['vat_rate'] == null ? '' : '${detail['vat_rate']}';
-        vatAmountCtrl.text = _formatMoneyInput(detail['vat_amount']);
-        valueCtrl.text = _formatMoneyInput(detail['value']);
         paymentTimesCtrl.text = (detail['payment_times'] ?? 1).toString();
         signedCtrl.text = _safeDate(detail['signed_at']);
         startCtrl.text = _safeDate(detail['start_date']);
@@ -1208,6 +1211,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
         notesCtrl.text = (detail['notes'] ?? '').toString();
         status = (detail['status'] ?? 'draft').toString();
         formClientId = _readInt(detail['client_id']);
+        formOpportunityId = _readInt(detail['opportunity_id']);
         collectorUserId = _readInt(detail['collector_user_id']);
         careStaffIds = _normalizeCareStaffIds(detail['care_staff_users']);
         items =
@@ -1235,6 +1239,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
       }
     });
 
+    if (formClientId != null && formClientId! > 0) {
+      await _loadLinkableOpportunitiesForForm();
+    }
+    if (!mounted) return;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1246,66 +1255,18 @@ class _ContractsScreenState extends State<ContractsScreen> {
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.surfaceAlt,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
+              decoration: stitchFormSheetSurfaceDecoration(),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(24),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 4,
-                          margin: const EdgeInsets.only(bottom: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              editingId == null
-                                  ? 'Tạo Hợp Đồng'
-                                  : 'Sửa Hợp Đồng',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 18,
-                              ),
-                            ),
-                            InkWell(
-                              onTap: () => Navigator.of(context).pop(),
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.close,
-                                  size: 20,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  StitchFormSheetTitleBar(
+                    title: editingId == null ? 'Tạo hợp đồng' : 'Sửa hợp đồng',
+                    subtitle:
+                        'Mã hợp đồng sẽ tự sinh khi lưu. Trạng thái duyệt, thu tiền và hiệu lực được hệ thống tự tính theo nghiệp vụ web.',
+                    icon:
+                        editingId == null
+                            ? Icons.note_add_rounded
+                            : Icons.edit_document,
                   ),
                   Flexible(
                     child: SingleChildScrollView(
@@ -1391,7 +1352,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                     decoration: stitchSheetInputDecoration(
                                       context,
                                       label: 'Tiêu đề hợp đồng *',
-                                      hint: 'Ví dụ: Hợp đồng backlink thương hiệu',
+                                      hint:
+                                          'Ví dụ: Hợp đồng backlink thương hiệu',
                                     ),
                                   ),
                                 ),
@@ -1405,7 +1367,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                         value: null,
                                         child: Text('Chọn khách hàng *'),
                                       ),
-                                      ...clients.map(
+                                      ...formClients.map(
                                         (Map<String, dynamic> c) =>
                                             DropdownMenuItem<int?>(
                                               value: c['id'] as int?,
@@ -1416,13 +1378,57 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                             ),
                                       ),
                                     ],
-                                    onChanged: (int? value) {
-                                      setSheetState(() => formClientId = value);
+                                    onChanged: (int? value) async {
+                                      setState(() {
+                                        formClientId = value;
+                                        formOpportunityId = null;
+                                      });
+                                      await _loadLinkableOpportunitiesForForm();
+                                      setSheetState(() {});
                                     },
                                     decoration: stitchSheetInputDecoration(
                                       context,
                                       label: 'Khách hàng',
-                                      hint: 'Chọn khách hàng đang đứng tên hợp đồng',
+                                      hint:
+                                          'Chọn khách hàng đang đứng tên hợp đồng',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                StitchFilterField(
+                                  label: 'Cơ hội liên kết (tuỳ chọn)',
+                                  child: DropdownButtonFormField<int?>(
+                                    value: formOpportunityId,
+                                    items: <DropdownMenuItem<int?>>[
+                                      const DropdownMenuItem<int?>(
+                                        value: null,
+                                        child: Text('Không chọn cơ hội'),
+                                      ),
+                                      ...linkableOpportunities.map(
+                                        (Map<String, dynamic> o) =>
+                                            DropdownMenuItem<int?>(
+                                              value: o['id'] as int?,
+                                              child: Text(
+                                                (o['title'] ?? 'Cơ hội')
+                                                    .toString(),
+                                              ),
+                                            ),
+                                      ),
+                                    ],
+                                    onChanged:
+                                        formClientId == null
+                                            ? null
+                                            : (int? value) {
+                                              setState(
+                                                () => formOpportunityId = value,
+                                              );
+                                              setSheetState(() {});
+                                            },
+                                    decoration: stitchSheetInputDecoration(
+                                      context,
+                                      label: 'Cơ hội',
+                                      hint:
+                                          'Chỉ hiển thị cơ hội chưa gắn hợp đồng khác',
                                     ),
                                   ),
                                 ),
@@ -1472,7 +1478,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                       Text(
                                         _isEmployee
                                             ? 'Bạn tạo hợp đồng nào thì hợp đồng đó tự đứng tên bạn và không đổi sang người khác.'
-                                            : widget.currentUserRole == 'quan_ly'
+                                            : widget.currentUserRole ==
+                                                'quan_ly'
                                             ? 'Trưởng phòng có thể giữ chính mình hoặc chọn nhân sự trong phòng để đứng tên thu hợp đồng.'
                                             : widget.canApprove
                                             ? 'Admin/Kế toán có thể chọn mọi nhân viên và có thêm nút tạo và duyệt.'
@@ -1521,7 +1528,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                             _canChooseCollector
                                                 ? (int? value) {
                                                   setSheetState(
-                                                    () => collectorUserId = value,
+                                                    () =>
+                                                        collectorUserId = value,
                                                   );
                                                 }
                                                 : null,
@@ -1605,7 +1613,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                             ),
                                                         decoration: BoxDecoration(
                                                           color:
-                                                              StitchTheme.primarySoft,
+                                                              StitchTheme
+                                                                  .primarySoft,
                                                           borderRadius:
                                                               BorderRadius.circular(
                                                                 999,
@@ -1650,52 +1659,70 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                           context,
                                                           label: 'Sản phẩm',
                                                         ),
-                                                    items: <DropdownMenuItem<int?>>[
-                                                      const DropdownMenuItem<int?>(
+                                                    items: <
+                                                      DropdownMenuItem<int?>
+                                                    >[
+                                                      const DropdownMenuItem<
+                                                        int?
+                                                      >(
                                                         value: null,
                                                         child: Text(
                                                           'Chọn sản phẩm',
                                                         ),
                                                       ),
                                                       ...products.map(
-                                                        (Map<String, dynamic> p) =>
-                                                            DropdownMenuItem<int?>(
-                                                              value:
-                                                                  p['id'] as int?,
-                                                              child: Text(
-                                                                (p['name'] ??
-                                                                        'Sản phẩm')
-                                                                    .toString(),
-                                                              ),
-                                                            ),
+                                                        (
+                                                          Map<String, dynamic>
+                                                          p,
+                                                        ) => DropdownMenuItem<
+                                                          int?
+                                                        >(
+                                                          value:
+                                                              p['id'] as int?,
+                                                          child: Text(
+                                                            (p['name'] ??
+                                                                    'Sản phẩm')
+                                                                .toString(),
+                                                          ),
+                                                        ),
                                                       ),
                                                     ],
                                                     onChanged: (int? value) {
                                                       final Map<String, dynamic>
-                                                      selected = products.firstWhere(
-                                                        (Map<String, dynamic> p) =>
-                                                            p['id'] == value,
-                                                        orElse:
-                                                            () =>
-                                                                <String, dynamic>{},
-                                                      );
-                                                      _updateItem(
-                                                        index,
-                                                        <String, dynamic>{
-                                                          'product_id': value,
-                                                          'product_name':
-                                                              selected['name'] ??
-                                                              '',
-                                                          'unit':
-                                                              selected['unit'] ??
-                                                              '',
-                                                          'unit_price':
-                                                              _formatMoneyInput(
-                                                                selected['unit_price'],
-                                                              ),
-                                                        },
-                                                        setSheetState,
-                                                      );
+                                                      selected = products
+                                                          .firstWhere(
+                                                            (
+                                                              Map<
+                                                                String,
+                                                                dynamic
+                                                              >
+                                                              p,
+                                                            ) =>
+                                                                p['id'] ==
+                                                                value,
+                                                            orElse:
+                                                                () =>
+                                                                    <
+                                                                      String,
+                                                                      dynamic
+                                                                    >{},
+                                                          );
+                                                      _updateItem(index, <
+                                                        String,
+                                                        dynamic
+                                                      >{
+                                                        'product_id': value,
+                                                        'product_name':
+                                                            selected['name'] ??
+                                                            '',
+                                                        'unit':
+                                                            selected['unit'] ??
+                                                            '',
+                                                        'unit_price':
+                                                            _formatMoneyInput(
+                                                              selected['unit_price'],
+                                                            ),
+                                                      }, setSheetState);
                                                     },
                                                   ),
                                                   const SizedBox(height: 10),
@@ -1704,7 +1731,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                       Expanded(
                                                         child: TextFormField(
                                                           initialValue:
-                                                              (item['unit'] ?? '')
+                                                              (item['unit'] ??
+                                                                      '')
                                                                   .toString(),
                                                           decoration:
                                                               stitchSheetInputDecoration(
@@ -1712,15 +1740,18 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                                 label: 'Đơn vị',
                                                               ),
                                                           onChanged:
-                                                              (value) =>
-                                                                  _updateItem(
-                                                                    index,
-                                                                    <String, dynamic>{
-                                                                      'unit':
-                                                                          value,
-                                                                    },
-                                                                    setSheetState,
-                                                                  ),
+                                                              (
+                                                                value,
+                                                              ) => _updateItem(
+                                                                index,
+                                                                <
+                                                                  String,
+                                                                  dynamic
+                                                                >{
+                                                                  'unit': value,
+                                                                },
+                                                                setSheetState,
+                                                              ),
                                                         ),
                                                       ),
                                                       const SizedBox(width: 10),
@@ -1733,7 +1764,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                           decoration:
                                                               stitchSheetInputDecoration(
                                                                 context,
-                                                                label: 'Đơn giá',
+                                                                label:
+                                                                    'Đơn giá',
                                                               ),
                                                           keyboardType:
                                                               TextInputType
@@ -1744,17 +1776,21 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                             _VnCurrencyInputFormatter(),
                                                           ],
                                                           onChanged:
-                                                              (value) =>
-                                                                  _updateItem(
-                                                                    index,
-                                                                    <String, dynamic>{
-                                                                      'unit_price':
-                                                                          _formatMoneyInput(
-                                                                            value,
-                                                                          ),
-                                                                    },
-                                                                    setSheetState,
-                                                                  ),
+                                                              (
+                                                                value,
+                                                              ) => _updateItem(
+                                                                index,
+                                                                <
+                                                                  String,
+                                                                  dynamic
+                                                                >{
+                                                                  'unit_price':
+                                                                      _formatMoneyInput(
+                                                                        value,
+                                                                      ),
+                                                                },
+                                                                setSheetState,
+                                                              ),
                                                         ),
                                                       ),
                                                     ],
@@ -1771,21 +1807,26 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                           decoration:
                                                               stitchSheetInputDecoration(
                                                                 context,
-                                                                label: 'Số lượng',
+                                                                label:
+                                                                    'Số lượng',
                                                               ),
                                                           keyboardType:
                                                               TextInputType
                                                                   .number,
                                                           onChanged:
-                                                              (value) =>
-                                                                  _updateItem(
-                                                                    index,
-                                                                    <String, dynamic>{
-                                                                      'quantity':
-                                                                          value,
-                                                                    },
-                                                                    setSheetState,
-                                                                  ),
+                                                              (
+                                                                value,
+                                                              ) => _updateItem(
+                                                                index,
+                                                                <
+                                                                  String,
+                                                                  dynamic
+                                                                >{
+                                                                  'quantity':
+                                                                      value,
+                                                                },
+                                                                setSheetState,
+                                                              ),
                                                         ),
                                                       ),
                                                       const SizedBox(width: 10),
@@ -1876,178 +1917,6 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
                           const SizedBox(height: 14),
                           StitchFilterCard(
-                            title: 'VAT',
-                            subtitle:
-                                'Bật VAT để hệ thống tự cộng thuế vào giá trị hợp đồng.',
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                SwitchListTile.adaptive(
-                                  value: vatEnabled,
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text(
-                                    'Áp dụng VAT',
-                                    style: TextStyle(fontWeight: FontWeight.w700),
-                                  ),
-                                  subtitle: const Text(
-                                    'Có thể nhập theo % hoặc theo số tiền VAT.',
-                                  ),
-                                  onChanged: (bool value) {
-                                    setSheetState(() {
-                                      if (value &&
-                                          items.isEmpty &&
-                                          subtotalValueCtrl.text.trim().isEmpty) {
-                                        subtotalValueCtrl.text = valueCtrl.text;
-                                      }
-                                      vatEnabled = value;
-                                      _syncValueController();
-                                      if (!vatEnabled && items.isEmpty) {
-                                        valueCtrl.text = subtotalValueCtrl.text;
-                                      }
-                                    });
-                                  },
-                                ),
-                                if (vatEnabled) ...<Widget>[
-                                  const SizedBox(height: 8),
-                                  if (items.isEmpty) ...<Widget>[
-                                    StitchFilterField(
-                                      label: 'Giá trị trước VAT',
-                                      child: TextField(
-                                        controller: subtotalValueCtrl,
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: const <
-                                          TextInputFormatter
-                                        >[
-                                          _VnCurrencyInputFormatter(),
-                                        ],
-                                        onChanged: (_) {
-                                          setSheetState(() {
-                                            _syncValueController();
-                                          });
-                                        },
-                                        decoration: stitchSheetInputDecoration(
-                                          context,
-                                          label: 'Giá trị trước VAT (VNĐ)',
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                  ],
-                                  StitchFilterField(
-                                    label: 'Kiểu VAT',
-                                    child: DropdownButtonFormField<String>(
-                                      value: vatMode,
-                                      items: const <
-                                        DropdownMenuItem<String>
-                                      >[
-                                        DropdownMenuItem<String>(
-                                          value: 'percent',
-                                          child: Text('Theo %'),
-                                        ),
-                                        DropdownMenuItem<String>(
-                                          value: 'amount',
-                                          child: Text('Theo số tiền'),
-                                        ),
-                                      ],
-                                      onChanged: (String? value) {
-                                        setSheetState(() {
-                                          vatMode =
-                                              value == 'amount'
-                                                  ? 'amount'
-                                                  : 'percent';
-                                          _syncValueController();
-                                        });
-                                      },
-                                      decoration: stitchSheetInputDecoration(
-                                        context,
-                                        label: 'Kiểu VAT',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  StitchFilterField(
-                                    label:
-                                        vatMode == 'amount'
-                                            ? 'Tiền VAT'
-                                            : '% VAT',
-                                    child:
-                                        vatMode == 'amount'
-                                            ? TextField(
-                                              controller: vatAmountCtrl,
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              inputFormatters: const <
-                                                TextInputFormatter
-                                              >[
-                                                _VnCurrencyInputFormatter(),
-                                              ],
-                                              onChanged: (_) {
-                                                setSheetState(() {
-                                                  _syncValueController();
-                                                });
-                                              },
-                                              decoration:
-                                                  stitchSheetInputDecoration(
-                                                    context,
-                                                    label: 'Tiền VAT (VNĐ)',
-                                                  ),
-                                            )
-                                            : TextField(
-                                              controller: vatRateCtrl,
-                                              keyboardType:
-                                                  const TextInputType.numberWithOptions(
-                                                    decimal: true,
-                                                  ),
-                                              onChanged: (_) {
-                                                setSheetState(() {
-                                                  _syncValueController();
-                                                });
-                                              },
-                                              decoration:
-                                                  stitchSheetInputDecoration(
-                                                    context,
-                                                    label: '% VAT',
-                                                  ),
-                                            ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(14),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: StitchTheme.border,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: <Widget>[
-                                        const Text(
-                                          'VAT tạm tính',
-                                          style: TextStyle(
-                                            color: StitchTheme.textMuted,
-                                          ),
-                                        ),
-                                        Text(
-                                          _money(_currentVatValue()),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: 14),
-                          StitchFilterCard(
                             title: 'Giá trị và hiệu lực',
                             subtitle:
                                 'Theo dõi giá trị hợp đồng, số lần thanh toán và mốc thời gian hiệu lực.',
@@ -2058,22 +1927,17 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                 StitchFilterField(
                                   label: 'Giá trị hợp đồng',
                                   hint:
-                                      items.isNotEmpty || vatEnabled
-                                          ? 'Đang tự tính theo giá trị trước VAT và cấu hình VAT phía trên.'
-                                          : null,
+                                      'Tự động tính theo tổng giá trị các dòng sản phẩm/dịch vụ.',
                                   child: TextField(
                                     controller: valueCtrl,
                                     keyboardType: TextInputType.number,
                                     inputFormatters: const <TextInputFormatter>[
                                       _VnCurrencyInputFormatter(),
                                     ],
-                                    readOnly: items.isNotEmpty || vatEnabled,
+                                    readOnly: true,
                                     decoration: stitchSheetInputDecoration(
                                       context,
-                                      label:
-                                          items.isNotEmpty || vatEnabled
-                                              ? 'Giá trị (tự tính)'
-                                              : 'Giá trị (VNĐ)',
+                                      label: 'Giá trị (tự tính)',
                                     ),
                                   ),
                                 ),
@@ -2184,15 +2048,17 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                     )
                                     : Column(
                                       children:
-                                          payments.map((Map<String, dynamic> p) {
+                                          payments.map((
+                                            Map<String, dynamic> p,
+                                          ) {
                                             final bool isPending =
                                                 (p['row_type']?.toString() ??
-                                                        '') ==
-                                                    'pending_request';
+                                                    '') ==
+                                                'pending_request';
                                             final bool isDraft =
                                                 (p['row_type']?.toString() ??
-                                                        '') ==
-                                                    'create_draft';
+                                                    '') ==
+                                                'create_draft';
                                             return Card(
                                               margin: const EdgeInsets.only(
                                                 bottom: 10,
@@ -2229,15 +2095,14 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                                 999,
                                                               ),
                                                           border: Border.all(
-                                                            color:
-                                                                (isDraft
-                                                                        ? StitchTheme
-                                                                            .primary
-                                                                        : StitchTheme
-                                                                            .warning)
-                                                                    .withValues(
-                                                                      alpha: 0.24,
-                                                                    ),
+                                                            color: (isDraft
+                                                                    ? StitchTheme
+                                                                        .primary
+                                                                    : StitchTheme
+                                                                        .warning)
+                                                                .withValues(
+                                                                  alpha: 0.24,
+                                                                ),
                                                           ),
                                                         ),
                                                         child: Text(
@@ -2277,9 +2142,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                                 size: 18,
                                                               ),
                                                               onPressed:
-                                                                  () => _openPaymentSheet(
-                                                                    payment: p,
-                                                                  ),
+                                                                  () =>
+                                                                      _openPaymentSheet(
+                                                                        payment:
+                                                                            p,
+                                                                      ),
                                                             ),
                                                             IconButton(
                                                               icon: Icon(
@@ -2291,9 +2158,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                                         .danger,
                                                               ),
                                                               onPressed:
-                                                                  () => _deletePayment(
-                                                                    p['id'],
-                                                                  ),
+                                                                  () =>
+                                                                      _deletePayment(
+                                                                        p['id'],
+                                                                      ),
                                                             ),
                                                           ],
                                                         ),
@@ -2329,12 +2197,12 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                           costs.map((Map<String, dynamic> c) {
                                             final bool isPending =
                                                 (c['row_type']?.toString() ??
-                                                        '') ==
-                                                    'pending_request';
+                                                    '') ==
+                                                'pending_request';
                                             final bool isDraft =
                                                 (c['row_type']?.toString() ??
-                                                        '') ==
-                                                    'create_draft';
+                                                    '') ==
+                                                'create_draft';
                                             return Card(
                                               margin: const EdgeInsets.only(
                                                 bottom: 10,
@@ -2371,15 +2239,14 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                                 999,
                                                               ),
                                                           border: Border.all(
-                                                            color:
-                                                                (isDraft
-                                                                        ? StitchTheme
-                                                                            .primary
-                                                                        : StitchTheme
-                                                                            .warning)
-                                                                    .withValues(
-                                                                      alpha: 0.24,
-                                                                    ),
+                                                            color: (isDraft
+                                                                    ? StitchTheme
+                                                                        .primary
+                                                                    : StitchTheme
+                                                                        .warning)
+                                                                .withValues(
+                                                                  alpha: 0.24,
+                                                                ),
                                                           ),
                                                         ),
                                                         child: Text(
@@ -2419,9 +2286,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                                 size: 18,
                                                               ),
                                                               onPressed:
-                                                                  () => _openCostSheet(
-                                                                    cost: c,
-                                                                  ),
+                                                                  () =>
+                                                                      _openCostSheet(
+                                                                        cost: c,
+                                                                      ),
                                                             ),
                                                             IconButton(
                                                               icon: Icon(
@@ -2433,9 +2301,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                                         .danger,
                                                               ),
                                                               onPressed:
-                                                                  () => _deleteCost(
-                                                                    c['id'],
-                                                                  ),
+                                                                  () =>
+                                                                      _deleteCost(
+                                                                        c['id'],
+                                                                      ),
                                                             ),
                                                           ],
                                                         ),
@@ -2456,93 +2325,45 @@ class _ContractsScreenState extends State<ContractsScreen> {
                       ),
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, -4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  side: const BorderSide(
-                                    color: StitchTheme.border,
-                                  ),
-                                  foregroundColor: StitchTheme.textMain,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                ),
-                                onPressed:
-                                    _savingContractForm
-                                        ? null
-                                        : () => Navigator.of(context).pop(),
-                                child: const Text('Hủy'),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: FilledButton(
-                                onPressed:
-                                    _savingContractForm
-                                        ? null
-                                        : () async {
-                                          final NavigatorState navigator =
-                                              Navigator.of(context);
-                                          final bool ok = await _save();
-                                          if (!mounted) return;
-                                          if (ok) {
-                                            navigator.pop();
-                                          } else {
-                                            setSheetState(() {});
-                                          }
-                                        },
-                                style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                ),
-                                child: Text(
-                                  _savingContractForm
-                                      ? (editingId == null
-                                          ? 'Đang tạo...'
-                                          : 'Đang cập nhật...')
-                                      : (editingId == null
-                                          ? 'Lưu hợp đồng'
-                                          : 'Cập nhật'),
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (editingId == null &&
-                            widget.canCreate &&
-                            widget.canApprove) ...<Widget>[
-                          const SizedBox(height: 10),
-                          SizedBox(
+                  Column(
+                    children: <Widget>[
+                      StitchFormSheetActions(
+                        primaryLoading: _savingContractForm,
+                        primaryLabel:
+                            _savingContractForm
+                                ? (editingId == null
+                                    ? 'Đang tạo...'
+                                    : 'Đang cập nhật...')
+                                : (editingId == null
+                                    ? 'Lưu hợp đồng'
+                                    : 'Cập nhật'),
+                        onPrimary:
+                            _savingContractForm
+                                ? null
+                                : () async {
+                                  final NavigatorState navigator = Navigator.of(
+                                    context,
+                                  );
+                                  final bool ok = await _save();
+                                  if (!mounted) return;
+                                  if (ok) {
+                                    navigator.pop();
+                                  } else {
+                                    setSheetState(() {});
+                                  }
+                                },
+                        onCancel:
+                            _savingContractForm
+                                ? null
+                                : () => Navigator.of(context).pop(),
+                        secondaryLabel: 'Hủy',
+                      ),
+                      if (editingId == null &&
+                          widget.canCreate &&
+                          widget.canApprove)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                          child: SizedBox(
                             width: double.infinity,
                             child: FilledButton.tonal(
                               onPressed:
@@ -2579,9 +2400,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                               ),
                             ),
                           ),
-                        ],
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ],
               ),
@@ -2674,272 +2494,275 @@ class _ContractsScreenState extends State<ContractsScreen> {
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
               child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  color: StitchTheme.bg,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
+                decoration: stitchFormSheetSurfaceDecoration(),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      payment == null ? 'Thêm thanh toán' : 'Sửa thanh toán',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    StitchFormSheetTitleBar(
+                      title:
+                          payment == null
+                              ? 'Thêm thanh toán'
+                              : 'Sửa thanh toán',
+                      subtitle:
+                          'Theo đúng nghiệp vụ web: số thu không được vượt giá trị hợp đồng còn lại.',
+                      icon: Icons.payments_rounded,
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: StitchTheme.surfaceAlt,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: StitchTheme.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text('Giá trị hợp đồng: ${_money(total)}'),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Số tiền còn cần thu: ${_money(remaining)}',
-                            style: TextStyle(
-                              color:
-                                  remaining > 0
-                                      ? Colors.green.shade700
-                                      : Colors.redAccent,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (projected > total + 0.0001)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 6),
-                              child: Text(
-                                'Số tiền đang nhập vượt tổng giá trị hợp đồng.',
-                                style: TextStyle(
-                                  color: Colors.redAccent,
-                                  fontSize: 12,
-                                ),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: StitchTheme.surfaceAlt,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: StitchTheme.border),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    'Giá trị hợp đồng: ${_money(total)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Số tiền còn cần thu: ${_money(remaining)}',
+                                    style: TextStyle(
+                                      color:
+                                          remaining > 0
+                                              ? StitchTheme.successStrong
+                                              : StitchTheme.dangerStrong,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  if (projected > total + 0.0001)
+                                    Padding(
+                                      padding: EdgeInsets.only(top: 6),
+                                      child: Text(
+                                        'Số tiền đang nhập vượt tổng giá trị hợp đồng.',
+                                        style: TextStyle(
+                                          color: StitchTheme.dangerStrong,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
-                        ],
-                      ),
-                    ),
-                    if (localMessage.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        localMessage,
-                        style: const TextStyle(color: Colors.redAccent),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: amountCtrl,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: const <TextInputFormatter>[
-                        _VnCurrencyInputFormatter(),
-                      ],
-                      onChanged: (_) => setModalState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Số tiền (VNĐ)',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: dateCtrl,
-                      readOnly: true,
-                      onTap: () => _pickDate(dateCtrl),
-                      decoration: const InputDecoration(
-                        labelText: 'Ngày thu',
-                        suffixIcon: Icon(Icons.event),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: methodCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Phương thức',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: noteCtrl,
-                      maxLines: 2,
-                      decoration: const InputDecoration(labelText: 'Ghi chú'),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed:
-                                submitting
-                                    ? null
-                                    : () async {
-                                      final NavigatorState navigator =
-                                          Navigator.of(context);
-                                      final double amount = _parseNumberInput(
-                                        amountCtrl.text.trim(),
-                                      );
-                                      if (amount <= 0) {
-                                        setModalState(
-                                          () =>
-                                              localMessage =
-                                                  'Số tiền không hợp lệ.',
-                                        );
-                                        return;
-                                      }
-                                      if (amount > remaining + 0.0001) {
-                                        setModalState(
-                                          () =>
-                                              localMessage =
-                                                  'Số tiền thanh toán vượt giá trị hợp đồng.',
-                                        );
-                                        return;
-                                      }
-                                      setModalState(() => submitting = true);
-                                      late final Map<String, dynamic> result;
-                                      if (editingId == null) {
-                                        final String localId =
-                                            isDraftRow
-                                                ? (payment['id'] ?? '')
-                                                    .toString()
-                                                : 'local-pay-${DateTime.now().microsecondsSinceEpoch}';
-                                        setState(() {
-                                          final Map<String, dynamic>
-                                          nextRow = <String, dynamic>{
-                                            'id': localId,
-                                            'row_type': 'create_draft',
-                                            'amount': amountCtrl.text.trim(),
-                                            'paid_at':
-                                                dateCtrl.text.trim().isEmpty
-                                                    ? null
-                                                    : dateCtrl.text.trim(),
-                                            'method':
-                                                methodCtrl.text.trim().isEmpty
-                                                    ? null
-                                                    : methodCtrl.text.trim(),
-                                            'note':
-                                                noteCtrl.text.trim().isEmpty
-                                                    ? null
-                                                    : noteCtrl.text.trim(),
-                                          };
-                                          if (isDraftRow) {
-                                            payments =
-                                                payments.map((
-                                                  Map<String, dynamic> row,
-                                                ) {
-                                                  return row['id'] == localId
-                                                      ? nextRow
-                                                      : row;
-                                                }).toList();
-                                          } else {
-                                            payments = <Map<String, dynamic>>[
-                                              ...payments,
-                                              nextRow,
-                                            ];
-                                          }
-                                          message =
-                                              isDraftRow
-                                                  ? 'Đã cập nhật phiếu thu nháp.'
-                                                  : 'Đã thêm phiếu thu nháp.';
-                                        });
-                                        if (!mounted) return;
-                                        navigator.pop();
-                                        return;
-                                      } else if (payment == null) {
-                                        result = await widget.apiService
-                                            .createContractPaymentWithMeta(
-                                              widget.token,
-                                              editingId!,
-                                              amount: amount,
-                                              paidAt:
-                                                  dateCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : dateCtrl.text.trim(),
-                                              method:
-                                                  methodCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : methodCtrl.text.trim(),
-                                              note:
-                                                  noteCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : noteCtrl.text.trim(),
-                                            );
-                                      } else {
-                                        final bool updated = await widget
-                                            .apiService
-                                            .updateContractPayment(
-                                              widget.token,
-                                              editingId!,
-                                              _readInt(payment['id']) ?? 0,
-                                              amount: amount,
-                                              paidAt:
-                                                  dateCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : dateCtrl.text.trim(),
-                                              method:
-                                                  methodCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : methodCtrl.text.trim(),
-                                              note:
-                                                  noteCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : noteCtrl.text.trim(),
-                                            );
-                                        result = <String, dynamic>{
-                                          'ok': updated,
-                                          'message':
-                                              updated
-                                                  ? 'Đã cập nhật thanh toán.'
-                                                  : 'Cập nhật thanh toán thất bại.',
-                                        };
-                                      }
-                                      if (!mounted) return;
-                                      final bool ok = result['ok'] == true;
-                                      final String apiMessage =
-                                          (result['message'] ?? '').toString();
-                                      setState(() {
-                                        message =
-                                            ok
-                                                ? (apiMessage.isNotEmpty
-                                                    ? apiMessage
-                                                    : 'Đã lưu thanh toán.')
-                                                : (apiMessage.isNotEmpty
-                                                    ? apiMessage
-                                                    : 'Lưu thanh toán thất bại.');
-                                      });
-                                      if (ok) {
-                                        await _reloadContractFinanceFromServer();
-                                        if (!mounted) return;
-                                        navigator.pop();
-                                      }
-                                      if (mounted) {
-                                        setModalState(() => submitting = false);
-                                      }
-                                    },
-                            child: Text(
-                              submitting
-                                  ? (payment == null
-                                      ? 'Đang tạo...'
-                                      : 'Đang cập nhật...')
-                                  : (payment == null
-                                      ? 'Tạo phiếu thu'
-                                      : 'Cập nhật phiếu thu'),
+                            if (localMessage.isNotEmpty) ...<Widget>[
+                              const SizedBox(height: 10),
+                              StitchFeedbackBanner(
+                                message: localMessage,
+                                isError: true,
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: amountCtrl,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: const <TextInputFormatter>[
+                                _VnCurrencyInputFormatter(),
+                              ],
+                              onChanged: (_) => setModalState(() {}),
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Số tiền (VNĐ)',
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: dateCtrl,
+                              readOnly: true,
+                              onTap: () => _pickDate(dateCtrl),
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Ngày thu',
+                              ).copyWith(suffixIcon: const Icon(Icons.event)),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: methodCtrl,
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Phương thức',
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: noteCtrl,
+                              maxLines: 2,
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Ghi chú',
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed:
-                                submitting
-                                    ? null
-                                    : () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                      ],
+                      ),
+                    ),
+                    StitchFormSheetActions(
+                      primaryLoading: submitting,
+                      primaryLabel:
+                          submitting
+                              ? (payment == null
+                                  ? 'Đang tạo...'
+                                  : 'Đang cập nhật...')
+                              : (payment == null
+                                  ? 'Tạo phiếu thu'
+                                  : 'Cập nhật phiếu thu'),
+                      onPrimary:
+                          submitting
+                              ? null
+                              : () async {
+                                final NavigatorState navigator = Navigator.of(
+                                  context,
+                                );
+                                final double amount = _parseNumberInput(
+                                  amountCtrl.text.trim(),
+                                );
+                                if (amount <= 0) {
+                                  setModalState(
+                                    () =>
+                                        localMessage = 'Số tiền không hợp lệ.',
+                                  );
+                                  return;
+                                }
+                                if (amount > remaining + 0.0001) {
+                                  setModalState(
+                                    () =>
+                                        localMessage =
+                                            'Số tiền thanh toán vượt giá trị hợp đồng.',
+                                  );
+                                  return;
+                                }
+                                setModalState(() => submitting = true);
+                                late final Map<String, dynamic> result;
+                                if (editingId == null) {
+                                  final String localId =
+                                      isDraftRow
+                                          ? (payment['id'] ?? '').toString()
+                                          : 'local-pay-${DateTime.now().microsecondsSinceEpoch}';
+                                  setState(() {
+                                    final Map<String, dynamic> nextRow =
+                                        <String, dynamic>{
+                                          'id': localId,
+                                          'row_type': 'create_draft',
+                                          'amount': amountCtrl.text.trim(),
+                                          'paid_at':
+                                              dateCtrl.text.trim().isEmpty
+                                                  ? null
+                                                  : dateCtrl.text.trim(),
+                                          'method':
+                                              methodCtrl.text.trim().isEmpty
+                                                  ? null
+                                                  : methodCtrl.text.trim(),
+                                          'note':
+                                              noteCtrl.text.trim().isEmpty
+                                                  ? null
+                                                  : noteCtrl.text.trim(),
+                                        };
+                                    if (isDraftRow) {
+                                      payments =
+                                          payments.map((
+                                            Map<String, dynamic> row,
+                                          ) {
+                                            return row['id'] == localId
+                                                ? nextRow
+                                                : row;
+                                          }).toList();
+                                    } else {
+                                      payments = <Map<String, dynamic>>[
+                                        ...payments,
+                                        nextRow,
+                                      ];
+                                    }
+                                    message =
+                                        isDraftRow
+                                            ? 'Đã cập nhật phiếu thu nháp.'
+                                            : 'Đã thêm phiếu thu nháp.';
+                                  });
+                                  if (!mounted) return;
+                                  navigator.pop();
+                                  return;
+                                } else if (payment == null) {
+                                  result = await widget.apiService
+                                      .createContractPaymentWithMeta(
+                                        widget.token,
+                                        editingId!,
+                                        amount: amount,
+                                        paidAt:
+                                            dateCtrl.text.trim().isEmpty
+                                                ? null
+                                                : dateCtrl.text.trim(),
+                                        method:
+                                            methodCtrl.text.trim().isEmpty
+                                                ? null
+                                                : methodCtrl.text.trim(),
+                                        note:
+                                            noteCtrl.text.trim().isEmpty
+                                                ? null
+                                                : noteCtrl.text.trim(),
+                                      );
+                                } else {
+                                  final bool updated = await widget.apiService
+                                      .updateContractPayment(
+                                        widget.token,
+                                        editingId!,
+                                        _readInt(payment['id']) ?? 0,
+                                        amount: amount,
+                                        paidAt:
+                                            dateCtrl.text.trim().isEmpty
+                                                ? null
+                                                : dateCtrl.text.trim(),
+                                        method:
+                                            methodCtrl.text.trim().isEmpty
+                                                ? null
+                                                : methodCtrl.text.trim(),
+                                        note:
+                                            noteCtrl.text.trim().isEmpty
+                                                ? null
+                                                : noteCtrl.text.trim(),
+                                      );
+                                  result = <String, dynamic>{
+                                    'ok': updated,
+                                    'message':
+                                        updated
+                                            ? 'Đã cập nhật thanh toán.'
+                                            : 'Cập nhật thanh toán thất bại.',
+                                  };
+                                }
+                                if (!mounted) return;
+                                final bool ok = result['ok'] == true;
+                                final String apiMessage =
+                                    (result['message'] ?? '').toString();
+                                setState(() {
+                                  message =
+                                      ok
+                                          ? (apiMessage.isNotEmpty
+                                              ? apiMessage
+                                              : 'Đã lưu thanh toán.')
+                                          : (apiMessage.isNotEmpty
+                                              ? apiMessage
+                                              : 'Lưu thanh toán thất bại.');
+                                });
+                                if (ok) {
+                                  await _reloadContractFinanceFromServer();
+                                  if (!mounted) return;
+                                  navigator.pop();
+                                }
+                                if (mounted) {
+                                  setModalState(() => submitting = false);
+                                }
+                              },
+                      onCancel:
+                          submitting ? null : () => Navigator.of(context).pop(),
+                      secondaryLabel: 'Hủy',
                     ),
                   ],
                 ),
@@ -3045,225 +2868,218 @@ class _ContractsScreenState extends State<ContractsScreen> {
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
               child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  color: StitchTheme.bg,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
+                decoration: stitchFormSheetSurfaceDecoration(),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      cost == null ? 'Thêm chi phí' : 'Sửa chi phí',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    StitchFormSheetTitleBar(
+                      title: cost == null ? 'Thêm chi phí' : 'Sửa chi phí',
+                      subtitle:
+                          'Phiếu chi tuân theo cùng quy tắc duyệt và lưu vết như trên web.',
+                      icon: Icons.payments_outlined,
                     ),
-                    if (localMessage.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        localMessage,
-                        style: const TextStyle(color: Colors.redAccent),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: amountCtrl,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: const <TextInputFormatter>[
-                        _VnCurrencyInputFormatter(),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'Số tiền (VNĐ)',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: dateCtrl,
-                      readOnly: true,
-                      onTap: () => _pickDate(dateCtrl),
-                      decoration: const InputDecoration(
-                        labelText: 'Ngày chi',
-                        suffixIcon: Icon(Icons.event),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: typeCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Loại chi phí',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: noteCtrl,
-                      maxLines: 2,
-                      decoration: const InputDecoration(labelText: 'Ghi chú'),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed:
-                                submitting
-                                    ? null
-                                    : () async {
-                                      final NavigatorState navigator =
-                                          Navigator.of(context);
-                                      final double amount = _parseNumberInput(
-                                        amountCtrl.text.trim(),
-                                      );
-                                      if (amount <= 0) {
-                                        setModalState(
-                                          () =>
-                                              localMessage =
-                                                  'Số tiền không hợp lệ.',
-                                        );
-                                        return;
-                                      }
-                                      setModalState(() => submitting = true);
-                                      late final Map<String, dynamic> result;
-                                      if (editingId == null) {
-                                        final String localId =
-                                            isDraftRow
-                                                ? (cost['id'] ?? '').toString()
-                                                : 'local-cost-${DateTime.now().microsecondsSinceEpoch}';
-                                        setState(() {
-                                          final Map<String, dynamic> nextRow =
-                                              <String, dynamic>{
-                                                'id': localId,
-                                                'row_type': 'create_draft',
-                                                'amount':
-                                                    amountCtrl.text.trim(),
-                                                'cost_date':
-                                                    dateCtrl.text.trim().isEmpty
-                                                        ? null
-                                                        : dateCtrl.text.trim(),
-                                                'cost_type':
-                                                    typeCtrl.text.trim().isEmpty
-                                                        ? null
-                                                        : typeCtrl.text.trim(),
-                                                'note':
-                                                    noteCtrl.text.trim().isEmpty
-                                                        ? null
-                                                        : noteCtrl.text.trim(),
-                                              };
-                                          if (isDraftRow) {
-                                            costs =
-                                                costs.map((
-                                                  Map<String, dynamic> row,
-                                                ) {
-                                                  return row['id'] == localId
-                                                      ? nextRow
-                                                      : row;
-                                                }).toList();
-                                          } else {
-                                            costs = <Map<String, dynamic>>[
-                                              ...costs,
-                                              nextRow,
-                                            ];
-                                          }
-                                          message =
-                                              isDraftRow
-                                                  ? 'Đã cập nhật phiếu chi nháp.'
-                                                  : 'Đã thêm phiếu chi nháp.';
-                                        });
-                                        if (!mounted) return;
-                                        navigator.pop();
-                                        return;
-                                      } else if (cost == null) {
-                                        result = await widget.apiService
-                                            .createContractCostWithMeta(
-                                              widget.token,
-                                              editingId!,
-                                              amount: amount,
-                                              costDate:
-                                                  dateCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : dateCtrl.text.trim(),
-                                              costType:
-                                                  typeCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : typeCtrl.text.trim(),
-                                              note:
-                                                  noteCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : noteCtrl.text.trim(),
-                                            );
-                                      } else {
-                                        final bool updated = await widget
-                                            .apiService
-                                            .updateContractCost(
-                                              widget.token,
-                                              editingId!,
-                                              _readInt(cost['id']) ?? 0,
-                                              amount: amount,
-                                              costDate:
-                                                  dateCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : dateCtrl.text.trim(),
-                                              costType:
-                                                  typeCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : typeCtrl.text.trim(),
-                                              note:
-                                                  noteCtrl.text.trim().isEmpty
-                                                      ? null
-                                                      : noteCtrl.text.trim(),
-                                            );
-                                        result = <String, dynamic>{
-                                          'ok': updated,
-                                          'message':
-                                              updated
-                                                  ? 'Đã cập nhật chi phí.'
-                                                  : 'Cập nhật chi phí thất bại.',
-                                        };
-                                      }
-                                      if (!mounted) return;
-                                      final bool ok = result['ok'] == true;
-                                      final String apiMessage =
-                                          (result['message'] ?? '').toString();
-                                      setState(() {
-                                        message =
-                                            ok
-                                                ? (apiMessage.isNotEmpty
-                                                    ? apiMessage
-                                                    : 'Đã lưu chi phí.')
-                                                : (apiMessage.isNotEmpty
-                                                    ? apiMessage
-                                                    : 'Lưu chi phí thất bại.');
-                                      });
-                                      if (ok) {
-                                        await _reloadContractFinanceFromServer();
-                                        if (!mounted) return;
-                                        navigator.pop();
-                                      }
-                                      if (mounted) {
-                                        setModalState(() => submitting = false);
-                                      }
-                                    },
-                            child: Text(
-                              submitting
-                                  ? (cost == null
-                                      ? 'Đang tạo...'
-                                      : 'Đang cập nhật...')
-                                  : (cost == null
-                                      ? 'Tạo phiếu chi'
-                                      : 'Cập nhật phiếu chi'),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            if (localMessage.isNotEmpty) ...<Widget>[
+                              StitchFeedbackBanner(
+                                message: localMessage,
+                                isError: true,
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                            TextField(
+                              controller: amountCtrl,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: const <TextInputFormatter>[
+                                _VnCurrencyInputFormatter(),
+                              ],
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Số tiền (VNĐ)',
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: dateCtrl,
+                              readOnly: true,
+                              onTap: () => _pickDate(dateCtrl),
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Ngày chi',
+                              ).copyWith(suffixIcon: const Icon(Icons.event)),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: typeCtrl,
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Loại chi phí',
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: noteCtrl,
+                              maxLines: 2,
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Ghi chú',
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed:
-                                submitting
-                                    ? null
-                                    : () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                      ],
+                      ),
+                    ),
+                    StitchFormSheetActions(
+                      primaryLoading: submitting,
+                      primaryLabel:
+                          submitting
+                              ? (cost == null
+                                  ? 'Đang tạo...'
+                                  : 'Đang cập nhật...')
+                              : (cost == null
+                                  ? 'Tạo phiếu chi'
+                                  : 'Cập nhật phiếu chi'),
+                      onPrimary:
+                          submitting
+                              ? null
+                              : () async {
+                                final NavigatorState navigator = Navigator.of(
+                                  context,
+                                );
+                                final double amount = _parseNumberInput(
+                                  amountCtrl.text.trim(),
+                                );
+                                if (amount <= 0) {
+                                  setModalState(
+                                    () =>
+                                        localMessage = 'Số tiền không hợp lệ.',
+                                  );
+                                  return;
+                                }
+                                setModalState(() => submitting = true);
+                                late final Map<String, dynamic> result;
+                                if (editingId == null) {
+                                  final String localId =
+                                      isDraftRow
+                                          ? (cost['id'] ?? '').toString()
+                                          : 'local-cost-${DateTime.now().microsecondsSinceEpoch}';
+                                  setState(() {
+                                    final Map<String, dynamic> nextRow =
+                                        <String, dynamic>{
+                                          'id': localId,
+                                          'row_type': 'create_draft',
+                                          'amount': amountCtrl.text.trim(),
+                                          'cost_date':
+                                              dateCtrl.text.trim().isEmpty
+                                                  ? null
+                                                  : dateCtrl.text.trim(),
+                                          'cost_type':
+                                              typeCtrl.text.trim().isEmpty
+                                                  ? null
+                                                  : typeCtrl.text.trim(),
+                                          'note':
+                                              noteCtrl.text.trim().isEmpty
+                                                  ? null
+                                                  : noteCtrl.text.trim(),
+                                        };
+                                    if (isDraftRow) {
+                                      costs =
+                                          costs.map((Map<String, dynamic> row) {
+                                            return row['id'] == localId
+                                                ? nextRow
+                                                : row;
+                                          }).toList();
+                                    } else {
+                                      costs = <Map<String, dynamic>>[
+                                        ...costs,
+                                        nextRow,
+                                      ];
+                                    }
+                                    message =
+                                        isDraftRow
+                                            ? 'Đã cập nhật phiếu chi nháp.'
+                                            : 'Đã thêm phiếu chi nháp.';
+                                  });
+                                  if (!mounted) return;
+                                  navigator.pop();
+                                  return;
+                                } else if (cost == null) {
+                                  result = await widget.apiService
+                                      .createContractCostWithMeta(
+                                        widget.token,
+                                        editingId!,
+                                        amount: amount,
+                                        costDate:
+                                            dateCtrl.text.trim().isEmpty
+                                                ? null
+                                                : dateCtrl.text.trim(),
+                                        costType:
+                                            typeCtrl.text.trim().isEmpty
+                                                ? null
+                                                : typeCtrl.text.trim(),
+                                        note:
+                                            noteCtrl.text.trim().isEmpty
+                                                ? null
+                                                : noteCtrl.text.trim(),
+                                      );
+                                } else {
+                                  final bool updated = await widget.apiService
+                                      .updateContractCost(
+                                        widget.token,
+                                        editingId!,
+                                        _readInt(cost['id']) ?? 0,
+                                        amount: amount,
+                                        costDate:
+                                            dateCtrl.text.trim().isEmpty
+                                                ? null
+                                                : dateCtrl.text.trim(),
+                                        costType:
+                                            typeCtrl.text.trim().isEmpty
+                                                ? null
+                                                : typeCtrl.text.trim(),
+                                        note:
+                                            noteCtrl.text.trim().isEmpty
+                                                ? null
+                                                : noteCtrl.text.trim(),
+                                      );
+                                  result = <String, dynamic>{
+                                    'ok': updated,
+                                    'message':
+                                        updated
+                                            ? 'Đã cập nhật chi phí.'
+                                            : 'Cập nhật chi phí thất bại.',
+                                  };
+                                }
+                                if (!mounted) return;
+                                final bool ok = result['ok'] == true;
+                                final String apiMessage =
+                                    (result['message'] ?? '').toString();
+                                setState(() {
+                                  message =
+                                      ok
+                                          ? (apiMessage.isNotEmpty
+                                              ? apiMessage
+                                              : 'Đã lưu chi phí.')
+                                          : (apiMessage.isNotEmpty
+                                              ? apiMessage
+                                              : 'Lưu chi phí thất bại.');
+                                });
+                                if (ok) {
+                                  await _reloadContractFinanceFromServer();
+                                  if (!mounted) return;
+                                  navigator.pop();
+                                }
+                                if (mounted) {
+                                  setModalState(() => submitting = false);
+                                }
+                              },
+                      onCancel:
+                          submitting ? null : () => Navigator.of(context).pop(),
+                      secondaryLabel: 'Hủy',
                     ),
                   ],
                 ),
@@ -3330,16 +3146,13 @@ class _ContractsScreenState extends State<ContractsScreen> {
     editingId = null;
     editingCanManage = true;
     formClientId = null;
+    formOpportunityId = null;
+    linkableOpportunities = <Map<String, dynamic>>[];
     collectorUserId = _defaultCollectorUserId;
     careStaffIds = <int>[];
     status = 'draft';
-    vatEnabled = false;
-    vatMode = 'percent';
     titleCtrl.clear();
     valueCtrl.clear();
-    subtotalValueCtrl.clear();
-    vatRateCtrl.clear();
-    vatAmountCtrl.clear();
     paymentTimesCtrl.text = '1';
     final String today = _fmtDate(DateTime.now());
     signedCtrl.text = today;
@@ -3552,8 +3365,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
               final String reviewNote = noteCtrl.text.trim();
               if (!approve && reviewNote.isEmpty) {
                 if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Vui lòng nhập lý do từ chối.')),
+                AppTagMessage.show(
+                  'Vui lòng nhập lý do từ chối.',
+                  isError: true,
                 );
                 return;
               }
@@ -3577,14 +3391,11 @@ class _ContractsScreenState extends State<ContractsScreen> {
               final bool ok = result['ok'] == true;
               final String resultMessage = (result['message'] ?? '').toString();
               if (!ok) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      resultMessage.isNotEmpty
-                          ? resultMessage
-                          : 'Xử lý phiếu thất bại.',
-                    ),
-                  ),
+                AppTagMessage.show(
+                  resultMessage.isNotEmpty
+                      ? resultMessage
+                      : 'Xử lý phiếu thất bại.',
+                  isError: true,
                 );
                 return;
               }
@@ -3624,14 +3435,10 @@ class _ContractsScreenState extends State<ContractsScreen> {
                         : 'Đã cập nhật phiếu tài chính.';
               });
 
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    resultMessage.isNotEmpty
-                        ? resultMessage
-                        : 'Đã cập nhật phiếu tài chính.',
-                  ),
-                ),
+              AppTagMessage.show(
+                resultMessage.isNotEmpty
+                    ? resultMessage
+                    : 'Đã cập nhật phiếu tài chính.',
               );
             }
 
@@ -3741,37 +3548,54 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Hợp đồng bản mềm: ${detailData['contract_files_count'] ?? 0} file',
+                                  style: const TextStyle(
+                                    color: StitchTheme.textMuted,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
                                 OutlinedButton.icon(
                                   onPressed: () async {
-                                    final List<Map<String, dynamic>> profiles =
-                                        _extractClientCompanyProfiles(
-                                      detailData['client'],
-                                    );
-                                    final String? selectedProfileId =
-                                        profiles.isEmpty
-                                            ? null
-                                            : await _pickCompanyProfileId(
-                                                profiles,
-                                              );
-                                    if (profiles.isNotEmpty &&
-                                        (selectedProfileId == null ||
-                                            selectedProfileId.isEmpty)) {
-                                      return;
-                                    }
-                                    await _downloadContractDocument(
-                                      id,
-                                      title:
-                                          (detailData['title'] ?? '')
-                                              .toString(),
-                                      code:
-                                          (detailData['code'] ?? '')
-                                              .toString(),
-                                      companyProfileId: selectedProfileId,
+                                    await _openContractSoftCopyModal(
+                                      context: context,
+                                      contractId: id,
+                                      canManage:
+                                          _readBool(detailData['can_manage']) ??
+                                          false,
+                                      onChanged: () async {
+                                        final Map<String, dynamic> refreshed =
+                                            await widget.apiService
+                                                .getContractDetail(
+                                                  widget.token,
+                                                  id,
+                                                );
+                                        final List<Map<String, dynamic>>
+                                        refreshedFr = await widget.apiService
+                                            .getContractFinanceRequests(
+                                              widget.token,
+                                              id,
+                                            );
+                                        if (!context.mounted) {
+                                          return;
+                                        }
+                                        setSheetState(() {
+                                          if (refreshed.isNotEmpty) {
+                                            detailData =
+                                                Map<String, dynamic>.from(
+                                                  refreshed,
+                                                );
+                                            detailData['finance_requests'] =
+                                                refreshedFr;
+                                          }
+                                        });
+                                      },
                                     );
                                   },
-                                  icon: const Icon(Icons.description_outlined),
-                                  label: const Text('Tải hợp đồng .docx'),
+                                  icon: const Icon(Icons.folder_copy_outlined),
+                                  label: const Text('Hợp đồng bản mềm'),
                                 ),
                               ],
                             ),
@@ -3858,21 +3682,24 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                         Expanded(
                                           child: OutlinedButton(
                                             onPressed: () async {
-                                              final bool ok = await _rejectContract(
-                                                id,
-                                                context,
-                                              );
+                                              final bool ok =
+                                                  await _rejectContract(
+                                                    id,
+                                                    context,
+                                                  );
                                               if (!context.mounted || !ok) {
                                                 return;
                                               }
-                                              final Map<String, dynamic> refreshed =
-                                                  await widget.apiService
-                                                      .getContractDetail(
-                                                        widget.token,
-                                                        id,
-                                                      );
+                                              final Map<String, dynamic>
+                                              refreshed = await widget
+                                                  .apiService
+                                                  .getContractDetail(
+                                                    widget.token,
+                                                    id,
+                                                  );
                                               final List<Map<String, dynamic>>
-                                              refreshedFr = await widget.apiService
+                                              refreshedFr = await widget
+                                                  .apiService
                                                   .getContractFinanceRequests(
                                                     widget.token,
                                                     id,
@@ -3890,14 +3717,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                       refreshedFr;
                                                 }
                                               });
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text(
-                                                    'Đã không duyệt hợp đồng.',
-                                                  ),
-                                                ),
+                                              AppTagMessage.show(
+                                                'Đã không duyệt hợp đồng.',
                                               );
                                             },
                                             style: OutlinedButton.styleFrom(
@@ -3924,25 +3745,22 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                 return;
                                               }
                                               if (!ok) {
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                      'Duyệt hợp đồng thất bại.',
-                                                    ),
-                                                  ),
+                                                AppTagMessage.show(
+                                                  'Duyệt hợp đồng thất bại.',
+                                                  isError: true,
                                                 );
                                                 return;
                                               }
-                                              final Map<String, dynamic> refreshed =
-                                                  await widget.apiService
-                                                      .getContractDetail(
-                                                        widget.token,
-                                                        id,
-                                                      );
+                                              final Map<String, dynamic>
+                                              refreshed = await widget
+                                                  .apiService
+                                                  .getContractDetail(
+                                                    widget.token,
+                                                    id,
+                                                  );
                                               final List<Map<String, dynamic>>
-                                              refreshedFr = await widget.apiService
+                                              refreshedFr = await widget
+                                                  .apiService
                                                   .getContractFinanceRequests(
                                                     widget.token,
                                                     id,
@@ -3967,14 +3785,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                               if (!context.mounted) {
                                                 return;
                                               }
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text(
-                                                    'Đã duyệt hợp đồng.',
-                                                  ),
-                                                ),
+                                              AppTagMessage.show(
+                                                'Đã duyệt hợp đồng.',
                                               );
                                             },
                                             child: const Text('Duyệt hợp đồng'),
@@ -4395,14 +4207,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                         .trim();
                                                 if (title.isEmpty ||
                                                     detailText.isEmpty) {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text(
-                                                        'Vui lòng nhập tiêu đề và nội dung.',
-                                                      ),
-                                                    ),
+                                                  AppTagMessage.show(
+                                                    'Vui lòng nhập tiêu đề và nội dung.',
+                                                    isError: true,
                                                   );
                                                   return;
                                                 }
@@ -4422,14 +4229,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                   () => savingCareNote = false,
                                                 );
                                                 if (note == null) {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text(
-                                                        'Lưu thất bại.',
-                                                      ),
-                                                    ),
+                                                  AppTagMessage.show(
+                                                    'Lưu thất bại.',
+                                                    isError: true,
                                                   );
                                                   return;
                                                 }
@@ -4448,14 +4250,8 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                 });
                                                 careNoteTitleCtrl.clear();
                                                 careNoteDetailCtrl.clear();
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                      'Đã cập nhật nhật ký.',
-                                                    ),
-                                                  ),
+                                                AppTagMessage.show(
+                                                  'Đã cập nhật nhật ký.',
                                                 );
                                               },
                                       child: Text(
@@ -4576,6 +4372,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                 ),
                               );
                             }),
+                          ..._contractActivityLogSection(detailData),
                         ],
                       ),
                     ),
@@ -4659,257 +4456,280 @@ class _ContractsScreenState extends State<ContractsScreen> {
             ),
         ],
       ),
-      body: ListView(
+      body: CustomScrollView(
         controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        children: <Widget>[
-          const StitchHeroCard(
-            title: 'Khách hàng → Hợp đồng → Dự án',
-            subtitle:
-                'Tạo hợp đồng theo khách hàng, theo dõi trạng thái và hiệu lực trước khi tạo công việc.',
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: <Widget>[
-              StitchMetricCard(
-                icon: Icons.description_outlined,
-                label: 'Tổng hợp đồng',
-                value: totalContracts.toString(),
-              ),
-              StitchMetricCard(
-                icon: Icons.verified_outlined,
-                label: 'Đang hiệu lực',
-                value: active.toString(),
-                accent: StitchTheme.success,
-              ),
-              StitchMetricCard(
-                icon: Icons.check_circle_outline,
-                label: 'Đã ký',
-                value: signed.toString(),
-                accent: StitchTheme.primary,
-              ),
-              StitchMetricCard(
-                icon: Icons.event_busy,
-                label: 'Hết hạn',
-                value: expired.toString(),
-                accent: StitchTheme.warning,
-              ),
-            ],
-          ),
-          if (message.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: StitchTheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: StitchTheme.border),
-              ),
-              child: Text(
-                message,
-                style: const TextStyle(color: StitchTheme.textMuted),
-              ),
-            ),
-          ],
-          const SizedBox(height: 18),
-          StitchFilterCard(
-            title: 'Bộ lọc hợp đồng',
-            subtitle:
-                'Lọc theo mã, khách hàng và trạng thái để thao tác hợp đồng nhanh hơn.',
-            trailing: OutlinedButton.icon(
-              onPressed: _fetch,
-              icon: const Icon(Icons.filter_alt_outlined, size: 18),
-              label: const Text('Lọc'),
-            ),
-            child: Column(
-              children: <Widget>[
-                StitchFilterField(
-                  label: 'Tìm kiếm',
-                  child: TextField(
-                    controller: searchCtrl,
-                    decoration: const InputDecoration(
-                      hintText: 'Mã hợp đồng, tiêu đề hoặc khách hàng',
-                      prefixIcon: Icon(Icons.search),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                StitchFilterField(
-                  label: 'Trạng thái',
-                  child: DropdownButtonFormField<String>(
-                    value: filterStatus,
-                    items: <DropdownMenuItem<String>>[
-                      const DropdownMenuItem<String>(
-                        value: '',
-                        child: Text('Tất cả trạng thái'),
-                      ),
-                      ...<String>[
-                        'draft',
-                        'signed',
-                        'success',
-                        'active',
-                        'expired',
-                        'cancelled',
-                      ].map(
-                        (String s) => DropdownMenuItem<String>(
-                          value: s,
-                          child: Text(_statusLabel(s)),
-                        ),
-                      ),
-                    ],
-                    onChanged: (String? value) {
-                      setState(() => filterStatus = value ?? '');
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'Tất cả trạng thái',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                StitchFilterField(
-                  label: 'Khách hàng',
-                  child: DropdownButtonFormField<int?>(
-                    value: filterClientId,
-                    items: <DropdownMenuItem<int?>>[
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Tất cả khách hàng'),
-                      ),
-                      ...clients.map(
-                        (Map<String, dynamic> c) => DropdownMenuItem<int?>(
-                          value: c['id'] as int?,
-                          child: Text((c['name'] ?? 'Khách hàng').toString()),
-                        ),
-                      ),
-                    ],
-                    onChanged: (int? value) {
-                      setState(() => filterClientId = value);
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'Tất cả khách hàng',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                StaffMultiFilterRow(
-                  users: collectors,
-                  selectedIds: contractListStaffFilterIds,
-                  title: 'Nhân sự (thu tiền / tạo HĐ / chăm sóc / KH)',
-                  onChanged: (List<int> ids) {
-                    setState(() => contractListStaffFilterIds = ids);
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Đang hiển thị ${contracts.length} trên tổng số $totalContracts hợp đồng.',
-            style: const TextStyle(
-              color: StitchTheme.textMuted,
-              fontSize: 13,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-          if (!loading && totalContracts > 0) ...<Widget>[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: StitchTheme.surfaceAlt,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: StitchTheme.border.withValues(alpha: 0.85),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Tổng theo bộ lọc (tất cả trang)',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.08,
-                      color: StitchTheme.textSubtle,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: _buildMetricCol(
-                          Icons.monetization_on_outlined,
-                          'Giá trị',
-                          _money(aggregateRevenueTotal),
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildMetricCol(
-                          Icons.account_balance_wallet_outlined,
-                          'Đã thu',
-                          _money(aggregateCashflowTotal),
-                          highlight: true,
-                        ),
-                      ),
-                    ],
-                  ),
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: <Widget>[
+          CupertinoSliverRefreshControl(onRefresh: _fetch),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(<Widget>[
+                if (_listRefreshing)
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Divider(height: 1),
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: LinearProgressIndicator(minHeight: 2),
                   ),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: _buildMetricCol(
-                          Icons.warning_amber_rounded,
-                          'Công nợ',
-                          _money(aggregateDebtTotal),
-                          color: StitchTheme.danger,
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildMetricCol(
-                          Icons.receipt_long_outlined,
-                          'Chi phí',
-                          _money(aggregateCostsTotal),
-                        ),
-                      ),
-                    ],
+                const StitchHeroCard(
+                  title: 'Khách hàng → Hợp đồng → Dự án',
+                  subtitle:
+                      'Tạo hợp đồng theo khách hàng, theo dõi trạng thái và hiệu lực trước khi tạo công việc.',
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: <Widget>[
+                    StitchMetricCard(
+                      icon: Icons.description_outlined,
+                      label: 'Tổng hợp đồng',
+                      value: totalContracts.toString(),
+                    ),
+                    StitchMetricCard(
+                      icon: Icons.verified_outlined,
+                      label: 'Đang hiệu lực',
+                      value: active.toString(),
+                      accent: StitchTheme.success,
+                    ),
+                    StitchMetricCard(
+                      icon: Icons.check_circle_outline,
+                      label: 'Đã ký',
+                      value: signed.toString(),
+                      accent: StitchTheme.primary,
+                    ),
+                    StitchMetricCard(
+                      icon: Icons.event_busy,
+                      label: 'Hết hạn',
+                      value: expired.toString(),
+                      accent: StitchTheme.warning,
+                    ),
+                  ],
+                ),
+                if (message.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: StitchTheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: StitchTheme.border),
+                    ),
+                    child: Text(
+                      message,
+                      style: const TextStyle(color: StitchTheme.textMuted),
+                    ),
                   ),
                 ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          if (loading)
-            const Center(child: CircularProgressIndicator())
-          else if (contracts.isEmpty)
-            const Text(
-              'Chưa có hợp đồng.',
-              style: TextStyle(color: StitchTheme.textMuted),
-            )
-          else
-            ...contracts.map((Map<String, dynamic> c) => _buildContractItem(c)),
-          if (loadingMore)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          if (!loadingMore && currentPage >= lastPage && contracts.isNotEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: Text(
-                  'Đã hiển thị toàn bộ hợp đồng.',
-                  style: TextStyle(color: StitchTheme.textMuted, fontSize: 13),
+                const SizedBox(height: 18),
+                StitchFilterCard(
+                  title: 'Bộ lọc hợp đồng',
+                  subtitle:
+                      'Lọc theo mã, khách hàng và trạng thái để thao tác hợp đồng nhanh hơn.',
+                  trailing: OutlinedButton.icon(
+                    onPressed: _fetch,
+                    icon: const Icon(Icons.filter_alt_outlined, size: 18),
+                    label: const Text('Lọc'),
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      StitchFilterField(
+                        label: 'Tìm kiếm',
+                        child: TextField(
+                          controller: searchCtrl,
+                          decoration: const InputDecoration(
+                            hintText: 'Mã hợp đồng, tiêu đề hoặc khách hàng',
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      StitchFilterField(
+                        label: 'Trạng thái',
+                        child: DropdownButtonFormField<String>(
+                          value: filterStatus,
+                          items: <DropdownMenuItem<String>>[
+                            const DropdownMenuItem<String>(
+                              value: '',
+                              child: Text('Tất cả trạng thái'),
+                            ),
+                            ...<String>[
+                              'draft',
+                              'signed',
+                              'success',
+                              'active',
+                              'expired',
+                              'cancelled',
+                            ].map(
+                              (String s) => DropdownMenuItem<String>(
+                                value: s,
+                                child: Text(_statusLabel(s)),
+                              ),
+                            ),
+                          ],
+                          onChanged: (String? value) {
+                            setState(() => filterStatus = value ?? '');
+                          },
+                          decoration: const InputDecoration(
+                            hintText: 'Tất cả trạng thái',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      StitchFilterField(
+                        label: 'Khách hàng',
+                        child: DropdownButtonFormField<int?>(
+                          value: filterClientId,
+                          items: <DropdownMenuItem<int?>>[
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text('Tất cả khách hàng'),
+                            ),
+                            ...clients.map(
+                              (Map<String, dynamic> c) =>
+                                  DropdownMenuItem<int?>(
+                                    value: c['id'] as int?,
+                                    child: Text(
+                                      (c['name'] ?? 'Khách hàng').toString(),
+                                    ),
+                                  ),
+                            ),
+                          ],
+                          onChanged: (int? value) {
+                            setState(() => filterClientId = value);
+                          },
+                          decoration: const InputDecoration(
+                            hintText: 'Tất cả khách hàng',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      StaffMultiFilterRow(
+                        users: collectors,
+                        selectedIds: contractListStaffFilterIds,
+                        title: 'Nhân sự (thu tiền / tạo HĐ / chăm sóc / KH)',
+                        onChanged: (List<int> ids) {
+                          setState(() => contractListStaffFilterIds = ids);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                Text(
+                  'Đang hiển thị ${contracts.length} trên tổng số $totalContracts hợp đồng.',
+                  style: const TextStyle(
+                    color: StitchTheme.textMuted,
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                if (!loading && totalContracts > 0) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: StitchTheme.surfaceAlt,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: StitchTheme.border.withValues(alpha: 0.85),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'Tổng theo bộ lọc (tất cả trang)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.08,
+                            color: StitchTheme.textSubtle,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _buildMetricCol(
+                                Icons.monetization_on_outlined,
+                                'Giá trị',
+                                _money(aggregateRevenueTotal),
+                              ),
+                            ),
+                            Expanded(
+                              child: _buildMetricCol(
+                                Icons.account_balance_wallet_outlined,
+                                'Đã thu',
+                                _money(aggregateCashflowTotal),
+                                highlight: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Divider(height: 1),
+                        ),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _buildMetricCol(
+                                Icons.warning_amber_rounded,
+                                'Công nợ',
+                                _money(aggregateDebtTotal),
+                                color: StitchTheme.danger,
+                              ),
+                            ),
+                            Expanded(
+                              child: _buildMetricCol(
+                                Icons.receipt_long_outlined,
+                                'Chi phí',
+                                _money(aggregateCostsTotal),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                if (loading && contracts.isEmpty)
+                  const Center(child: CircularProgressIndicator())
+                else if (contracts.isEmpty)
+                  const Text(
+                    'Chưa có hợp đồng.',
+                    style: TextStyle(color: StitchTheme.textMuted),
+                  )
+                else
+                  ...contracts.map(
+                    (Map<String, dynamic> c) => _buildContractItem(c),
+                  ),
+                if (loadingMore)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                if (!loadingMore &&
+                    currentPage >= lastPage &&
+                    contracts.isNotEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        'Đã hiển thị toàn bộ hợp đồng.',
+                        style: TextStyle(
+                          color: StitchTheme.textMuted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 80),
+              ]),
             ),
-          const SizedBox(height: 80),
+          ),
         ],
       ),
     );
@@ -5198,7 +5018,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                     if (ok) await _fetch();
                                   },
                                   style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: StitchTheme.success),
+                                    side: BorderSide(
+                                      color: StitchTheme.success,
+                                    ),
                                     foregroundColor: StitchTheme.success,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(10),
@@ -5257,6 +5079,240 @@ class _ContractsScreenState extends State<ContractsScreen> {
           overflow: TextOverflow.ellipsis,
         ),
       ],
+    );
+  }
+}
+
+class _ContractSoftCopySheet extends StatefulWidget {
+  const _ContractSoftCopySheet({
+    required this.token,
+    required this.api,
+    required this.contractId,
+    required this.canManage,
+    required this.onChanged,
+  });
+
+  final String token;
+  final MobileApiService api;
+  final int contractId;
+  final bool canManage;
+  final Future<void> Function() onChanged;
+
+  @override
+  State<_ContractSoftCopySheet> createState() => _ContractSoftCopySheetState();
+}
+
+class _ContractSoftCopySheetState extends State<_ContractSoftCopySheet> {
+  List<Map<String, dynamic>> files = <Map<String, dynamic>>[];
+  bool loading = true;
+  bool uploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => loading = true);
+    final List<Map<String, dynamic>> list = await widget.api.getContractFiles(
+      widget.token,
+      widget.contractId,
+    );
+    if (!mounted) return;
+    setState(() {
+      files = list;
+      loading = false;
+    });
+  }
+
+  String _bytesLabel(dynamic raw) {
+    final int n = int.tryParse('${raw ?? 0}') ?? 0;
+    if (n < 1024) return '$n B';
+    if (n < 1024 * 1024) return '${(n / 1024).toStringAsFixed(1)} KB';
+    return '${(n / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _pickAndUpload() async {
+    final FilePickerResult? result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    setState(() => uploading = true);
+    try {
+      for (final PlatformFile pf in result.files) {
+        final String? path = pf.path;
+        if (path == null || path.isEmpty) continue;
+        await widget.api.uploadContractFile(
+          widget.token,
+          widget.contractId,
+          path,
+        );
+      }
+      await widget.onChanged();
+      await _load();
+      if (mounted) {
+        AppTagMessage.show('Đã tải file lên.');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppTagMessage.show(e.toString(), isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => uploading = false);
+    }
+  }
+
+  Future<void> _download(Map<String, dynamic> row) async {
+    final int fid = int.tryParse('${row['id']}') ?? 0;
+    if (fid <= 0) return;
+    try {
+      final Uint8List bytes = await widget.api.downloadContractFile(
+        widget.token,
+        widget.contractId,
+        fid,
+      );
+      final Directory dir = await getTemporaryDirectory();
+      final String name = (row['original_name'] ?? 'file').toString();
+      final File file = File('${dir.path}/$name');
+      await file.writeAsBytes(bytes, flush: true);
+      await Share.shareXFiles(<XFile>[XFile(file.path)], text: name);
+    } catch (_) {
+      if (mounted) {
+        AppTagMessage.show('Không tải được file.', isError: true);
+      }
+    }
+  }
+
+  Future<void> _delete(Map<String, dynamic> row) async {
+    final int fid = int.tryParse('${row['id']}') ?? 0;
+    if (fid <= 0) return;
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder:
+          (BuildContext c) => AlertDialog(
+            title: const Text('Xóa file?'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(c).pop(false),
+                child: const Text('Hủy'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(c).pop(true),
+                child: const Text('Xóa'),
+              ),
+            ],
+          ),
+    );
+    if (ok != true) return;
+    final bool deleted = await widget.api.deleteContractFile(
+      widget.token,
+      widget.contractId,
+      fid,
+    );
+    if (!mounted) return;
+    if (deleted) {
+      await widget.onChanged();
+      await _load();
+      if (!mounted) return;
+      AppTagMessage.show('Đã xóa file.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const Expanded(
+                  child: Text(
+                    'Hợp đồng bản mềm',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const Text(
+              'Tải lên và tải xuống file đính kèm (tối đa 50 MB mỗi file).',
+              style: TextStyle(color: StitchTheme.textMuted, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            if (widget.canManage)
+              FilledButton.icon(
+                onPressed: uploading ? null : _pickAndUpload,
+                icon:
+                    uploading
+                        ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.upload_file),
+                label: Text(uploading ? 'Đang tải lên…' : 'Tải file lên'),
+              ),
+            if (!widget.canManage)
+              const Text(
+                'Bạn chỉ có quyền xem và tải xuống.',
+                style: TextStyle(color: StitchTheme.textMuted, fontSize: 12),
+              ),
+            const SizedBox(height: 12),
+            Expanded(
+              child:
+                  loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : files.isEmpty
+                      ? const Center(
+                        child: Text(
+                          'Chưa có file nào.',
+                          style: TextStyle(color: StitchTheme.textMuted),
+                        ),
+                      )
+                      : ListView.separated(
+                        itemCount: files.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (BuildContext _, int i) {
+                          final Map<String, dynamic> f = files[i];
+                          final dynamic up = f['uploader'];
+                          final String who =
+                              up is Map ? (up['name'] ?? '—').toString() : '—';
+                          return ListTile(
+                            title: Text(
+                              (f['original_name'] ?? '').toString(),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text('${_bytesLabel(f['size'])} • $who'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                IconButton(
+                                  icon: const Icon(Icons.download),
+                                  onPressed: () => _download(f),
+                                ),
+                                if (widget.canManage)
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => _delete(f),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

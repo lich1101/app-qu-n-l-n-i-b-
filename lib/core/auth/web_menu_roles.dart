@@ -84,3 +84,11 @@ const List<String> kWebMenuServiceWorkflows = <String>[
 /// System — "Nhật ký hệ thống"
 const List<String> kWebMenuActivityLogs = <String>['admin', 'quan_ly'];
 
+/// Quick assistant / "AI Chatbot"
+const List<String> kWebMenuChatbot = <String>[
+  'admin',
+  'administrator',
+  'quan_ly',
+  'nhan_vien',
+  'ke_toan',
+];

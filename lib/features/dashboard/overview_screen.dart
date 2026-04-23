@@ -98,6 +98,7 @@ class OverviewScreen extends StatelessWidget {
 
     return SafeArea(
       child: ListView(
+        key: const PageStorageKey<String>('overview_scroll_view'),
         padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
         children: <Widget>[
           const SizedBox(height: 12),

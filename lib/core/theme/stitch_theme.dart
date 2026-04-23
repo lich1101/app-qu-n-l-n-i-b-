@@ -8,25 +8,30 @@ class StitchTheme {
   static const Color bg = Color(0xFFF3F7F9);
   static const Color surface = Color(0xFFFFFFFF);
   static const Color surfaceAlt = Color(0xFFEAF1F5);
+
   /// Nền trang form full-screen (tương đương Winmap `AppColors.background`).
   static const Color formPageBackground = Color(0xFFF3F7F9);
+
   /// Viền ngăn cách giữa các strip section (tương đương `cardBorder` Winmap).
   static const Color formSectionDivider = Color(0xFFE7EAF3);
+
   /// Nền vùng hàng chọn (picker) — primary rất nhạt.
-  static Color get formSelectionFill =>
-      primary.withValues(alpha: 0.06);
+  static Color get formSelectionFill => primary.withValues(alpha: 0.06);
+
   /// Viền vùng hàng chọn.
-  static Color get formSelectionBorder =>
-      primary.withValues(alpha: 0.22);
+  static Color get formSelectionBorder => primary.withValues(alpha: 0.22);
+
   /// Nền ô icon 40px trong hàng chọn (chip nhạt).
   static Color get formSelectionIconBg => primarySoft;
   static const Color border = Color(0xFFD9E4EA);
+
   /// Viền ô nhập / chip — đậm hơn [border] để dễ nhìn.
   static const Color borderStrong = Color(0xFF94A3B8);
   static const Color inputBorder = Color(0xFFCBD5E1);
   static const Color textMain = Color(0xFF0F172A);
   static const Color textMuted = Color(0xFF5F7285);
   static const Color textSubtle = Color(0xFF90A0B0);
+
   /// Nhãn form (đậm, dễ đọc — tránh nhãn quá nhạt).
   static const Color labelEmphasis = Color(0xFF334155);
   static Color successStrong = const Color(0xFF16A34A);
@@ -38,6 +43,30 @@ class StitchTheme {
   static Color successSoft = successStrong.withValues(alpha: 0.12);
   static Color warningSoft = warningStrong.withValues(alpha: 0.12);
   static Color dangerSoft = dangerStrong.withValues(alpha: 0.12);
+
+  /// rose-500 — bậc 1–20% (đồng bộ web `bg-rose-500`).
+  static const Color progressBandLow = Color(0xFFF43F5E);
+
+  /// orange-500 — bậc 21–40% (đồng bộ web `bg-orange-500`).
+  static const Color progressBandEarly = Color(0xFFF97316);
+
+  /// sky-500 — bậc 61–80% (đồng bộ web `bg-sky-500`).
+  static const Color progressBandHigh = Color(0xFF0EA5E9);
+
+  /// teal-600 — bậc 81–99% (đồng bộ web `bg-teal-600`).
+  static const Color progressBandNearDone = Color(0xFF0F766E);
+
+  /// Màu fill thanh tiến độ theo %: càng cao càng xanh hơn; 100% là xanh lá rõ.
+  static Color progressPercentFillColor(int percent) {
+    final int p = percent.clamp(0, 100);
+    if (p <= 0) return borderStrong;
+    if (p >= 100) return successStrong;
+    if (p <= 20) return progressBandLow;
+    if (p <= 40) return progressBandEarly;
+    if (p <= 60) return warningStrong;
+    if (p <= 80) return progressBandHigh;
+    return progressBandNearDone;
+  }
 
   /// Giá trị hiển thị trên [DropdownButtonFormField] — nhỏ, mảnh, ellipsis.
   static const TextStyle dropdownFieldValueStyle = TextStyle(
@@ -93,6 +122,7 @@ class StitchTheme {
           fontSize: 19,
           fontWeight: FontWeight.w800,
         ),
+
         /// Nền sáng → giờ/hệ thống/pin trên status bar dùng màu tối (Android/iOS).
         systemOverlayStyle: SystemUiOverlayStyle.dark,
       ),
@@ -212,9 +242,7 @@ class StitchTheme {
         selectedColor: primary.withValues(alpha: 0.22),
         disabledColor: const Color(0xFFE2E8F0),
         side: const BorderSide(color: inputBorder, width: 1.1),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         labelStyle: const TextStyle(
           fontSize: 13,

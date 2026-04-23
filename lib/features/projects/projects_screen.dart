@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -33,6 +34,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   List<int> _ownerFilterIds = <int>[];
   List<Map<String, dynamic>> _ownerLookupUsers = <Map<String, dynamic>>[];
+
   /// Ban đầu thu gọn; mở rộng để chỉnh lọc (danh sách owner theo phạm vi API users/lookup?purpose=project_owner).
   bool _filtersExpanded = false;
 
@@ -171,6 +173,10 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
               apiService: widget.apiService,
               projectId: projectId,
               initialProject: detail ?? project,
+              canEditAllProjectFields: _projectPermission(
+                detail ?? project,
+                'can_edit_all_project_fields',
+              ),
             ),
       ),
     );
@@ -227,9 +233,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       await _fetch();
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Xóa dự án thất bại.')));
+    AppTagMessage.show('Xóa dự án thất bại.', isError: true);
   }
 
   void _openDetail(int projectId) {
@@ -288,21 +292,16 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   Future<void> _openExternal(String url) async {
     final Uri? uri = Uri.tryParse(url);
     if (uri == null) return;
-    final bool ok =
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final bool ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không mở được liên kết.')),
-      );
+      AppTagMessage.show('Không mở được liên kết.', isError: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Quản lý dự án'),
-      ),
+      appBar: AppBar(title: const Text('Quản lý dự án')),
       body: SafeArea(
         child:
             !widget.canView
@@ -526,6 +525,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                       '${project['progress_percent'] ?? 0}',
                                     ) ??
                                     0;
+                        final int pendingReviews =
+                            int.tryParse(
+                              '${project['pending_review_count'] ?? 0}',
+                            ) ??
+                            0;
+                        final bool hasPendingReviews = pendingReviews > 0;
                         return InkWell(
                           onTap:
                               projectId > 0
@@ -536,9 +541,18 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color:
+                                  hasPendingReviews
+                                      ? const Color(0xFFFFF7ED)
+                                      : Colors.white,
                               borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: StitchTheme.border),
+                              border: Border.all(
+                                color:
+                                    hasPendingReviews
+                                        ? const Color(0xFFFBBF24)
+                                        : StitchTheme.border,
+                                width: hasPendingReviews ? 1.5 : 1,
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -548,12 +562,39 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                       MainAxisAlignment.spaceBetween,
                                   children: <Widget>[
                                     Expanded(
-                                      child: Text(
-                                        name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 16,
-                                        ),
+                                      child: Row(
+                                        children: <Widget>[
+                                          if (hasPendingReviews)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                right: 8,
+                                              ),
+                                              child: Tooltip(
+                                                message:
+                                                    '$pendingReviews phiếu chờ duyệt tiến độ',
+                                                child: Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration:
+                                                      const BoxDecoration(
+                                                        color: Color(
+                                                          0xFFF59E0B,
+                                                        ),
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                ),
+                                              ),
+                                            ),
+                                          Expanded(
+                                            child: Text(
+                                              name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     Container(
@@ -606,7 +647,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                   child: LinearProgressIndicator(
                                     value: progress.clamp(0, 100) / 100,
                                     minHeight: 6,
-                                    color: _statusColor(status),
+                                    color: StitchTheme.progressPercentFillColor(
+                                      progress,
+                                    ),
                                     backgroundColor: StitchTheme.surfaceAlt,
                                   ),
                                 ),
@@ -667,11 +710,18 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: InkWell(
-                                          onTap: () => _openExternal(
-                                            _stringField(project, 'website_url')!,
-                                          ),
+                                          onTap:
+                                              () => _openExternal(
+                                                _stringField(
+                                                  project,
+                                                  'website_url',
+                                                )!,
+                                              ),
                                           child: Text(
-                                            _stringField(project, 'website_url')!,
+                                            _stringField(
+                                              project,
+                                              'website_url',
+                                            )!,
                                             style: TextStyle(
                                               color: StitchTheme.primary,
                                               fontSize: 12,
@@ -701,9 +751,13 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: InkWell(
-                                          onTap: () => _openExternal(
-                                            _stringField(project, 'repo_url')!,
-                                          ),
+                                          onTap:
+                                              () => _openExternal(
+                                                _stringField(
+                                                  project,
+                                                  'repo_url',
+                                                )!,
+                                              ),
                                           child: Text(
                                             _stringField(project, 'repo_url')!,
                                             style: TextStyle(

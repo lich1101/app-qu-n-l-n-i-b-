@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../config/app_env.dart';
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'chatbot_assistant_screen.dart';
@@ -117,9 +118,7 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppTagMessage.show(message);
   }
 
   @override

@@ -26,6 +26,7 @@ import '../modules/handover_screen.dart';
 import '../modules/chat_screen.dart';
 import '../modules/activity_log_screen.dart';
 import '../modules/attendance_wifi_screen.dart';
+import '../modules/chatbot_bot_list_screen.dart';
 import '../modules/meetings_screen.dart';
 import '../modules/module_center_screen.dart';
 import '../modules/notifications_screen.dart';
@@ -35,7 +36,6 @@ import '../modules/opportunities_screen.dart';
 import '../modules/products_screen.dart';
 import '../modules/revenue_report_screen.dart';
 import '../modules/lead_types_screen.dart';
-import '../modules/opportunity_statuses_screen.dart';
 import '../modules/revenue_tiers_screen.dart';
 import '../modules/departments_screen.dart';
 import '../projects/create_project_screen.dart';
@@ -79,6 +79,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool _isCheckingSession = false;
   bool _permissionPromptQueued = false;
   bool _permissionPromptVisible = false;
+  static const Duration _splashBootstrapGuard = Duration(seconds: 8);
 
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
@@ -165,8 +166,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       Duration(seconds: AppEnv.requestTimeoutSeconds);
 
   Future<void> _loadSavedAccounts() async {
-    final String? raw = await _secureStorage.read(key: _savedAccountsKey);
-    final String? rememberRaw = await _secureStorage.read(key: _rememberKey);
+    String? raw;
+    String? rememberRaw;
+    try {
+      raw = await _secureStorage.read(key: _savedAccountsKey);
+      rememberRaw = await _secureStorage.read(key: _rememberKey);
+    } catch (_) {
+      raw = null;
+      rememberRaw = '1';
+    }
     final bool remember = rememberRaw == null ? true : rememberRaw == '1';
     List<String> accounts = <String>[];
     if (raw != null && raw.trim().isNotEmpty) {
@@ -303,10 +311,23 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Future<void> _bootstrap() async {
-    unawaited(_loadBootstrapPublicData());
-    await _restoreSession();
-    if (!mounted) return;
-    setState(() => _isBootstrapDone = true);
+    try {
+      unawaited(_loadBootstrapPublicData());
+      await _restoreSession().timeout(_splashBootstrapGuard);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          if (authMessage.trim().isEmpty) {
+            authMessage =
+                'Khởi tạo phiên chậm hoặc bị lỗi. Vui lòng đăng nhập lại.';
+          }
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isBootstrapDone = true);
+      }
+    }
   }
 
   void _startSessionGuard() {
@@ -332,7 +353,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (AppFirebase.isConfigured) {
       await AppFirebase.clearSessionForAccountSwitch();
     }
-    await _secureStorage.delete(key: _tokenKey);
+    try {
+      await _secureStorage.delete(key: _tokenKey);
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       authUser = null;
@@ -385,7 +408,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Future<void> _restoreSession() async {
-    final String? token = await _secureStorage.read(key: _tokenKey);
+    String? token;
+    try {
+      token = await _secureStorage.read(key: _tokenKey);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          authMessage = 'Không thể đọc phiên đăng nhập cũ trên thiết bị này.';
+        });
+      }
+      return;
+    }
     if (token == null || token.isEmpty) return;
     final Map<String, dynamic> me = await _fetchMeWithRetry(token);
     if ((me['statusCode'] ?? 500) == 200) {
@@ -941,6 +974,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       role,
       kWebMenuOperationsProjectsTasks,
     );
+
     /// Khớp web ProjectsKanban (canCreate) + middleware POST /projects.
     final bool canCreateProject =
         canViewProjects && apiRoleMatches(role, kApiProjectStore);
@@ -956,14 +990,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final bool canViewHandover = webMenuHasRole(role, kWebMenuHandover);
 
     final bool canViewLogs = webMenuHasRole(role, kWebMenuActivityLogs);
+    final bool canUseChatbot = webMenuHasRole(role, kWebMenuChatbot);
 
     final bool canViewOpportunities = webMenuHasRole(
       role,
       kWebMenuOpportunities,
     );
 
-    final bool canViewLeadTypes = webMenuHasRole(role, kWebMenuAdminOnlySettings);
-    final bool canViewOpportunityStatuses = webMenuHasRole(
+    final bool canViewLeadTypes = webMenuHasRole(
       role,
       kWebMenuAdminOnlySettings,
     );
@@ -981,7 +1015,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         canViewContracts ||
         canViewProducts ||
         canViewLeadTypes ||
-        canViewOpportunityStatuses ||
         canViewRevenueTiers ||
         canViewRevenue;
 
@@ -990,6 +1023,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         context,
       ).push(MaterialPageRoute<Widget>(builder: (_) => builder()));
     }
+
     final dynamic rawUserId = authUser?['id'];
     final int? resolvedUserId =
         rawUserId is int ? rawUserId : int.tryParse('${rawUserId ?? ''}');
@@ -1037,6 +1071,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         canDelete: apiRoleMatches(role, kApiMeetingDelete),
       ),
     );
+    void openChatbot() => openScreen(
+      () => ChatbotBotListScreen(token: authToken!, apiService: _api),
+    );
     void openCrm() => openScreen(
       () => CrmScreen(
         token: authToken!,
@@ -1061,7 +1098,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         apiService: _api,
         canManage: apiRoleMatches(role, kApiContractUpdateDelete),
         canCreate: apiRoleMatches(role, kApiContractReadCreate),
-        canDelete: apiRoleMatches(role, kApiContractUpdateDelete),
+        canDelete: false,
         canApprove: apiRoleMatches(role, kApiContractApprove),
         canCreateContractFinanceLines: apiRoleMatches(
           role,
@@ -1099,9 +1136,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     );
     void openLeadTypes() =>
         openScreen(() => LeadTypesScreen(token: authToken!, apiService: _api));
-    void openOpportunityStatuses() => openScreen(
-      () => OpportunityStatusesScreen(token: authToken!, apiService: _api),
-    );
     void openRevenueTiers() => openScreen(
       () => RevenueTiersScreen(token: authToken!, apiService: _api),
     );
@@ -1122,12 +1156,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         currentUserRole: currentUserRole,
       ),
     );
-    void openTasksList() => openScreen(
-          () => TasksListScreen(
-            token: authToken!,
-            apiService: _api,
-          ),
-        );
+    void openTasksList() =>
+        openScreen(() => TasksListScreen(token: authToken!, apiService: _api));
 
     void openTaskItems() =>
         openScreen(() => TaskItemsScreen(token: authToken!, apiService: _api));
@@ -1139,6 +1169,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenProjects: canViewProjects ? openProjects : null,
       onOpenHandover: canViewHandover ? openHandover : null,
       onOpenChat: openChat,
+      onOpenChatbot: canUseChatbot ? openChatbot : null,
       onOpenActivityLogs: canViewLogs ? openActivityLogs : null,
       onOpenNotifications: openNotifications,
       onOpenCreateProject: canCreateProject ? openCreateProject : null,
@@ -1150,8 +1181,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenDepartments: canViewDepartments ? openDepartments : null,
       onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
       onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
-      onOpenOpportunityStatuses:
-          canViewOpportunityStatuses ? openOpportunityStatuses : null,
+      onOpenOpportunityStatuses: null,
       onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
       onOpenReports: canViewReports ? openReports : null,
       onOpenServices: canViewServiceWorkflows ? openServices : null,
@@ -1189,19 +1219,26 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           onTap: openMeetings,
           color: const Color(0xFF4F46E5),
         ),
-      if (canViewLogs)
-        OverviewQuickAction(
-          label: 'Nhật ký',
-          icon: Icons.history_toggle_off_outlined,
-          onTap: openActivityLogs,
-          color: const Color(0xFF64748B),
-        ),
       if (canViewAttendance)
         OverviewQuickAction(
           label: 'Chấm công',
           icon: Icons.wifi_tethering_outlined,
           onTap: openAttendance,
           color: const Color(0xFF0EA5A6),
+        ),
+      if (canUseChatbot)
+        OverviewQuickAction(
+          label: 'AI Chatbot',
+          icon: Icons.smart_toy_outlined,
+          onTap: openChatbot,
+          color: const Color(0xFF7C3AED),
+        ),
+      if (canViewLogs)
+        OverviewQuickAction(
+          label: 'Nhật ký',
+          icon: Icons.history_toggle_off_outlined,
+          onTap: openActivityLogs,
+          color: const Color(0xFF64748B),
         ),
     ];
 
@@ -1256,8 +1293,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           onOpenContracts: canViewContracts ? openContracts : null,
           onOpenProducts: canViewProducts ? openProducts : null,
           onOpenLeadTypes: canViewLeadTypes ? openLeadTypes : null,
-          onOpenOpportunityStatuses:
-              canViewOpportunityStatuses ? openOpportunityStatuses : null,
+          onOpenOpportunityStatuses: null,
           onOpenRevenueTiers: canViewRevenueTiers ? openRevenueTiers : null,
           onOpenRevenueReport: canViewRevenue ? openRevenueReport : null,
         ),
@@ -1281,8 +1317,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
     final bool showFabSlot = canCreateProject && canViewProjects;
     final int? tabProjectsIndex = canViewProjects ? 1 : null;
-    final int? tabCrmIndex =
-        canViewCrmHub ? (canViewProjects ? 2 : 1) : null;
+    final int? tabCrmIndex = canViewCrmHub ? (canViewProjects ? 2 : 1) : null;
 
     return Scaffold(
       extendBody: false,
@@ -1294,9 +1329,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       floatingActionButton:
           canCreateProject && canViewProjects
               ? FloatingActionButton(
-                elevation: 10,
+                elevation: 0,
+                focusElevation: 0,
+                hoverElevation: 0,
+                highlightElevation: 0,
+                disabledElevation: 0,
                 backgroundColor: StitchTheme.primary,
                 foregroundColor: Colors.white,
+                shape: const CircleBorder(),
                 onPressed: authToken == null ? null : openCreateProject,
                 child: const Icon(Icons.add, color: Colors.white),
               )

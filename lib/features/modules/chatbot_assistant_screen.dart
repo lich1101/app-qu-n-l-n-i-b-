@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_env.dart';
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -300,9 +301,7 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
 
   void _showSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppTagMessage.show(message);
   }
 
   Future<void> _pickAttachment() async {

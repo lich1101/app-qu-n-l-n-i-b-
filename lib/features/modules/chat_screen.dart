@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_env.dart';
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/utils/vietnam_time.dart';
@@ -52,11 +53,18 @@ class _ChatScreenState extends State<ChatScreen> {
   bool loading = false;
   String search = '';
   List<Map<String, dynamic>> tasks = <Map<String, dynamic>>[];
+  final TextEditingController searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _fetch();
+  }
+
+  @override
+  void dispose() {
+    searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _fetch() async {
@@ -105,6 +113,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 12),
             TextField(
+              controller: searchCtrl,
               decoration: InputDecoration(
                 hintText: 'Tìm theo công việc hoặc dự án',
                 prefixIcon: const Icon(Icons.search),
@@ -887,7 +896,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (raw == null || raw.isEmpty) return '';
     final DateTime? date = VietnamTime.parse(raw);
     if (date == null) return raw;
-    return '${VietnamTime.formatTime(date)} ${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}';
+    return '${VietnamTime.formatTime(date)} ${VietnamTime.formatDate(date)}';
   }
 
   String _initials(String name) {
@@ -930,9 +939,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final Uri? uri = Uri.tryParse(resolved);
     if (uri == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Liên kết không hợp lệ.')));
+      AppTagMessage.show('Liên kết không hợp lệ.', isError: true);
       return;
     }
 
@@ -941,10 +948,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       mode: LaunchMode.externalApplication,
     );
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không mở được liên kết hoặc tệp đính kèm.'),
-        ),
+      AppTagMessage.show(
+        'Không mở được liên kết hoặc tệp đính kèm.',
+        isError: true,
       );
     }
   }
@@ -1635,9 +1641,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(
                       _chatDisabledReason,
-                      style: TextStyle(
-                        color: StitchTheme.warningStrong,
-                      ),
+                      style: TextStyle(color: StitchTheme.warningStrong),
                     ),
                   ),
                 if (participants.isNotEmpty)

@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import '../../config/app_env.dart';
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/theme/stitch_theme.dart';
@@ -79,9 +80,7 @@ class _NotificationPreferencesScreenState
     if (!mounted) return;
     if (res['error'] == true) {
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể lưu cài đặt thông báo.')),
-      );
+      AppTagMessage.show('Không thể lưu cài đặt thông báo.', isError: true);
       return;
     }
     setState(() {
@@ -103,14 +102,11 @@ class _NotificationPreferencesScreenState
     if (!syncOk) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          granted
-              ? 'Đã cấp quyền thông báo trên thiết bị.'
-              : 'Hệ điều hành chưa cấp quyền thông báo.',
-        ),
-      ),
+    AppTagMessage.show(
+      granted
+          ? 'Đã cấp quyền thông báo trên thiết bị.'
+          : 'Hệ điều hành chưa cấp quyền thông báo.',
+      isError: !granted,
     );
   }
 
@@ -133,21 +129,16 @@ class _NotificationPreferencesScreenState
             .toString()
             .trim();
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Đồng bộ token thất bại${reason.isNotEmpty ? ': $reason' : ''}',
-          ),
-        ),
+      AppTagMessage.show(
+        'Đồng bộ token thất bại${reason.isNotEmpty ? ': $reason' : ''}',
+        isError: true,
       );
       return false;
     }
     if (!showSuccessToast) {
       return true;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Đã đồng bộ lại token thông báo.')),
-    );
+    AppTagMessage.show('Đã đồng bộ lại token thông báo.');
     return true;
   }
 

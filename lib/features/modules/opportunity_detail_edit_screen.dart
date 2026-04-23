@@ -16,7 +16,6 @@ class OpportunityDetailEditScreen extends StatefulWidget {
     required this.opportunityId,
     required this.opportunity,
     required this.clients,
-    required this.statuses,
   });
 
   final String token;
@@ -24,7 +23,6 @@ class OpportunityDetailEditScreen extends StatefulWidget {
   final int opportunityId;
   final Map<String, dynamic> opportunity;
   final List<Map<String, dynamic>> clients;
-  final List<Map<String, dynamic>> statuses;
 
   @override
   State<OpportunityDetailEditScreen> createState() =>
@@ -43,6 +41,7 @@ class _OpportunityDetailEditScreenState
 
   int? clientId;
   String? statusCode;
+  List<Map<String, dynamic>> statusOptions = <Map<String, dynamic>>[];
   bool saving = false;
   String sheetMessage = '';
 
@@ -50,6 +49,52 @@ class _OpportunityDetailEditScreenState
     if (value == null) return null;
     if (value is int) return value;
     return int.tryParse(value.toString());
+  }
+
+  List<StitchSelectOption<String>> _statusSelectOptions() {
+    final List<StitchSelectOption<String>> options =
+        statusOptions
+            .map((Map<String, dynamic> row) {
+              final String code = (row['code'] ?? '').toString().trim();
+              final String name = (row['name'] ?? '').toString().trim();
+              if (code.isEmpty) return null;
+              return StitchSelectOption<String>(
+                value: code,
+                label: name.isEmpty ? code : name,
+              );
+            })
+            .whereType<StitchSelectOption<String>>()
+            .toList();
+    final String current = (statusCode ?? '').trim();
+    if (current.isNotEmpty &&
+        !options.any(
+          (StitchSelectOption<String> item) => item.value == current,
+        )) {
+      final String label =
+          (widget.opportunity['status_label'] ??
+                  widget.opportunity['computed_status_label'] ??
+                  current)
+              .toString();
+      options.insert(
+        0,
+        StitchSelectOption<String>(value: current, label: label),
+      );
+    }
+    if (options.isEmpty) {
+      return const <StitchSelectOption<String>>[
+        StitchSelectOption<String>(value: 'open', label: 'Đang mở'),
+        StitchSelectOption<String>(value: 'won', label: 'Thành công'),
+        StitchSelectOption<String>(value: 'lost', label: 'Thất bại'),
+      ];
+    }
+    return options;
+  }
+
+  Future<void> _loadStatusOptions() async {
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getOpportunityStatuses(widget.token);
+    if (!mounted) return;
+    setState(() => statusOptions = rows);
   }
 
   double? _toDouble(String value) {
@@ -83,8 +128,8 @@ class _OpportunityDetailEditScreenState
       text: (o['expected_close_date'] ?? '').toString(),
     );
     clientId = _toInt(o['client_id']);
-    final String rawStatus = (o['status'] ?? '').toString().trim();
-    statusCode = rawStatus.isEmpty ? null : rawStatus;
+    statusCode = (o['status'] ?? o['computed_status'])?.toString();
+    _loadStatusOptions();
   }
 
   @override
@@ -131,13 +176,14 @@ class _OpportunityDetailEditScreenState
       widget.opportunityId,
       title: titleCtrl.text.trim(),
       clientId: clientId!,
-      status: (statusCode ?? '').trim().isEmpty ? null : statusCode,
       amount: amt,
       source: sourceCtrl.text.trim().isEmpty ? null : sourceCtrl.text.trim(),
       notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
       opportunityType:
           typeCtrl.text.trim().isEmpty ? null : typeCtrl.text.trim(),
       successProbability: prob,
+      status:
+          (statusCode ?? '').trim().isEmpty ? null : (statusCode ?? '').trim(),
       expectedCloseDate:
           expectedDateCtrl.text.trim().isEmpty
               ? null
@@ -168,8 +214,7 @@ class _OpportunityDetailEditScreenState
         primaryLoading: saving,
         primaryLabel: saving ? 'Đang lưu...' : 'Lưu thay đổi',
         onPrimary: saving ? null : _submit,
-        onSecondary:
-            saving ? null : () => Navigator.of(context).maybePop(),
+        onSecondary: saving ? null : () => Navigator.of(context).maybePop(),
         secondaryLabel: 'Hủy',
       ),
       body: SafeArea(
@@ -213,13 +258,14 @@ class _OpportunityDetailEditScreenState
                                   _toInt(c['id']) != null,
                             )
                             .map(
-                              (Map<String, dynamic> client) =>
-                                  StitchSelectOption<int>(
-                                    value: _toInt(client['id'])!,
-                                    label:
-                                        '${client['name'] ?? '—'}'
-                                        '${(client['company'] ?? '').toString().trim().isNotEmpty ? ' • ${client['company']}' : ''}',
-                                  ),
+                              (
+                                Map<String, dynamic> client,
+                              ) => StitchSelectOption<int>(
+                                value: _toInt(client['id'])!,
+                                label:
+                                    '${client['name'] ?? '—'}'
+                                    '${(client['company'] ?? '').toString().trim().isNotEmpty ? ' • ${client['company']}' : ''}',
+                              ),
                             )
                             .toList(),
                     onChanged: (int? next) => setState(() => clientId = next),
@@ -229,35 +275,38 @@ class _OpportunityDetailEditScreenState
                     ),
                   ),
                   SizedBox(height: kStitchTaskFormGap),
-                  StitchSearchableSelectField<String>(
-                    value: statusCode,
-                    sheetTitle: 'Chọn trạng thái',
-                    label: 'Trạng thái',
-                    searchHint: 'Tìm trạng thái...',
-                    options:
-                        widget.statuses
-                            .map(
-                              (Map<String, dynamic> status) =>
-                                  StitchSelectOption<String>(
-                                    value: (status['code'] ?? '').toString(),
-                                    label: (status['name'] ?? '—').toString(),
-                                  ),
-                            )
-                            .toList(),
-                    onChanged:
-                        (String? next) => setState(() => statusCode = next),
-                    decoration: stitchSheetInputDecoration(
-                      context,
-                      label: 'Trạng thái',
-                    ),
-                  ),
-                  SizedBox(height: kStitchTaskFormGap),
                   TextField(
                     controller: amountCtrl,
                     keyboardType: TextInputType.number,
                     decoration: stitchSheetInputDecoration(
                       context,
                       label: 'Doanh số dự kiến (VNĐ) *',
+                    ),
+                  ),
+                  SizedBox(height: kStitchTaskFormGap),
+                  StitchSearchableSelectField<String>(
+                    value:
+                        (statusCode ?? '').trim().isEmpty
+                            ? null
+                            : statusCode!.trim(),
+                    nullable: true,
+                    nullLabel: 'Mặc định hệ thống',
+                    sheetTitle: 'Chọn trạng thái cơ hội',
+                    label: 'Trạng thái cơ hội',
+                    searchHint: 'Tìm trạng thái...',
+                    options: _statusSelectOptions(),
+                    onChanged: (String? next) {
+                      setState(
+                        () =>
+                            statusCode =
+                                (next ?? '').trim().isEmpty
+                                    ? null
+                                    : next!.trim(),
+                      );
+                    },
+                    decoration: stitchSheetInputDecoration(
+                      context,
+                      label: 'Trạng thái cơ hội',
                     ),
                   ),
                   SizedBox(height: kStitchTaskFormGap),

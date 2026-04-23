@@ -4,17 +4,25 @@ import '../theme/stitch_theme.dart';
 
 /// Nền trang form full-screen (kiểu Winmap: xám nhạt).
 class StitchFormPageBackground extends StatelessWidget {
-  const StitchFormPageBackground({
-    super.key,
-    required this.child,
-  });
+  const StitchFormPageBackground({super.key, required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: StitchTheme.formPageBackground,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: StitchTheme.formPageBackground,
+        gradient: LinearGradient(
+          colors: <Color>[
+            Colors.white.withValues(alpha: 0.92),
+            StitchTheme.formPageBackground,
+            const Color(0xFFE6F7F5),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
       child: child,
     );
   }
@@ -42,13 +50,29 @@ class StitchFormSection extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: StitchTheme.surface,
-        border: showBottomBorder
-            ? Border(
-                bottom: BorderSide(
-                  color: StitchTheme.formSectionDivider.withValues(alpha: 0.65),
-                ),
-              )
-            : null,
+        gradient: LinearGradient(
+          colors: <Color>[
+            Colors.white,
+            StitchTheme.surface,
+            StitchTheme.surfaceAlt.withValues(alpha: 0.34),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color:
+              showBottomBorder
+                  ? StitchTheme.formSectionDivider.withValues(alpha: 0.85)
+                  : StitchTheme.border.withValues(alpha: 0.78),
+        ),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: StitchTheme.textMain.withValues(alpha: 0.05),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: child,
     );
@@ -75,14 +99,28 @@ class StitchFormSectionHeader extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Container(
-            width: 36,
-            height: 36,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: StitchTheme.formSelectionIconBg,
-              borderRadius: BorderRadius.circular(10),
+              gradient: LinearGradient(
+                colors: <Color>[
+                  StitchTheme.primarySoft,
+                  StitchTheme.primary.withValues(alpha: 0.16),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: StitchTheme.primary.withValues(alpha: 0.18),
               ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: StitchTheme.primary.withValues(alpha: 0.12),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
             child: Icon(icon, color: StitchTheme.primaryStrong, size: 20),
           ),
@@ -125,10 +163,8 @@ class StitchSelectionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color fg =
-        enabled ? StitchTheme.textMain : StitchTheme.textMuted;
-    final Color sub =
-        enabled ? StitchTheme.textMuted : StitchTheme.textSubtle;
+    final Color fg = enabled ? StitchTheme.textMain : StitchTheme.textMuted;
+    final Color sub = enabled ? StitchTheme.textMuted : StitchTheme.textSubtle;
 
     return Material(
       color: Colors.transparent,
@@ -136,17 +172,39 @@ class StitchSelectionRow extends StatelessWidget {
         onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
-            color: enabled
-                ? StitchTheme.formSelectionFill
-                : StitchTheme.surfaceAlt,
-            borderRadius: BorderRadius.circular(16),
+            color:
+                enabled ? StitchTheme.formSelectionFill : StitchTheme.surface,
+            gradient:
+                enabled
+                    ? LinearGradient(
+                      colors: <Color>[
+                        Colors.white,
+                        StitchTheme.formSelectionFill,
+                        StitchTheme.primary.withValues(alpha: 0.05),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                    : null,
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: enabled
-                  ? StitchTheme.formSelectionBorder
-                  : StitchTheme.border,
+              color:
+                  enabled
+                      ? StitchTheme.formSelectionBorder
+                      : StitchTheme.border,
             ),
+            boxShadow:
+                enabled
+                    ? <BoxShadow>[
+                      BoxShadow(
+                        color: StitchTheme.primary.withValues(alpha: 0.08),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ]
+                    : const <BoxShadow>[],
           ),
           child: Row(
             children: <Widget>[
@@ -154,8 +212,15 @@ class StitchSelectionRow extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: StitchTheme.formSelectionIconBg,
-                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: <Color>[
+                      StitchTheme.formSelectionIconBg,
+                      StitchTheme.primary.withValues(alpha: 0.15),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   leadingIcon,
@@ -186,11 +251,7 @@ class StitchSelectionRow extends StatelessWidget {
                         subtitle!.trim(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: sub,
-                          height: 1.3,
-                        ),
+                        style: TextStyle(fontSize: 12, color: sub, height: 1.3),
                       ),
                     ],
                   ],
@@ -236,6 +297,15 @@ class StitchFormBottomBar extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: StitchTheme.surface,
+          gradient: LinearGradient(
+            colors: <Color>[
+              Colors.white.withValues(alpha: 0.98),
+              StitchTheme.surface,
+              StitchTheme.surfaceAlt.withValues(alpha: 0.5),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
           border: Border(
             top: BorderSide(
               color: StitchTheme.formSectionDivider.withValues(alpha: 0.9),
@@ -260,9 +330,10 @@ class StitchFormBottomBar extends StatelessWidget {
                     child: OutlinedButton(
                       onPressed: primaryLoading ? null : onSecondary,
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                         side: const BorderSide(color: StitchTheme.inputBorder),
                       ),
@@ -278,12 +349,14 @@ class StitchFormBottomBar extends StatelessWidget {
                     style:
                         primaryStyle ??
                         FilledButton.styleFrom(
-                          backgroundColor: StitchTheme.primary,
+                          backgroundColor: StitchTheme.primaryStrong,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(16),
                           ),
+                          elevation: 0,
+                          shadowColor: Colors.transparent,
                         ),
                     child:
                         primaryLoading
@@ -316,13 +389,11 @@ PreferredSizeWidget stitchFormAppBar({
 }) {
   return AppBar(
     centerTitle: true,
+    backgroundColor: Colors.white,
     surfaceTintColor: Colors.transparent,
     scrolledUnderElevation: 0,
-    title: Text(
-      title,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
+    elevation: 0,
+    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
     actions: <Widget>[
       if (actions != null) ...actions,
       TextButton(

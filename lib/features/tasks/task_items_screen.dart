@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/utils/task_item_linear_pace.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
@@ -75,8 +76,7 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
           page: nextPage,
           status: _status,
           search: _searchController.text,
-          assigneeIds:
-              _assigneeFilterIds.isEmpty ? null : _assigneeFilterIds,
+          assigneeIds: _assigneeFilterIds.isEmpty ? null : _assigneeFilterIds,
         );
 
     if (!mounted) return;
@@ -138,20 +138,19 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
     final int taskId = _toInt(task?['id'] ?? item['task_id']);
     if (itemId <= 0 || taskId <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không mở được chi tiết đầu việc.')),
-      );
+      AppTagMessage.show('Không mở được chi tiết đầu việc.', isError: true);
       return;
     }
 
     await Navigator.of(context).push(
       MaterialPageRoute<Widget>(
-        builder: (_) => TaskItemDetailScreen(
-          token: widget.token,
-          apiService: widget.apiService,
-          taskId: taskId,
-          itemId: itemId,
-        ),
+        builder:
+            (_) => TaskItemDetailScreen(
+              token: widget.token,
+              apiService: widget.apiService,
+              taskId: taskId,
+              itemId: itemId,
+            ),
       ),
     );
     await _load(page: _page);
@@ -344,9 +343,7 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
                                       ),
                                       decoration: BoxDecoration(
                                         color: tone.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(
-                                          16,
-                                        ),
+                                        borderRadius: BorderRadius.circular(16),
                                         border: Border.all(
                                           color: tone.withValues(alpha: 0.3),
                                         ),
@@ -391,7 +388,9 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
                                   child: LinearProgressIndicator(
                                     value: pct.clamp(0, 100) / 100,
                                     minHeight: 6,
-                                    color: tone,
+                                    color: StitchTheme.progressPercentFillColor(
+                                      pct,
+                                    ),
                                     backgroundColor: StitchTheme.surfaceAlt,
                                   ),
                                 ),

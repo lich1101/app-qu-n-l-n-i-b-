@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../config/app_env.dart';
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -31,8 +32,6 @@ class AccountsScreen extends StatefulWidget {
 }
 
 class _AccountsScreenState extends State<AccountsScreen> {
-  static final GlobalKey<ScaffoldMessengerState> _messengerKey =
-      GlobalKey<ScaffoldMessengerState>();
   String? _avatarUrl;
 
   String _roleLabel(String value) {
@@ -86,13 +85,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
   Future<void> _pickAvatar() async {
     if (widget.token == null || widget.token!.isEmpty) {
-      _messengerKey.currentState?.showSnackBar(
-        const SnackBar(
-          content: Text('Cần đăng nhập để cập nhật ảnh đại diện.'),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
-        ),
-      );
+      AppTagMessage.show('Cần đăng nhập để cập nhật ảnh đại diện.');
       return;
     }
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -106,23 +99,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
     );
     if (!mounted) return;
     if (url == null || url.isEmpty) {
-      _messengerKey.currentState?.showSnackBar(
-        const SnackBar(
-          content: Text('Không thể cập nhật ảnh đại diện.'),
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
-        ),
-      );
+      AppTagMessage.show('Không thể cập nhật ảnh đại diện.', isError: true);
       return;
     }
     setState(() => _avatarUrl = AppEnv.resolveMediaUrl(url));
-    _messengerKey.currentState?.showSnackBar(
-      const SnackBar(
-        content: Text('Đã cập nhật ảnh đại diện.'),
-        behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
-      ),
-    );
+    AppTagMessage.show('Đã cập nhật ảnh đại diện.');
   }
 
   @override
@@ -139,13 +120,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
     Future<void> handleTestPush() async {
       if (widget.token == null || widget.token!.isEmpty) {
-        _messengerKey.currentState?.showSnackBar(
-          const SnackBar(
-            content: Text('Cần đăng nhập để test thông báo.'),
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
-          ),
-        );
+        AppTagMessage.show('Cần đăng nhập để test thông báo.');
         return;
       }
       showDialog<void>(
@@ -160,14 +135,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
         Navigator.of(context).pop();
       }
       if (result['error'] == true) {
-        _messengerKey.currentState?.showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Không thể gửi push. Kiểm tra quyền administrator và cấu hình Firebase.',
-            ),
-            behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
-          ),
+        AppTagMessage.show(
+          'Không thể gửi push. Kiểm tra quyền administrator và cấu hình Firebase.',
+          isError: true,
         );
         return;
       }
@@ -208,12 +178,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
         buffer.write(' Đã gửi email dự phòng.');
       }
       buffer.write(' Token: $tokenCount.');
-      _messengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text(buffer.toString()),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-        ),
+      AppTagMessage.show(
+        buffer.toString(),
+        duration: const Duration(seconds: 6),
       );
 
       if (!context.mounted) return;
@@ -290,141 +257,157 @@ class _AccountsScreenState extends State<AccountsScreen> {
     }
 
     return SafeArea(
-      child: ScaffoldMessenger(
-        key: _messengerKey,
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomInset),
-          children: <Widget>[
-            const Text(
-              'Tài khoản',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottomInset),
+        children: <Widget>[
+          const Text(
+            'Tài khoản',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            widget.authUser == null
+                ? 'Đăng nhập để truy cập đầy đủ phân hệ.'
+                : 'Xin chào, $displayName!',
+            style: const TextStyle(color: StitchTheme.textMuted),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: StitchTheme.border),
             ),
-            const SizedBox(height: 6),
-            Text(
-              widget.authUser == null
-                  ? 'Đăng nhập để truy cập đầy đủ phân hệ.'
-                  : 'Xin chào, $displayName!',
-              style: const TextStyle(color: StitchTheme.textMuted),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: StitchTheme.border),
-              ),
-              child: Column(
-                children: <Widget>[
-                  Stack(
-                    alignment: Alignment.bottomRight,
-                    children: <Widget>[
-                      CircleAvatar(
-                        radius: 34,
-                        backgroundColor: StitchTheme.primary,
-                        backgroundImage:
-                            (_avatarUrl != null && _avatarUrl!.isNotEmpty)
-                                ? NetworkImage(_avatarUrl!)
-                                : null,
-                        child:
-                            (_avatarUrl == null || _avatarUrl!.isEmpty)
-                                ? Text(
-                                  _initials(displayName),
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                )
-                                : null,
-                      ),
-                      InkWell(
-                        onTap: _pickAvatar,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: StitchTheme.primary,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: const Icon(
-                            Icons.edit,
-                            size: 14,
-                            color: Colors.white,
-                          ),
+            child: Column(
+              children: <Widget>[
+                Stack(
+                  alignment: Alignment.bottomRight,
+                  children: <Widget>[
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: StitchTheme.primary,
+                      backgroundImage:
+                          (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                              ? NetworkImage(_avatarUrl!)
+                              : null,
+                      child:
+                          (_avatarUrl == null || _avatarUrl!.isEmpty)
+                              ? Text(
+                                _initials(displayName),
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              )
+                              : null,
+                    ),
+                    InkWell(
+                      onTap: _pickAvatar,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: StitchTheme.primary,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(
+                          Icons.edit,
+                          size: 14,
+                          color: Colors.white,
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    displayName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: StitchTheme.textMain,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    displayRole.isEmpty ? '—' : displayRole,
-                    style: TextStyle(
-                      color: StitchTheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (email.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 4),
-                    Text(
-                      email,
-                      style: const TextStyle(color: StitchTheme.textMuted),
                     ),
                   ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'TÀI KHOẢN',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: StitchTheme.textSubtle,
-              ),
-            ),
-            const SizedBox(height: 8),
-            _MenuCard(
-              children: <Widget>[
-                _MenuItem(
-                  icon: Icons.person_outline,
-                  title: 'Thông tin cá nhân',
                 ),
-                _MenuDivider(),
-                _MenuItem(icon: Icons.lock_outline, title: 'Đổi mật khẩu'),
+                const SizedBox(height: 12),
+                Text(
+                  displayName,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: StitchTheme.textMain,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  displayRole.isEmpty ? '—' : displayRole,
+                  style: TextStyle(
+                    color: StitchTheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (email.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    email,
+                    style: const TextStyle(color: StitchTheme.textMuted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'TÀI KHOẢN',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: StitchTheme.textSubtle,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _MenuCard(
+            children: <Widget>[
+              _MenuItem(icon: Icons.person_outline, title: 'Thông tin cá nhân'),
+              _MenuDivider(),
+              _MenuItem(icon: Icons.lock_outline, title: 'Đổi mật khẩu'),
+              _MenuDivider(),
+              _MenuItem(
+                icon: Icons.notifications_none,
+                title: 'Cài đặt thông báo',
+                onTap: () {
+                  if (widget.token == null || widget.token!.isEmpty) {
+                    AppTagMessage.show('Cần đăng nhập để cấu hình thông báo.');
+                    return;
+                  }
+                  Navigator.of(context).push(
+                    MaterialPageRoute<Widget>(
+                      builder:
+                          (_) => NotificationPreferencesScreen(
+                            token: widget.token!,
+                            apiService: widget.apiService,
+                            onSyncDeviceToken: widget.onSyncDeviceToken,
+                          ),
+                    ),
+                  );
+                },
+              ),
+              _MenuDivider(),
+              _MenuItem(
+                icon: Icons.language,
+                title: 'Ngôn ngữ',
+                trailing: const Text(
+                  'Tiếng Việt',
+                  style: TextStyle(color: StitchTheme.textMuted),
+                ),
+              ),
+              if (isAdministrator) ...<Widget>[
                 _MenuDivider(),
                 _MenuItem(
-                  icon: Icons.notifications_none,
-                  title: 'Cài đặt thông báo',
+                  icon: Icons.settings,
+                  title: 'Cài đặt hệ thống',
                   onTap: () {
-                    if (widget.token == null || widget.token!.isEmpty) {
-                      _messengerKey.currentState?.showSnackBar(
-                        const SnackBar(
-                          content: Text('Cần đăng nhập để cấu hình thông báo.'),
-                          behavior: SnackBarBehavior.floating,
-                          margin: EdgeInsets.fromLTRB(16, 12, 16, 0),
-                        ),
-                      );
-                      return;
-                    }
+                    if (widget.token == null || widget.token!.isEmpty) return;
                     Navigator.of(context).push(
                       MaterialPageRoute<Widget>(
                         builder:
-                            (_) => NotificationPreferencesScreen(
+                            (_) => SystemSettingsScreen(
                               token: widget.token!,
                               apiService: widget.apiService,
-                              onSyncDeviceToken: widget.onSyncDeviceToken,
                             ),
                       ),
                     );
@@ -432,70 +415,42 @@ class _AccountsScreenState extends State<AccountsScreen> {
                 ),
                 _MenuDivider(),
                 _MenuItem(
-                  icon: Icons.language,
-                  title: 'Ngôn ngữ',
-                  trailing: const Text(
-                    'Tiếng Việt',
-                    style: TextStyle(color: StitchTheme.textMuted),
-                  ),
+                  icon: Icons.notifications_active,
+                  title: 'Test gửi thông báo',
+                  onTap: () {
+                    handleTestPush();
+                  },
                 ),
-                if (isAdministrator) ...<Widget>[
-                  _MenuDivider(),
-                  _MenuItem(
-                    icon: Icons.settings,
-                    title: 'Cài đặt hệ thống',
-                    onTap: () {
-                      if (widget.token == null || widget.token!.isEmpty) return;
-                      Navigator.of(context).push(
-                        MaterialPageRoute<Widget>(
-                          builder:
-                              (_) => SystemSettingsScreen(
-                                token: widget.token!,
-                                apiService: widget.apiService,
-                              ),
-                        ),
-                      );
-                    },
-                  ),
-                  _MenuDivider(),
-                  _MenuItem(
-                    icon: Icons.notifications_active,
-                    title: 'Test gửi thông báo',
-                    onTap: () {
-                      handleTestPush();
-                    },
-                  ),
-                ],
               ],
+            ],
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'HỖ TRỢ',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: StitchTheme.textSubtle,
             ),
-            const SizedBox(height: 18),
-            const Text(
-              'HỖ TRỢ',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: StitchTheme.textSubtle,
-              ),
+          ),
+          const SizedBox(height: 8),
+          _MenuCard(
+            children: const <Widget>[
+              _MenuItem(icon: Icons.help_outline, title: 'Trợ giúp & Hỗ trợ'),
+              _MenuDivider(),
+              _MenuItem(icon: Icons.info_outline, title: 'Về hệ thống'),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: widget.onLogout,
+              icon: const Icon(Icons.logout),
+              label: const Text('Đăng xuất'),
             ),
-            const SizedBox(height: 8),
-            _MenuCard(
-              children: const <Widget>[
-                _MenuItem(icon: Icons.help_outline, title: 'Trợ giúp & Hỗ trợ'),
-                _MenuDivider(),
-                _MenuItem(icon: Icons.info_outline, title: 'Về hệ thống'),
-              ],
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: widget.onLogout,
-                icon: const Icon(Icons.logout),
-                label: const Text('Đăng xuất'),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

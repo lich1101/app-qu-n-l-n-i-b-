@@ -20,14 +20,24 @@ double get kStitchFormGap => kStitchTaskFormGap;
 BoxDecoration stitchFormSheetSurfaceDecoration() {
   return BoxDecoration(
     color: StitchTheme.surface,
+    gradient: LinearGradient(
+      colors: <Color>[
+        Colors.white,
+        StitchTheme.surface,
+        StitchTheme.surfaceAlt.withValues(alpha: 0.4),
+      ],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    ),
     borderRadius: const BorderRadius.vertical(
       top: Radius.circular(kStitchFormSheetTopRadius),
     ),
+    border: Border.all(color: StitchTheme.border.withValues(alpha: 0.72)),
     boxShadow: <BoxShadow>[
       BoxShadow(
-        color: StitchTheme.textMain.withValues(alpha: 0.08),
-        blurRadius: 24,
-        offset: const Offset(0, -4),
+        color: StitchTheme.textMain.withValues(alpha: 0.1),
+        blurRadius: 28,
+        offset: const Offset(0, -6),
       ),
     ],
   );
@@ -67,8 +77,17 @@ class StitchFormSheetTitleBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 12, 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: StitchTheme.surface,
+        gradient: LinearGradient(
+          colors: <Color>[
+            Colors.white,
+            StitchTheme.surface,
+            StitchTheme.surfaceAlt.withValues(alpha: 0.32),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(kStitchFormSheetTopRadius),
         ),
@@ -83,17 +102,27 @@ class StitchFormSheetTitleBar extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: StitchTheme.primarySoft,
-                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    colors: <Color>[
+                      StitchTheme.primarySoft,
+                      StitchTheme.primary.withValues(alpha: 0.18),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: StitchTheme.primary.withValues(alpha: 0.2),
                   ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: StitchTheme.primary.withValues(alpha: 0.14),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
                 ),
-                child: Icon(
-                  icon,
-                  color: StitchTheme.primaryStrong,
-                  size: 26,
-                ),
+                child: Icon(icon, color: StitchTheme.primaryStrong, size: 26),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -108,7 +137,8 @@ class StitchFormSheetTitleBar extends StatelessWidget {
                         color: StitchTheme.textMain,
                       ),
                     ),
-                    if (subtitle != null && subtitle!.trim().isNotEmpty) ...<Widget>[
+                    if (subtitle != null &&
+                        subtitle!.trim().isNotEmpty) ...<Widget>[
                       const SizedBox(height: 6),
                       Text(
                         subtitle!.trim(),
@@ -161,6 +191,15 @@ class StitchFormSheetActions extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       decoration: BoxDecoration(
         color: StitchTheme.surface,
+        gradient: LinearGradient(
+          colors: <Color>[
+            Colors.white.withValues(alpha: 0.98),
+            StitchTheme.surface,
+            StitchTheme.surfaceAlt.withValues(alpha: 0.46),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),

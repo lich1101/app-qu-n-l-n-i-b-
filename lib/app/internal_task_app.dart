@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../config/app_env.dart';
+import '../core/messaging/app_tag_message.dart';
 import '../core/settings/app_settings.dart';
 import '../core/theme/stitch_theme.dart';
 import '../features/home/home_shell.dart';
@@ -16,9 +18,20 @@ class InternalTaskApp extends StatelessWidget {
       builder: (BuildContext context, Widget? child) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: appSettingsStore.settings.brandName.isNotEmpty
-              ? appSettingsStore.settings.brandName
-              : AppEnv.appName,
+          locale: const Locale('vi', 'VN'),
+          supportedLocales: const <Locale>[
+            Locale('vi', 'VN'),
+            Locale('en', 'US'),
+          ],
+          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          title:
+              appSettingsStore.settings.brandName.isNotEmpty
+                  ? appSettingsStore.settings.brandName
+                  : AppEnv.appName,
           color: StitchTheme.bg,
           theme: StitchTheme.light(),
           themeMode: ThemeMode.light,
@@ -39,7 +52,13 @@ class InternalTaskApp extends StatelessWidget {
                 onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
                 child: MediaQuery(
                   data: media.copyWith(textScaler: scaler),
-                  child: child ?? const SizedBox.shrink(),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: <Widget>[
+                      child ?? const SizedBox.shrink(),
+                      const AppTagMessageOverlay(),
+                    ],
+                  ),
                 ),
               ),
             );

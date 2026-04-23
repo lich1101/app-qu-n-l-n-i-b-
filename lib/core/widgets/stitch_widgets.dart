@@ -317,7 +317,7 @@ class StitchProgressCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: clamped / 100,
               minHeight: 6,
-              color: StitchTheme.primary,
+              color: StitchTheme.progressPercentFillColor(clamped),
               backgroundColor: StitchTheme.surfaceAlt,
             ),
           ),
@@ -517,20 +517,20 @@ InputDecoration stitchSheetInputDecoration(
   String? hint,
 }) {
   final OutlineInputBorder border = OutlineInputBorder(
-    borderRadius: BorderRadius.circular(14),
-    borderSide: const BorderSide(color: StitchTheme.border),
+    borderRadius: BorderRadius.circular(16),
+    borderSide: const BorderSide(color: StitchTheme.inputBorder, width: 1.15),
   );
   return InputDecoration(
     labelText: label,
     hintText: hint,
     filled: true,
-    fillColor: StitchTheme.surface,
+    fillColor: const Color(0xFFF8FAFC),
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
-      borderSide: BorderSide(color: StitchTheme.primary, width: 1.5),
+      borderSide: BorderSide(color: StitchTheme.primaryStrong, width: 1.6),
     ),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
     floatingLabelBehavior: FloatingLabelBehavior.auto,
   ).applyDefaults(Theme.of(context).inputDecorationTheme);
 }
@@ -556,7 +556,9 @@ class StitchFeedbackBanner extends StatelessWidget {
     final Color fg =
         isError ? StitchTheme.dangerStrong : StitchTheme.successStrong;
     final IconData icon =
-        isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded;
+        isError
+            ? Icons.error_outline_rounded
+            : Icons.check_circle_outline_rounded;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),

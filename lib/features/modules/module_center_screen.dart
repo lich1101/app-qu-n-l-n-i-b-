@@ -8,6 +8,7 @@ class ModuleCenterScreen extends StatelessWidget {
     this.onOpenNotifications,
     this.onOpenHandover,
     this.onOpenChat,
+    this.onOpenChatbot,
     this.onOpenActivityLogs,
     this.onOpenMeetings,
     this.onOpenCrm,
@@ -31,6 +32,7 @@ class ModuleCenterScreen extends StatelessWidget {
   final VoidCallback? onOpenNotifications;
   final VoidCallback? onOpenHandover;
   final VoidCallback? onOpenChat;
+  final VoidCallback? onOpenChatbot;
   final VoidCallback? onOpenActivityLogs;
   final VoidCallback? onOpenMeetings;
   final VoidCallback? onOpenCrm;
@@ -105,6 +107,12 @@ class ModuleCenterScreen extends StatelessWidget {
         subtitle: 'Trao đổi theo công việc/dự án',
         icon: Icons.chat_bubble_outline,
         onTap: onOpenChat,
+      ),
+      _ModuleItem(
+        title: 'AI Chatbot',
+        subtitle: 'Hỏi đáp với các bot AI đã cấu hình trên hệ thống',
+        icon: Icons.smart_toy_outlined,
+        onTap: onOpenChatbot,
       ),
       _ModuleItem(
         title: 'Chấm công Wi-Fi',

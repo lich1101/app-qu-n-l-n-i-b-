@@ -8,6 +8,31 @@ import '../../data/services/mobile_api_service.dart';
 import 'opportunity_detail_screen.dart';
 import 'opportunity_list_form_screen.dart';
 
+Color _statusColor(String code) {
+  switch (code) {
+    case 'open':
+      return const Color(0xFF0EA5E9);
+    case 'won':
+    case 'success':
+      return const Color(0xFF10B981);
+    case 'lost':
+      return const Color(0xFFEF4444);
+    default:
+      return const Color(0xFF64748B);
+  }
+}
+
+Color _statusColorFromHex(String? rawHex, {Color? fallback}) {
+  final String hex = (rawHex ?? '').trim().replaceAll('#', '');
+  final Color effectiveFallback = fallback ?? const Color(0xFF64748B);
+  if (hex.isEmpty) return effectiveFallback;
+  final String argb = hex.length == 6 ? 'FF$hex' : hex;
+  if (argb.length != 8) return effectiveFallback;
+  final int? value = int.tryParse(argb, radix: 16);
+  if (value == null) return effectiveFallback;
+  return Color(value);
+}
+
 class OpportunitiesScreen extends StatefulWidget {
   const OpportunitiesScreen({
     super.key,
@@ -29,19 +54,19 @@ class OpportunitiesScreen extends StatefulWidget {
 class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
   bool loading = false;
   String message = '';
-  String search = '';
   String? selectedStatus;
   List<Map<String, dynamic>> opportunities = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> statuses = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> clients = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> statusOptions = <Map<String, dynamic>>[];
   List<int> staffFilterIds = <int>[];
   List<Map<String, dynamic>> staffLookupUsers = <Map<String, dynamic>>[];
-  
+
   int currentPage = 1;
   int lastPage = 1;
   int totalOpportunities = 0;
   bool loadingMore = false;
   final ScrollController scrollController = ScrollController();
+  final TextEditingController searchCtrl = TextEditingController();
 
   /// Tổng doanh số (amount) theo bộ lọc, mọi trang.
   double aggregateRevenueTotal = 0;
@@ -51,14 +76,22 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
     super.initState();
     scrollController.addListener(_onScroll);
     _loadStaffLookup();
+    _loadStatusOptions();
     _fetch();
   }
 
   Future<void> _loadStaffLookup() async {
-    final List<Map<String, dynamic>> rows =
-        await widget.apiService.getUsersLookup(widget.token);
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getUsersLookup(widget.token);
     if (!mounted) return;
     setState(() => staffLookupUsers = rows);
+  }
+
+  Future<void> _loadStatusOptions() async {
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getOpportunityStatuses(widget.token);
+    if (!mounted) return;
+    setState(() => statusOptions = rows);
   }
 
   void _onScroll() {
@@ -73,6 +106,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
 
   @override
   void dispose() {
+    searchCtrl.dispose();
     scrollController.dispose();
     super.dispose();
   }
@@ -82,32 +116,29 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
       loading = true;
       currentPage = 1;
     });
-    final List<Map<String, dynamic>> statusRows =
-        await widget.apiService.getOpportunityStatuses(widget.token);
-    
-    final Map<String, dynamic> oppPayload =
-        await widget.apiService.getOpportunities(
-      widget.token,
-      page: 1,
-      perPage: 20,
-      search: search,
-      status: selectedStatus,
-      staffIds: staffFilterIds.isEmpty ? null : staffFilterIds,
-    );
-    
-    final Map<String, dynamic> clientPayload =
-        await widget.apiService.getClients(widget.token, perPage: 100);
-    
+    final Map<String, dynamic> oppPayload = await widget.apiService
+        .getOpportunities(
+          widget.token,
+          page: 1,
+          perPage: 20,
+          search: searchCtrl.text.trim(),
+          status: selectedStatus,
+          staffIds: staffFilterIds.isEmpty ? null : staffFilterIds,
+        );
+
+    final Map<String, dynamic> clientPayload = await widget.apiService
+        .getClients(widget.token, perPage: 100);
+
     if (!mounted) return;
-    
+
     final List<dynamic> oppData = (oppPayload['data'] ?? []) as List<dynamic>;
-    final List<dynamic> clientData = (clientPayload['data'] ?? []) as List<dynamic>;
+    final List<dynamic> clientData =
+        (clientPayload['data'] ?? []) as List<dynamic>;
 
     _applyOpportunityAggregates(oppPayload['aggregates']);
 
     setState(() {
       loading = false;
-      statuses = statusRows;
       opportunities = oppData.map((e) => e as Map<String, dynamic>).toList();
       clients = clientData.map((e) => e as Map<String, dynamic>).toList();
       lastPage = (oppPayload['last_page'] ?? 1) as int;
@@ -135,21 +166,24 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
     setState(() => loadingMore = true);
 
     final int nextPage = currentPage + 1;
-    final Map<String, dynamic> payload = await widget.apiService.getOpportunities(
-      widget.token,
-      page: nextPage,
-      perPage: 20,
-      search: search,
-      status: selectedStatus,
-      staffIds: staffFilterIds.isEmpty ? null : staffFilterIds,
-    );
+    final Map<String, dynamic> payload = await widget.apiService
+        .getOpportunities(
+          widget.token,
+          page: nextPage,
+          perPage: 20,
+          search: searchCtrl.text.trim(),
+          status: selectedStatus,
+          staffIds: staffFilterIds.isEmpty ? null : staffFilterIds,
+        );
 
     if (mounted) {
       final List<dynamic> newData = (payload['data'] ?? []) as List<dynamic>;
       _applyOpportunityAggregates(payload['aggregates']);
       setState(() {
         loadingMore = false;
-        opportunities.addAll(newData.map((e) => e as Map<String, dynamic>).toList());
+        opportunities.addAll(
+          newData.map((e) => e as Map<String, dynamic>).toList(),
+        );
         currentPage = nextPage;
         lastPage = (payload['last_page'] ?? 1) as int;
         totalOpportunities = (payload['total'] ?? 0) as int;
@@ -179,24 +213,24 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
   Future<void> _delete(int id) async {
     final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Xác nhận xóa'),
-        content: const Text('Bạn có chắc muốn xóa cơ hội này?'),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Hủy'),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Xác nhận xóa'),
+            content: const Text('Bạn có chắc muốn xóa cơ hội này?'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Hủy'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Xóa', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
     );
     if (confirmed != true) return;
-    final bool ok =
-        await widget.apiService.deleteOpportunity(widget.token, id);
+    final bool ok = await widget.apiService.deleteOpportunity(widget.token, id);
     if (!mounted) return;
     setState(() => message = ok ? 'Đã xóa.' : 'Xóa thất bại.');
     if (ok) await _fetch();
@@ -210,7 +244,6 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
               token: widget.token,
               apiService: widget.apiService,
               clients: clients,
-              statuses: statuses,
               initialOpportunity: opp,
             ),
       ),
@@ -250,7 +283,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
             children: <Widget>[
               StitchFilterCard(
                 title: 'Bộ lọc cơ hội',
-                subtitle: 'Tìm và lọc cơ hội bán hàng theo trạng thái.',
+                subtitle: 'Tìm và lọc cơ hội theo trạng thái thủ công.',
                 trailing: null,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -263,7 +296,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                           hintText: 'Tìm kiếm...',
                           prefixIcon: Icon(Icons.search),
                         ),
-                        onChanged: (String value) => search = value,
+                        controller: searchCtrl,
                         onSubmitted: (_) => _fetch(),
                       ),
                     ),
@@ -278,7 +311,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                     ),
                     const SizedBox(height: 12),
                     StitchFilterField(
-                      label: 'Trạng thái',
+                      label: 'Trạng thái cơ hội',
                       child: StitchSearchableSelectField<String>(
                         value: selectedStatus,
                         nullable: true,
@@ -287,15 +320,35 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                         label: 'Trạng thái',
                         searchHint: 'Tìm trạng thái...',
                         options:
-                            statuses
-                                .map(
-                                  (Map<String, dynamic> s) =>
-                                      StitchSelectOption<String>(
-                                        value: (s['code'] ?? '').toString(),
-                                        label: (s['name'] ?? '').toString(),
+                            statusOptions.isEmpty
+                                ? const <StitchSelectOption<String>>[
+                                  StitchSelectOption<String>(
+                                    value: 'open',
+                                    label: 'Đang mở',
+                                  ),
+                                  StitchSelectOption<String>(
+                                    value: 'won',
+                                    label: 'Thành công',
+                                  ),
+                                  StitchSelectOption<String>(
+                                    value: 'lost',
+                                    label: 'Thất bại',
+                                  ),
+                                ]
+                                : statusOptions
+                                    .map(
+                                      (
+                                        Map<String, dynamic> row,
+                                      ) => StitchSelectOption<String>(
+                                        value: (row['code'] ?? '').toString(),
+                                        label: (row['name'] ?? '—').toString(),
                                       ),
-                                )
-                                .toList(),
+                                    )
+                                    .where(
+                                      (StitchSelectOption<String> opt) =>
+                                          opt.value.trim().isNotEmpty,
+                                    )
+                                    .toList(),
                         onChanged: (String? value) {
                           setState(() => selectedStatus = value);
                           _fetch();
@@ -306,9 +359,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                             Icons.keyboard_arrow_down_rounded,
                             color: StitchTheme.textMuted,
                           ),
-                        ).applyDefaults(
-                          Theme.of(context).inputDecorationTheme,
-                        ),
+                        ).applyDefaults(Theme.of(context).inputDecorationTheme),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -344,7 +395,10 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                 const SizedBox(height: 12),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: StitchTheme.surfaceAlt,
                     borderRadius: BorderRadius.circular(12),
@@ -389,21 +443,23 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                 ...opportunities.map((opp) {
                   final Map<String, dynamic>? client =
                       opp['client'] as Map<String, dynamic>?;
-                  final Map<String, dynamic>? statusConfig =
-                      opp['status_config'] as Map<String, dynamic>?;
                   final Map<String, dynamic>? assignee =
                       opp['assignee'] as Map<String, dynamic>?;
+                  final String code =
+                      (opp['status'] ?? opp['computed_status'] ?? '')
+                          .toString()
+                          .toLowerCase();
                   final String statusName =
-                      (statusConfig?['name'] ?? opp['status'] ?? '—')
+                      (opp['status_label'] ??
+                              opp['computed_status_label'] ??
+                              opp['status'] ??
+                              opp['computed_status'] ??
+                              '—')
                           .toString();
-                  final String colorHex =
-                      (statusConfig?['color_hex'] ?? '').toString();
-                  Color chipColor = StitchTheme.primary;
-                  if (colorHex.length >= 6) {
-                    final String hex = colorHex.replaceFirst('#', '');
-                    chipColor =
-                        Color(int.parse('FF$hex', radix: 16));
-                  }
+                  final Color chipColor = _statusColorFromHex(
+                    opp['status_color_hex']?.toString(),
+                    fallback: _statusColor(code),
+                  );
 
                   return GestureDetector(
                     onTap: () async {
@@ -411,13 +467,14 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                       if (id <= 0) return;
                       await Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => OpportunityDetailScreen(
-                            token: widget.token,
-                            apiService: widget.apiService,
-                            opportunityId: id,
-                            canManage: widget.canManage,
-                            canDelete: widget.canDelete,
-                          ),
+                          builder:
+                              (_) => OpportunityDetailScreen(
+                                token: widget.token,
+                                apiService: widget.apiService,
+                                opportunityId: id,
+                                canManage: widget.canManage,
+                                canDelete: widget.canDelete,
+                              ),
                         ),
                       );
                       if (!mounted) return;
@@ -429,7 +486,11 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                         color: StitchTheme.surface,
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
-                          BoxShadow(color: StitchTheme.textMain.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
+                          BoxShadow(
+                            color: StitchTheme.textMain.withValues(alpha: 0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
                         ],
                         border: Border.all(color: StitchTheme.border),
                       ),
@@ -441,7 +502,10 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                               width: 6,
                               decoration: BoxDecoration(
                                 color: chipColor,
-                                borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), bottomLeft: Radius.circular(16)),
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(16),
+                                  bottomLeft: Radius.circular(16),
+                                ),
                               ),
                             ),
                             Expanded(
@@ -450,70 +514,181 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          (opp['title'] ?? 'Cơ hội').toString(),
-                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, height: 1.2),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(color: chipColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                                        child: Text(statusName, style: TextStyle(color: chipColor, fontSize: 12, fontWeight: FontWeight.bold)),
-                                      ),
-                                      if (widget.canManage || widget.canDelete)
-                                        PopupMenuButton<String>(
-                                          icon: const Icon(Icons.more_vert, size: 20, color: StitchTheme.textMuted),
-                                          padding: EdgeInsets.zero,
-                                          offset: const Offset(0, 40),
-                                          onSelected: (val) {
-                                            if (val == 'edit' && widget.canManage) _openForm(opp: opp);
-                                            if (val == 'delete' && widget.canDelete) _delete(opp['id'] as int);
-                                          },
-                                          itemBuilder: (context) => [
-                                            if (widget.canManage) const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_outlined, size: 20), SizedBox(width: 8), Text('Sửa')])),
-                                            if (widget.canDelete) const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, color: Colors.red, size: 20), SizedBox(width: 8), Text('Xóa', style: TextStyle(color: Colors.red))])),
-                                          ],
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  if (client != null) ...[
                                     Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        const Icon(Icons.business_center_outlined, size: 14, color: StitchTheme.textMuted),
-                                        const SizedBox(width: 6),
                                         Expanded(
                                           child: Text(
-                                            '${client['name'] ?? ''}${(client['company'] ?? '').toString().isNotEmpty ? ' — ${client['company']}' : ''}',
-                                            style: const TextStyle(color: StitchTheme.textSubtle, fontSize: 13),
+                                            (opp['title'] ?? 'Cơ hội')
+                                                .toString(),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 16,
+                                              height: 1.2,
+                                            ),
                                           ),
                                         ),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: chipColor.withValues(
+                                              alpha: 0.1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            statusName,
+                                            style: TextStyle(
+                                              color: chipColor,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        if (widget.canManage ||
+                                            widget.canDelete)
+                                          PopupMenuButton<String>(
+                                            icon: const Icon(
+                                              Icons.more_vert,
+                                              size: 20,
+                                              color: StitchTheme.textMuted,
+                                            ),
+                                            padding: EdgeInsets.zero,
+                                            offset: const Offset(0, 40),
+                                            onSelected: (val) {
+                                              if (val == 'edit' &&
+                                                  widget.canManage) {
+                                                _openForm(opp: opp);
+                                              }
+                                              if (val == 'delete' &&
+                                                  widget.canDelete) {
+                                                _delete(opp['id'] as int);
+                                              }
+                                            },
+                                            itemBuilder:
+                                                (context) => [
+                                                  if (widget.canManage)
+                                                    const PopupMenuItem(
+                                                      value: 'edit',
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(
+                                                            Icons.edit_outlined,
+                                                            size: 20,
+                                                          ),
+                                                          SizedBox(width: 8),
+                                                          Text('Sửa'),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  if (widget.canDelete)
+                                                    const PopupMenuItem(
+                                                      value: 'delete',
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(
+                                                            Icons
+                                                                .delete_outline,
+                                                            color: Colors.red,
+                                                            size: 20,
+                                                          ),
+                                                          SizedBox(width: 8),
+                                                          Text(
+                                                            'Xóa',
+                                                            style: TextStyle(
+                                                              color: Colors.red,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                ],
+                                          ),
                                       ],
                                     ),
                                     const SizedBox(height: 8),
-                                  ],
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.attach_money, size: 16, color: StitchTheme.textSubtle),
-                                      const SizedBox(width: 4),
-                                      Text(_formatCurrency(opp['amount']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                                      const SizedBox(width: 16),
-                                      if (assignee != null) ...[
-                                        const Icon(Icons.person_outline, size: 16, color: StitchTheme.textSubtle),
-                                        const SizedBox(width: 4),
-                                        Text((assignee['name'] ?? '').toString(), style: const TextStyle(color: StitchTheme.textSubtle, fontSize: 13, fontWeight: FontWeight.w600)),
-                                      ],
+                                    if (client != null) ...[
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.business_center_outlined,
+                                            size: 14,
+                                            color: StitchTheme.textMuted,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              '${client['name'] ?? ''}${(client['company'] ?? '').toString().isNotEmpty ? ' — ${client['company']}' : ''}',
+                                              style: const TextStyle(
+                                                color: StitchTheme.textSubtle,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
                                     ],
-                                  ),
-                                  if ((opp['notes'] ?? '').toString().isNotEmpty) ...[
-                                    const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1)),
-                                    Text((opp['notes'] ?? '').toString(), style: const TextStyle(color: StitchTheme.textMuted, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                  ],
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.attach_money,
+                                          size: 16,
+                                          color: StitchTheme.textSubtle,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          _formatCurrency(opp['amount']),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        if (assignee != null) ...[
+                                          const Icon(
+                                            Icons.person_outline,
+                                            size: 16,
+                                            color: StitchTheme.textSubtle,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            (assignee['name'] ?? '').toString(),
+                                            style: const TextStyle(
+                                              color: StitchTheme.textSubtle,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    if ((opp['notes'] ?? '')
+                                        .toString()
+                                        .isNotEmpty) ...[
+                                      const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        child: Divider(height: 1),
+                                      ),
+                                      Text(
+                                        (opp['notes'] ?? '').toString(),
+                                        style: const TextStyle(
+                                          color: StitchTheme.textMuted,
+                                          fontSize: 13,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -527,17 +702,20 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
               if (loadingMore)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: CircularProgressIndicator(),
-                  ),
+                  child: Center(child: CircularProgressIndicator()),
                 ),
-              if (!loadingMore && currentPage >= lastPage && opportunities.isNotEmpty)
+              if (!loadingMore &&
+                  currentPage >= lastPage &&
+                  opportunities.isNotEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
                   child: Center(
                     child: Text(
                       'Đã hiển thị toàn bộ cơ hội.',
-                      style: TextStyle(color: StitchTheme.textMuted, fontSize: 13),
+                      style: TextStyle(
+                        color: StitchTheme.textMuted,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),

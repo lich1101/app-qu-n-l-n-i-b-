@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/theme/stitch_theme.dart';
 
@@ -332,18 +333,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 if (!mounted || !dialogContext.mounted) return;
                 setState(() => _isSendingForgotPassword = false);
                 Navigator.of(dialogContext).pop();
-                ScaffoldMessenger.of(
-                  this.context,
-                ).showSnackBar(SnackBar(content: Text(message)));
+                AppTagMessage.show(message);
               } catch (_) {
                 if (!mounted || !dialogContext.mounted) return;
                 setDialogState(() => _isSendingForgotPassword = false);
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Không thể gửi mật khẩu mới. Vui lòng thử lại.',
-                    ),
-                  ),
+                AppTagMessage.show(
+                  'Không thể gửi mật khẩu mới. Vui lòng thử lại.',
+                  isError: true,
                 );
               }
             }

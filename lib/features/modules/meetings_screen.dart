@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
@@ -41,6 +42,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   List<Map<String, dynamic>> users = <Map<String, dynamic>>[];
   Set<int> selectedAttendeeIds = <int>{};
   bool loading = false;
+  bool _listRefreshing = false;
   String message = '';
   int? editingMeetingId;
   int? attendeeFilterId;
@@ -146,24 +148,42 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   }
 
   Future<void> _fetch() async {
-    setState(() => loading = true);
-    final Map<String, dynamic> data = await widget.apiService.getMeetings(
-      widget.token,
-      search: searchCtrl.text.trim(),
-      dateFrom: dateFromCtrl.text.trim(),
-      dateTo: dateToCtrl.text.trim(),
-      attendeeId: attendeeFilterId,
-      perPage: 200,
-    );
-    if (!mounted) return;
     setState(() {
-      loading = false;
-      meetings =
-          ((data['data'] ?? <dynamic>[]) as List<dynamic>)
-              .map((dynamic e) => e as Map<String, dynamic>)
-              .toList();
+      if (meetings.isEmpty) {
+        loading = true;
+        _listRefreshing = false;
+      } else {
+        loading = false;
+        _listRefreshing = true;
+      }
     });
-    _tryOpenInitialMeetingFromPush();
+    try {
+      final Map<String, dynamic> data = await widget.apiService.getMeetings(
+        widget.token,
+        search: searchCtrl.text.trim(),
+        dateFrom: dateFromCtrl.text.trim(),
+        dateTo: dateToCtrl.text.trim(),
+        attendeeId: attendeeFilterId,
+        perPage: 200,
+      );
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        _listRefreshing = false;
+        meetings =
+            ((data['data'] ?? <dynamic>[]) as List<dynamic>)
+                .map((dynamic e) => e as Map<String, dynamic>)
+                .toList();
+      });
+      _tryOpenInitialMeetingFromPush();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          loading = false;
+          _listRefreshing = false;
+        });
+      }
+    }
   }
 
   void _tryOpenInitialMeetingFromPush() {
@@ -711,181 +731,193 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
             ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _fetch,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: <Widget>[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: CalendarDatePicker(
-                  initialDate: selectedDate,
-                  firstDate: DateTime(DateTime.now().year - 3),
-                  lastDate: DateTime(DateTime.now().year + 5),
-                  onDateChanged: (DateTime value) {
-                    setState(() => selectedDate = value);
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            StitchFilterCard(
-              title: 'Bộ lọc lịch họp',
-              subtitle:
-                  'Lọc nhanh theo từ khóa, khoảng ngày và thành viên tham gia để lịch nhìn gọn hơn.',
-              trailing: OutlinedButton.icon(
-                onPressed: _fetch,
-                icon: const Icon(Icons.filter_alt_outlined, size: 18),
-                label: const Text('Lọc'),
-              ),
-              child: Column(
-                children: <Widget>[
-                  StitchFilterField(
-                    label: 'Tìm kiếm',
-                    child: TextField(
-                      controller: searchCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Tiêu đề hoặc ghi chú cuộc họp',
-                      ),
+      body: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: <Widget>[
+          CupertinoSliverRefreshControl(onRefresh: _fetch),
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(<Widget>[
+                if (_listRefreshing)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: CalendarDatePicker(
+                      initialDate: selectedDate,
+                      firstDate: DateTime(DateTime.now().year - 3),
+                      lastDate: DateTime(DateTime.now().year + 5),
+                      onDateChanged: (DateTime value) {
+                        setState(() => selectedDate = value);
+                      },
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
+                ),
+                const SizedBox(height: 10),
+                StitchFilterCard(
+                  title: 'Bộ lọc lịch họp',
+                  subtitle:
+                      'Lọc nhanh theo từ khóa, khoảng ngày và thành viên tham gia để lịch nhìn gọn hơn.',
+                  trailing: OutlinedButton.icon(
+                    onPressed: _fetch,
+                    icon: const Icon(Icons.filter_alt_outlined, size: 18),
+                    label: const Text('Lọc'),
+                  ),
+                  child: Column(
                     children: <Widget>[
-                      Expanded(
-                        child: StitchFilterField(
-                          label: 'Từ ngày',
-                          child: TextField(
-                            controller: dateFromCtrl,
-                            readOnly: true,
-                            decoration: const InputDecoration(
-                              hintText: 'YYYY-MM-DD',
-                              suffixIcon: Icon(Icons.event),
-                            ),
-                            onTap: () => _pickDate(dateFromCtrl),
+                      StitchFilterField(
+                        label: 'Tìm kiếm',
+                        child: TextField(
+                          controller: searchCtrl,
+                          decoration: const InputDecoration(
+                            hintText: 'Tiêu đề hoặc ghi chú cuộc họp',
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: StitchFilterField(
-                          label: 'Đến ngày',
-                          child: TextField(
-                            controller: dateToCtrl,
-                            readOnly: true,
-                            decoration: const InputDecoration(
-                              hintText: 'YYYY-MM-DD',
-                              suffixIcon: Icon(Icons.event),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: StitchFilterField(
+                              label: 'Từ ngày',
+                              child: TextField(
+                                controller: dateFromCtrl,
+                                readOnly: true,
+                                decoration: const InputDecoration(
+                                  hintText: 'YYYY-MM-DD',
+                                  suffixIcon: Icon(Icons.event),
+                                ),
+                                onTap: () => _pickDate(dateFromCtrl),
+                              ),
                             ),
-                            onTap: () => _pickDate(dateToCtrl),
                           ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: StitchFilterField(
+                              label: 'Đến ngày',
+                              child: TextField(
+                                controller: dateToCtrl,
+                                readOnly: true,
+                                decoration: const InputDecoration(
+                                  hintText: 'YYYY-MM-DD',
+                                  suffixIcon: Icon(Icons.event),
+                                ),
+                                onTap: () => _pickDate(dateToCtrl),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      StitchFilterField(
+                        label: 'Thành viên',
+                        child: DropdownButtonFormField<int?>(
+                          value: attendeeFilterId,
+                          decoration: const InputDecoration(
+                            hintText: 'Tất cả thành viên',
+                          ),
+                          items: <DropdownMenuItem<int?>>[
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text('Tất cả thành viên'),
+                            ),
+                            ...users.map((Map<String, dynamic> user) {
+                              final int? id = _parseInt(user['id']);
+                              return DropdownMenuItem<int?>(
+                                value: id,
+                                child: Text((user['name'] ?? '').toString()),
+                              );
+                            }),
+                          ],
+                          onChanged: (int? value) {
+                            setState(() => attendeeFilterId = value);
+                          },
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  StitchFilterField(
-                    label: 'Thành viên',
-                    child: DropdownButtonFormField<int?>(
-                      value: attendeeFilterId,
-                      decoration: const InputDecoration(
-                        hintText: 'Tất cả thành viên',
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        'Sự kiện ngày ${_fmtDate(selectedDate)}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      items: <DropdownMenuItem<int?>>[
-                        const DropdownMenuItem<int?>(
-                          value: null,
-                          child: Text('Tất cả thành viên'),
-                        ),
-                        ...users.map((Map<String, dynamic> user) {
-                          final int? id = _parseInt(user['id']);
-                          return DropdownMenuItem<int?>(
-                            value: id,
-                            child: Text((user['name'] ?? '').toString()),
-                          );
-                        }),
-                      ],
-                      onChanged: (int? value) {
-                        setState(() => attendeeFilterId = value);
-                      },
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Sự kiện ngày ${_fmtDate(selectedDate)}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                    if (widget.canManage)
+                      ElevatedButton.icon(
+                        onPressed: () => _openForm(),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Thêm'),
+                      ),
+                  ],
                 ),
-                if (widget.canManage)
-                  ElevatedButton.icon(
-                    onPressed: () => _openForm(),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Thêm'),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Giữ lâu vào cuộc họp để xem nhanh thành viên, ghi chú, link và thời gian bắt đầu.',
-              style: TextStyle(fontSize: 12, color: StitchTheme.textMuted),
-            ),
-            if (message.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 8),
-              Text(message),
-            ],
-            if (loading) ...<Widget>[
-              const SizedBox(height: 12),
-              const Center(child: CircularProgressIndicator()),
-            ] else ...<Widget>[
-              const SizedBox(height: 8),
-              if (selectedDayMeetings.isEmpty)
+                const SizedBox(height: 6),
                 const Text(
-                  'Không có lịch họp trong ngày đã chọn.',
-                  style: TextStyle(color: StitchTheme.textMuted),
+                  'Giữ lâu vào cuộc họp để xem nhanh thành viên, ghi chú, link và thời gian bắt đầu.',
+                  style: TextStyle(fontSize: 12, color: StitchTheme.textMuted),
                 ),
-              ...selectedDayMeetings.map((Map<String, dynamic> meeting) {
-                final int id = _parseInt(meeting['id']) ?? 0;
-                final List<dynamic> attendees =
-                    (meeting['attendees'] ?? <dynamic>[]) as List<dynamic>;
-                return Card(
-                  child: ListTile(
-                    onLongPress: () => _showMeetingDetails(meeting),
-                    title: Text((meeting['title'] ?? 'Cuộc họp').toString()),
-                    subtitle: Text(
-                      '${_displayDateTime((meeting['scheduled_at'] ?? '').toString())}\n'
-                      'Thành viên: ${attendees.length}',
+                if (message.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(message),
+                ],
+                if (loading && meetings.isEmpty) ...<Widget>[
+                  const SizedBox(height: 12),
+                  const Center(child: CircularProgressIndicator()),
+                ] else ...<Widget>[
+                  const SizedBox(height: 8),
+                  if (selectedDayMeetings.isEmpty)
+                    const Text(
+                      'Không có lịch họp trong ngày đã chọn.',
+                      style: TextStyle(color: StitchTheme.textMuted),
                     ),
-                    isThreeLine: true,
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        if (widget.canManage)
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            onPressed: () => _openForm(meeting: meeting),
-                          ),
-                        if (widget.canDelete)
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.red,
-                            ),
-                            onPressed: () => _confirmDelete(id),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            ],
-          ],
-        ),
+                  ...selectedDayMeetings.map((Map<String, dynamic> meeting) {
+                    final int id = _parseInt(meeting['id']) ?? 0;
+                    final List<dynamic> attendees =
+                        (meeting['attendees'] ?? <dynamic>[]) as List<dynamic>;
+                    return Card(
+                      child: ListTile(
+                        onLongPress: () => _showMeetingDetails(meeting),
+                        title: Text(
+                          (meeting['title'] ?? 'Cuộc họp').toString(),
+                        ),
+                        subtitle: Text(
+                          '${_displayDateTime((meeting['scheduled_at'] ?? '').toString())}\n'
+                          'Thành viên: ${attendees.length}',
+                        ),
+                        isThreeLine: true,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            if (widget.canManage)
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: () => _openForm(meeting: meeting),
+                              ),
+                            if (widget.canDelete)
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () => _confirmDelete(id),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ]),
+            ),
+          ),
+        ],
       ),
     );
   }

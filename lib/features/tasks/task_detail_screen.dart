@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/utils/task_item_linear_pace.dart';
 import '../../core/utils/vietnam_time.dart';
@@ -148,7 +149,29 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   bool get _isAdminRole =>
       _currentUserRole == 'admin' || _currentUserRole == 'administrator';
 
+  /// NV thu hợp đồng: chỉ xem, không thêm/sửa/xóa đầu việc (trừ chủ dự án / admin).
+  bool get _isContractCollectorReadOnly {
+    if (_currentUserId == null) return false;
+    final dynamic rawProject = _task?['project'];
+    final Map<String, dynamic>? project =
+        rawProject is Map<String, dynamic> ? rawProject : null;
+    if (project == null) return false;
+    final dynamic rawContract = project['contract'];
+    final int collectorId = _toInt(
+      project['collector_user_id'] ??
+          (rawContract is Map<String, dynamic>
+              ? rawContract['collector_user_id']
+              : null),
+    );
+    final int ownerId = _toInt(project['owner_id']);
+    if (collectorId <= 0 || collectorId != _currentUserId) return false;
+    if (_isAdminRole) return false;
+    if (ownerId > 0 && ownerId == _currentUserId) return false;
+    return true;
+  }
+
   bool get _canManageItems {
+    if (_isContractCollectorReadOnly) return false;
     if (_isAdminRole) return true;
     final int projectOwnerId = _toInt(_task?['project']?['owner_id']);
     if (_currentUserId != null &&
@@ -184,6 +207,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               taskDepartmentId: _toInt(_task?['department_id']),
               taskStartAt: _task?['start_at'],
               taskDeadline: _task?['deadline'],
+              projectSummary:
+                  _task?['project'] is Map<String, dynamic>
+                      ? _task!['project'] as Map<String, dynamic>
+                      : null,
               editingItem: item,
             ),
       ),
@@ -192,14 +219,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (saved == true) {
       await _fetch();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isEdit
-                ? 'Đã cập nhật đầu việc.'
-                : 'Đã thêm đầu việc mới.',
-          ),
-        ),
+      AppTagMessage.show(
+        isEdit ? 'Đã cập nhật đầu việc.' : 'Đã thêm đầu việc mới.',
       );
     }
   }
@@ -241,10 +262,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       await _fetch();
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'Đã xóa đầu việc.' : 'Không thể xóa đầu việc.'),
-      ),
+    AppTagMessage.show(
+      ok ? 'Đã xóa đầu việc.' : 'Không thể xóa đầu việc.',
+      isError: !ok,
     );
   }
 
@@ -313,15 +333,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         _AssigneeHeaderRow(
           assignee: group.assignee,
           itemCount: group.items.length,
-          avgProgress: group.items.isEmpty
-              ? 0
-              : group.items
-                      .map(
-                        (Map<String, dynamic> item) =>
-                            toInt(item['progress_percent']),
-                      )
-                      .reduce((int a, int b) => a + b) ~/
-                  group.items.length,
+          avgProgress:
+              group.items.isEmpty
+                  ? 0
+                  : group.items
+                          .map(
+                            (Map<String, dynamic> item) =>
+                                toInt(item['progress_percent']),
+                          )
+                          .reduce((int a, int b) => a + b) ~/
+                      group.items.length,
         ),
       );
       for (int i = 0; i < group.items.length; i++) {
@@ -522,8 +543,7 @@ class _TaskSummaryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final int rem = remainingWeight < 0 ? 0 : remainingWeight;
-    final Color? allocColor =
-        remainingWeight < 0 ? StitchTheme.danger : null;
+    final Color? allocColor = remainingWeight < 0 ? StitchTheme.danger : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,10 +560,7 @@ class _TaskSummaryHeader extends StatelessWidget {
         ),
         if (description.trim().isNotEmpty) ...<Widget>[
           const SizedBox(height: 10),
-          Text(
-            description.trim(),
-            style: _meta.copyWith(fontSize: 13),
-          ),
+          Text(description.trim(), style: _meta.copyWith(fontSize: 13)),
         ],
         const SizedBox(height: 16),
         ClipRRect(
@@ -552,7 +569,9 @@ class _TaskSummaryHeader extends StatelessWidget {
             value: progress.clamp(0, 100) / 100,
             minHeight: 6,
             backgroundColor: StitchTheme.surfaceAlt,
-            valueColor: AlwaysStoppedAnimation<Color>(StitchTheme.primary),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              StitchTheme.progressPercentFillColor(progress),
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -574,20 +593,11 @@ class _TaskSummaryHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Trạng thái: $status · Ưu tiên: $priority',
-          style: _meta,
-        ),
+        Text('Trạng thái: $status · Ưu tiên: $priority', style: _meta),
         const SizedBox(height: 4),
-        Text(
-          'Phòng ban: $department · Phụ trách: $assignee',
-          style: _meta,
-        ),
+        Text('Phòng ban: $department · Phụ trách: $assignee', style: _meta),
         const SizedBox(height: 4),
-        Text(
-          'Deadline: $deadline',
-          style: _meta,
-        ),
+        Text('Deadline: $deadline', style: _meta),
         const SizedBox(height: 16),
         Wrap(
           spacing: 10,
@@ -765,7 +775,10 @@ class _FlatTaskItemTile extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if ((item['description'] ?? '').toString().trim().isNotEmpty)
+                        if ((item['description'] ?? '')
+                            .toString()
+                            .trim()
+                            .isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(
@@ -793,7 +806,7 @@ class _FlatTaskItemTile extends StatelessWidget {
                           child: LinearProgressIndicator(
                             value: pct.clamp(0, 100) / 100,
                             minHeight: 5,
-                            color: tone,
+                            color: StitchTheme.progressPercentFillColor(pct),
                             backgroundColor: StitchTheme.surfaceAlt,
                           ),
                         ),

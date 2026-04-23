@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/widgets/stitch_form_layout.dart';
 import '../../core/widgets/stitch_searchable_select.dart';
 import '../../core/widgets/stitch_task_form_sheet.dart';
+import '../../core/utils/timeline_defaults.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -16,6 +18,7 @@ class CreateProjectScreen extends StatefulWidget {
     this.initialContractTitle,
     this.projectId,
     this.initialProject,
+    this.canEditAllProjectFields,
   });
 
   final String token;
@@ -24,6 +27,9 @@ class CreateProjectScreen extends StatefulWidget {
   final String? initialContractTitle;
   final int? projectId;
   final Map<String, dynamic>? initialProject;
+
+  /// null = suy từ [initialProject].permissions; true = admin (đủ trường).
+  final bool? canEditAllProjectFields;
 
   @override
   State<CreateProjectScreen> createState() => _CreateProjectScreenState();
@@ -62,6 +68,16 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   String message = '';
 
   bool get _isEditMode => (widget.projectId ?? 0) > 0;
+
+  bool get _lockCoreProjectFields {
+    if (!_isEditMode) return false;
+    if (widget.canEditAllProjectFields != null) {
+      return !widget.canEditAllProjectFields!;
+    }
+    final Map<String, dynamic>? perms =
+        widget.initialProject?['permissions'] as Map<String, dynamic>?;
+    return perms?['can_edit_all_project_fields'] != true;
+  }
 
   @override
   void initState() {
@@ -180,6 +196,12 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           selectedWorkflowTopicId = '';
         }
       });
+      if (!_isEditMode) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _syncDatesFromSelectedContract();
+        });
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -237,6 +259,25 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
 
     startDate = _parseDate(source['start_date']);
     deadline = _parseDate(source['deadline']);
+  }
+
+  void _syncDatesFromSelectedContract() {
+    if (_isEditMode) return;
+    if (selectedContractId.isEmpty) return;
+    Map<String, dynamic>? row;
+    for (final Map<String, dynamic> c in contracts) {
+      if ('${c['id']}' == selectedContractId) {
+        row = c;
+        break;
+      }
+    }
+    if (row == null) return;
+    final ({DateTime? start, DateTime? end}) r =
+        TimelineDefaults.datesFromContract(row);
+    setState(() {
+      startDate = r.start;
+      deadline = r.end;
+    });
   }
 
   DateTime? _parseDate(dynamic value) {
@@ -492,14 +533,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
               : failureMessage;
     });
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isEditMode
-                ? 'Cập nhật dự án thành công.'
-                : 'Tạo dự án thành công.',
-          ),
-        ),
+      AppTagMessage.show(
+        _isEditMode ? 'Cập nhật dự án thành công.' : 'Tạo dự án thành công.',
       );
       Navigator.of(context).maybePop();
     }
@@ -542,8 +577,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       appBar: stitchFormAppBar(
         context: context,
         title: _isEditMode ? 'Sửa dự án' : 'Tạo dự án',
-        onClose:
-            saving ? () {} : () => Navigator.of(context).maybePop(),
+        onClose: saving ? () {} : () => Navigator.of(context).maybePop(),
       ),
       bottomNavigationBar: StitchFormBottomBar(
         primaryLoading: saving,
@@ -566,7 +600,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                 context,
                 subtitle:
                     _isEditMode
-                        ? 'Điều chỉnh thông tin dự án. Nếu đổi topic barem, hệ thống sẽ yêu cầu xác nhận làm mới công việc.'
+                        ? (_lockCoreProjectFields
+                            ? 'Bạn là phụ trách dự án: chỉ sửa được tên, loại dịch vụ, trạng thái, yêu cầu, link… (không đổi HĐ, barem, ngày, chủ dự án).'
+                            : 'Điều chỉnh thông tin dự án. Nếu đổi topic barem, hệ thống sẽ yêu cầu xác nhận làm mới công việc.')
                         : 'Điền thông tin chính xác để hệ thống tự liên kết hợp đồng, nhân sự triển khai và luồng công việc.',
               ),
             ),
@@ -604,14 +640,23 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       ...contracts.map(
                         (Map<String, dynamic> c) => StitchSelectOption<String>(
                           value: '${c['id']}',
-                          label:
-                              '${c['code'] ?? 'CTR'} • ${c['title'] ?? ''}',
+                          label: '${c['code'] ?? 'CTR'} • ${c['title'] ?? ''}',
                         ),
                       ),
                     ],
                     onChanged: (String? value) {
-                      setState(() => selectedContractId = value ?? '');
+                      final String next = value ?? '';
+                      setState(() => selectedContractId = next);
+                      if (next.isEmpty) {
+                        setState(() {
+                          startDate = null;
+                          deadline = null;
+                        });
+                        return;
+                      }
+                      _syncDatesFromSelectedContract();
                     },
+                    enabled: !_lockCoreProjectFields,
                     decoration: fieldDecoration(
                       'Hợp đồng liên kết',
                       prefixIcon: Icons.description_outlined,
@@ -636,17 +681,19 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                     options:
                         owners
                             .map(
-                              (Map<String, dynamic> u) =>
-                                  StitchSelectOption<String>(
-                                    value: '${u['id']}',
-                                    label:
-                                        '${u['name'] ?? ''} (${u['role'] ?? ''})',
-                                  ),
+                              (
+                                Map<String, dynamic> u,
+                              ) => StitchSelectOption<String>(
+                                value: '${u['id']}',
+                                label:
+                                    '${u['name'] ?? ''} (${u['role'] ?? ''})',
+                              ),
                             )
                             .toList(),
                     onChanged: (String? value) {
                       setState(() => selectedOwnerId = value ?? '');
                     },
+                    enabled: !_lockCoreProjectFields,
                     decoration: fieldDecoration(
                       'Người phụ trách triển khai',
                       prefixIcon: Icons.person_outline,
@@ -667,19 +714,21 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         label: 'Không dùng barem (tạo dự án trống)',
                       ),
                       ...workflowTopics.map(
-                        (Map<String, dynamic> topic) =>
-                            StitchSelectOption<String>(
-                              value: '${topic['id']}',
-                              label:
-                                  '${topic['name'] ?? ''}'
-                                  '${(topic['code'] ?? '').toString().isEmpty ? '' : ' • ${topic['code']}'}'
-                                  ' (${(topic['tasks'] as List<dynamic>? ?? <dynamic>[]).length} công việc mẫu)',
-                            ),
+                        (
+                          Map<String, dynamic> topic,
+                        ) => StitchSelectOption<String>(
+                          value: '${topic['id']}',
+                          label:
+                              '${topic['name'] ?? ''}'
+                              '${(topic['code'] ?? '').toString().isEmpty ? '' : ' • ${topic['code']}'}'
+                              ' (${(topic['tasks'] as List<dynamic>? ?? <dynamic>[]).length} công việc mẫu)',
+                        ),
                       ),
                     ],
                     onChanged: (String? value) {
                       setState(() => selectedWorkflowTopicId = value ?? '');
                     },
+                    enabled: !_lockCoreProjectFields,
                     decoration: fieldDecoration(
                       'Barem công việc theo Topic',
                       prefixIcon: Icons.account_tree_outlined,
@@ -760,7 +809,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                     children: <Widget>[
                       Expanded(
                         child: GestureDetector(
-                          onTap: _pickStartDate,
+                          onTap: _lockCoreProjectFields ? null : _pickStartDate,
                           child: AbsorbPointer(
                             child: TextField(
                               decoration: fieldDecoration(
@@ -775,7 +824,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: GestureDetector(
-                          onTap: _pickDeadline,
+                          onTap: _lockCoreProjectFields ? null : _pickDeadline,
                           child: AbsorbPointer(
                             child: TextField(
                               decoration: fieldDecoration(

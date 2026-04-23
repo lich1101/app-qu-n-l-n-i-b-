@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -74,14 +75,10 @@ class _ClientStaffTransferScreenState extends State<ClientStaffTransferScreen> {
     if (!mounted) return;
     setState(() => acting = false);
     if (ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Đã chấp nhận phụ trách.')));
+      AppTagMessage.show('Đã chấp nhận phụ trách.');
       await _load();
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Không thể chấp nhận.')));
+      AppTagMessage.show('Không thể chấp nhận.', isError: true);
     }
   }
 
@@ -120,14 +117,10 @@ class _ClientStaffTransferScreenState extends State<ClientStaffTransferScreen> {
     if (!mounted) return;
     setState(() => acting = false);
     if (ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Đã từ chối phiếu.')));
+      AppTagMessage.show('Đã từ chối phiếu.');
       await _load();
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Không thể từ chối.')));
+      AppTagMessage.show('Không thể từ chối.', isError: true);
     }
   }
 
@@ -158,14 +151,10 @@ class _ClientStaffTransferScreenState extends State<ClientStaffTransferScreen> {
     if (!mounted) return;
     setState(() => acting = false);
     if (ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Đã hủy phiếu.')));
+      AppTagMessage.show('Đã hủy phiếu.');
       await _load();
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Không thể hủy phiếu.')));
+      AppTagMessage.show('Không thể hủy phiếu.', isError: true);
     }
   }
 

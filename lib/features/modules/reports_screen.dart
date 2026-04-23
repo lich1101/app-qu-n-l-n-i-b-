@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -77,12 +78,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   void _showComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Tính năng đang được hoàn thiện, sẽ có trong bản cập nhật tiếp theo.',
-        ),
-      ),
+    AppTagMessage.show(
+      'Tính năng đang được hoàn thiện, sẽ có trong bản cập nhật tiếp theo.',
     );
   }
 

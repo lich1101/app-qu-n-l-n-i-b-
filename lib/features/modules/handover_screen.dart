@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/stitch_widgets.dart';
@@ -28,11 +29,18 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
   int? _currentUserId;
   String _currentUserRole = '';
   List<Map<String, dynamic>> _projects = <Map<String, dynamic>>[];
+  final TextEditingController _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _fetch();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _fetch() async {
@@ -173,14 +181,10 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
               if (!mounted || !ctx.mounted) return;
               if (ok) {
                 Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      approve
-                          ? 'Đã duyệt bàn giao dự án.'
-                          : 'Đã từ chối bàn giao dự án.',
-                    ),
-                  ),
+                AppTagMessage.show(
+                  approve
+                      ? 'Đã duyệt bàn giao dự án.'
+                      : 'Đã từ chối bàn giao dự án.',
                 );
                 await _fetch();
               } else {
@@ -198,7 +202,9 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
               padding: EdgeInsets.fromLTRB(20, 12, 20, bottomInset + 24),
               decoration: BoxDecoration(
                 color: StitchTheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
                     color: StitchTheme.textMain.withValues(alpha: 0.08),
@@ -228,18 +234,20 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: approve
-                                ? StitchTheme.successSoft
-                                : StitchTheme.dangerSoft,
+                            color:
+                                approve
+                                    ? StitchTheme.successSoft
+                                    : StitchTheme.dangerSoft,
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Icon(
                             approve
                                 ? Icons.verified_outlined
                                 : Icons.cancel_outlined,
-                            color: approve
-                                ? StitchTheme.successStrong
-                                : StitchTheme.dangerStrong,
+                            color:
+                                approve
+                                    ? StitchTheme.successStrong
+                                    : StitchTheme.dangerStrong,
                             size: 26,
                           ),
                         ),
@@ -335,9 +343,10 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                             onPressed: saving ? null : submit,
                             style: FilledButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              backgroundColor: approve
-                                  ? StitchTheme.successStrong
-                                  : StitchTheme.dangerStrong,
+                              backgroundColor:
+                                  approve
+                                      ? StitchTheme.successStrong
+                                      : StitchTheme.dangerStrong,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
@@ -349,7 +358,9 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                                   : (approve
                                       ? 'Xác nhận duyệt'
                                       : 'Gửi từ chối'),
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ),
@@ -478,6 +489,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                           StitchFilterField(
                             label: 'Từ khóa',
                             child: TextField(
+                              controller: _searchCtrl,
                               onChanged:
                                   (String value) =>
                                       setState(() => _search = value),

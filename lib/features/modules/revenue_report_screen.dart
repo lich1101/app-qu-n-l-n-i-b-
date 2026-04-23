@@ -65,6 +65,14 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     return double.tryParse((value ?? 0).toString()) ?? 0;
   }
 
+  bool _hasMeaningfulStaffMetrics(Map<String, dynamic> row) {
+    return _asDouble(row['revenue']) > 0 ||
+        _asDouble(row['cashflow']) > 0 ||
+        _asDouble(row['debt']) > 0 ||
+        _asDouble(row['costs']) > 0 ||
+        ((row['contracts_count'] as num?) ?? 0).toInt() > 0;
+  }
+
   Future<void> _pickDate(TextEditingController controller) async {
     final DateTime now = DateTime.now();
     final DateTime initialDate = DateTime.tryParse(controller.text) ?? now;
@@ -76,6 +84,39 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     );
     if (date == null || !mounted) return;
     setState(() => controller.text = _fmtDate(date));
+  }
+
+  void _applyExplicitRange(
+    DateTime from,
+    DateTime to, {
+    bool collapsePanel = false,
+  }) {
+    setState(() {
+      dateFromCtrl.text = _fmtDate(from);
+      dateToCtrl.text = _fmtDate(to);
+      if (collapsePanel) {
+        _filterExpanded = false;
+      }
+    });
+    _fetch();
+  }
+
+  void _applyRecentDays(int days) {
+    final DateTime now = DateTime.now();
+    final DateTime start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: math.max(days - 1, 0)));
+    _applyExplicitRange(start, DateTime(now.year, now.month, now.day));
+  }
+
+  void _applyCurrentMonth() {
+    final DateTime now = DateTime.now();
+    _applyExplicitRange(
+      DateTime(now.year, now.month, 1),
+      DateTime(now.year, now.month + 1, 0),
+    );
   }
 
   @override
@@ -149,7 +190,6 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     final Map<String, dynamic> periodTotals =
         (report['period_totals'] as Map<String, dynamic>?) ??
         <String, dynamic>{};
@@ -160,6 +200,7 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
     final List<Map<String, dynamic>> staffBreakdown =
         ((report['staff_breakdown'] ?? <dynamic>[]) as List<dynamic>)
             .map((dynamic item) => Map<String, dynamic>.from(item as Map))
+            .where(_hasMeaningfulStaffMetrics)
             .toList();
     final List<Map<String, dynamic>> rows =
         ((report['daily_rows'] ?? <dynamic>[]) as List<dynamic>)
@@ -182,9 +223,43 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
               // ── Compact period bar ──
               _CompactPeriodBar(
                 periodLabel: periodLabel,
-                onTapExpand: () => setState(() => _filterExpanded = !_filterExpanded),
+                onTapExpand:
+                    () => setState(() => _filterExpanded = !_filterExpanded),
                 expanded: _filterExpanded,
                 onReset: _resetToFullRange,
+                loading: loading,
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  _InfoPill(
+                    icon: Icons.visibility_rounded,
+                    label: 'Đang xem',
+                    value: periodLabel,
+                  ),
+                  _InfoPill(
+                    icon: Icons.event_available_rounded,
+                    label: 'Nguồn dữ liệu',
+                    value:
+                        availableFrom.isNotEmpty && availableTo.isNotEmpty
+                            ? '${_displayDate(availableFrom)} - ${_displayDate(availableTo)}'
+                            : 'Tự động theo hệ thống',
+                  ),
+                  _InfoPill(
+                    icon:
+                        loading
+                            ? Icons.sync_rounded
+                            : Icons.check_circle_rounded,
+                    label: loading ? 'Trạng thái' : 'Bộ lọc',
+                    value: loading ? 'Đang tải lại báo cáo' : 'Đã đồng bộ',
+                    accent:
+                        loading
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFF10B981),
+                  ),
+                ],
               ),
               if (_filterExpanded) ...<Widget>[
                 const SizedBox(height: 10),
@@ -194,10 +269,15 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                   targetCtrl: targetCtrl,
                   onPickFrom: () => _pickDate(dateFromCtrl),
                   onPickTo: () => _pickDate(dateToCtrl),
+                  onRecent7: () => _applyRecentDays(7),
+                  onRecent30: () => _applyRecentDays(30),
+                  onCurrentMonth: _applyCurrentMonth,
+                  onFullRange: _resetToFullRange,
                   onApply: () {
                     setState(() => _filterExpanded = false);
                     _fetch();
                   },
+                  loading: loading,
                 ),
               ],
               const SizedBox(height: 16),
@@ -207,7 +287,9 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                   Expanded(
                     child: _SummaryCard(
                       title: 'Doanh thu',
-                      value: _formatCompactCurrency(_asDouble(periodTotals['revenue'])),
+                      value: _formatCompactCurrency(
+                        _asDouble(periodTotals['revenue']),
+                      ),
                       icon: Icons.trending_up_rounded,
                       color: const Color(0xFF3B82F6),
                     ),
@@ -216,7 +298,9 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                   Expanded(
                     child: _SummaryCard(
                       title: 'Dòng tiền',
-                      value: _formatCompactCurrency(_asDouble(periodTotals['cashflow'])),
+                      value: _formatCompactCurrency(
+                        _asDouble(periodTotals['cashflow']),
+                      ),
                       icon: Icons.account_balance_wallet_rounded,
                       color: const Color(0xFF10B981),
                     ),
@@ -229,7 +313,9 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                   Expanded(
                     child: _SummaryCard(
                       title: 'Công nợ',
-                      value: _formatCompactCurrency(_asDouble(periodTotals['debt'])),
+                      value: _formatCompactCurrency(
+                        _asDouble(periodTotals['debt']),
+                      ),
                       icon: Icons.receipt_long_rounded,
                       color: const Color(0xFFF59E0B),
                     ),
@@ -238,7 +324,9 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                   Expanded(
                     child: _SummaryCard(
                       title: 'Chi phí',
-                      value: _formatCompactCurrency(_asDouble(periodTotals['costs'])),
+                      value: _formatCompactCurrency(
+                        _asDouble(periodTotals['costs']),
+                      ),
                       icon: Icons.payments_rounded,
                       color: const Color(0xFFEF4444),
                       subtitle: '${periodTotals['contracts_total'] ?? 0} HĐ',
@@ -251,6 +339,9 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                 title: 'Doanh thu theo sản phẩm',
                 subtitle:
                     'Biểu đồ tròn tính trên toàn bộ hợp đồng đã duyệt trong khoảng thời gian đang lọc.',
+                icon: Icons.donut_large_rounded,
+                accentColor: const Color(0xFF8B5CF6),
+                badge: 'Theo sản phẩm',
                 child: _ProductPieCard(
                   rows: productBreakdown,
                   formatCompactCurrency: _formatCompactCurrency,
@@ -261,6 +352,9 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                 title: 'Doanh thu theo nhân viên',
                 subtitle:
                     'Nhân viên thu theo hợp đồng dùng đúng người thu đang đứng tên trên hợp đồng.',
+                icon: Icons.bar_chart_rounded,
+                accentColor: const Color(0xFF0EA5E9),
+                badge: 'Theo người',
                 child: _StaffRevenueCard(
                   rows: staffBreakdown,
                   formatCompactCurrency: _formatCompactCurrency,
@@ -271,6 +365,9 @@ class _RevenueReportScreenState extends State<RevenueReportScreen> {
                 title: 'Báo cáo chi tiết theo ngày',
                 subtitle:
                     'Mỗi ngày được tổng hợp theo doanh thu hợp đồng, dòng tiền, công nợ và chi phí phát sinh.',
+                icon: Icons.table_rows_rounded,
+                accentColor: const Color(0xFF10B981),
+                badge: 'Theo ngày',
                 child:
                     loading
                         ? const Padding(
@@ -387,79 +484,211 @@ class _CompactPeriodBar extends StatelessWidget {
     required this.onTapExpand,
     required this.expanded,
     required this.onReset,
+    required this.loading,
   });
 
   final String periodLabel;
   final VoidCallback onTapExpand;
   final bool expanded;
   final VoidCallback onReset;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: <Color>[Color(0xFFF8FAFC), Color(0xFFF1F5F9)],
+        gradient: LinearGradient(
+          colors: <Color>[
+            Colors.white,
+            const Color(0xFFF8FAFC),
+            const Color(0xFFE6FFFB),
+          ],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Icon(Icons.date_range_rounded, size: 18, color: Color(0xFF64748B)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              periodLabel,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: Color(0xFF334155),
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: <Color>[
+                  const Color(0xFFDBEAFE),
+                  const Color(0xFFCCFBF1),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              loading ? Icons.sync_rounded : Icons.date_range_rounded,
+              size: 18,
+              color:
+                  loading ? const Color(0xFFB45309) : const Color(0xFF0F766E),
             ),
           ),
-          GestureDetector(
-            onTap: onReset,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Tất cả',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF3B82F6),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Khoảng thời gian đang xem',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.18,
+                    color: Color(0xFF64748B),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  periodLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  loading
+                      ? 'Đang tải lại số liệu theo bộ lọc này'
+                      : 'Chạm nút tinh chỉnh để đổi ngày, chỉ tiêu hoặc preset nhanh',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    height: 1.35,
+                    color: StitchTheme.textMuted,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
-          GestureDetector(
-            onTap: onTapExpand,
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: expanded ? const Color(0xFF3B82F6) : Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: const <BoxShadow>[
-                  BoxShadow(
-                    color: Color(0x0A0F172A),
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
+          Column(
+            children: <Widget>[
+              GestureDetector(
+                onTap: onReset,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
                   ),
-                ],
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'Toàn bộ',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF3B82F6),
+                    ),
+                  ),
+                ),
               ),
-              child: Icon(
-                expanded ? Icons.close_rounded : Icons.tune_rounded,
-                size: 16,
-                color: expanded ? Colors.white : const Color(0xFF64748B),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: onTapExpand,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: expanded ? const Color(0xFF0F766E) : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x0A0F172A),
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    expanded ? Icons.close_rounded : Icons.tune_rounded,
+                    size: 16,
+                    color: expanded ? Colors.white : const Color(0xFF64748B),
+                  ),
+                ),
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.accent = const Color(0xFF0F766E),
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
             ),
+            child: Icon(icon, size: 15, color: accent),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.14,
+                  color: StitchTheme.textMuted,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: StitchTheme.textMain,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -474,7 +703,12 @@ class _CompactFilterPanel extends StatelessWidget {
     required this.targetCtrl,
     required this.onPickFrom,
     required this.onPickTo,
+    required this.onRecent7,
+    required this.onRecent30,
+    required this.onCurrentMonth,
+    required this.onFullRange,
     required this.onApply,
+    required this.loading,
   });
 
   final TextEditingController dateFromCtrl;
@@ -482,26 +716,53 @@ class _CompactFilterPanel extends StatelessWidget {
   final TextEditingController targetCtrl;
   final VoidCallback onPickFrom;
   final VoidCallback onPickTo;
+  final VoidCallback onRecent7;
+  final VoidCallback onRecent30;
+  final VoidCallback onCurrentMonth;
+  final VoidCallback onFullRange;
   final VoidCallback onApply;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x060F172A),
-            blurRadius: 12,
-            offset: Offset(0, 4),
+            color: Color(0x0A0F172A),
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          const Text(
+            'Preset nhanh',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.18,
+              color: StitchTheme.textMuted,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              _QuickFilterChip(label: '7 ngày', onTap: onRecent7),
+              _QuickFilterChip(label: '30 ngày', onTap: onRecent30),
+              _QuickFilterChip(label: 'Tháng này', onTap: onCurrentMonth),
+              _QuickFilterChip(label: 'Toàn bộ', onTap: onFullRange),
+            ],
+          ),
+          const SizedBox(height: 14),
           Row(
             children: <Widget>[
               Expanded(
@@ -528,8 +789,14 @@ class _CompactFilterPanel extends StatelessWidget {
             style: const TextStyle(fontSize: 13),
             decoration: InputDecoration(
               hintText: 'Chỉ tiêu doanh thu (VNĐ) — tùy chọn',
-              hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              hintStyle: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF94A3B8),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
               isDense: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -541,17 +808,20 @@ class _CompactFilterPanel extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
-            height: 38,
+            height: 42,
             child: ElevatedButton.icon(
-              onPressed: onApply,
+              onPressed: loading ? null : onApply,
               icon: const Icon(Icons.check_rounded, size: 16),
-              label: const Text('Áp dụng', style: TextStyle(fontSize: 13)),
+              label: Text(
+                loading ? 'Đang tải...' : 'Áp dụng bộ lọc',
+                style: const TextStyle(fontSize: 13),
+              ),
               style: ElevatedButton.styleFrom(
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ),
             ),
@@ -590,10 +860,11 @@ class _MiniDateField extends StatelessWidget {
         GestureDetector(
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
               border: Border.all(color: const Color(0xFFE2E8F0)),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               children: <Widget>[
@@ -602,9 +873,10 @@ class _MiniDateField extends StatelessWidget {
                     controller.text.isNotEmpty ? controller.text : '—',
                     style: TextStyle(
                       fontSize: 13,
-                      color: controller.text.isNotEmpty
-                          ? const Color(0xFF1E293B)
-                          : const Color(0xFF94A3B8),
+                      color:
+                          controller.text.isNotEmpty
+                              ? const Color(0xFF1E293B)
+                              : const Color(0xFF94A3B8),
                     ),
                   ),
                 ),
@@ -636,11 +908,23 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        gradient: LinearGradient(
+          colors: <Color>[color.withValues(alpha: 0.08), Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -657,12 +941,14 @@ class _SummaryCard extends StatelessWidget {
                 child: Icon(icon, size: 15, color: color),
               ),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF64748B),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF475569),
+                  ),
                 ),
               ),
             ],
@@ -680,10 +966,7 @@ class _SummaryCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               subtitle!,
-              style: const TextStyle(
-                fontSize: 11,
-                color: Color(0xFF94A3B8),
-              ),
+              style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
             ),
           ],
         ],
@@ -697,11 +980,17 @@ class _SectionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
+    this.icon = Icons.auto_graph_rounded,
+    this.accentColor = const Color(0xFF0F766E),
+    this.badge,
   });
 
   final String title;
   final String subtitle;
   final Widget child;
+  final IconData icon;
+  final Color accentColor;
+  final String? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -709,18 +998,115 @@ class _SectionCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: <Color>[Colors.white, accentColor.withValues(alpha: 0.04)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: StitchTheme.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 18, color: accentColor),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(color: StitchTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              if (badge != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    badge!,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: accentColor,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 4),
-          Text(subtitle, style: const TextStyle(color: StitchTheme.textMuted)),
           const SizedBox(height: 14),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _QuickFilterChip extends StatelessWidget {
+  const _QuickFilterChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: StitchTheme.border),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: StitchTheme.textMain,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -865,8 +1251,18 @@ class _ProductPieCardState extends State<_ProductPieCard> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: StitchTheme.border),
+            gradient: LinearGradient(
+              colors: <Color>[
+                selectedItem.color.withValues(alpha: 0.08),
+                Colors.white,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selectedItem.color.withValues(alpha: 0.22),
+            ),
           ),
           child: Row(
             children: <Widget>[
@@ -910,33 +1306,45 @@ class _ProductPieCardState extends State<_ProductPieCard> {
           final double percent = total > 0 ? (item.value / total) * 100 : 0;
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              children: <Widget>[
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: item.color,
-                    borderRadius: BorderRadius.circular(6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: item.color.withValues(
+                    alpha: item == selectedItem ? 0.32 : 0.12,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    item.label,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: item.color,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
                   ),
-                ),
-                Text(
-                  '${percent.toStringAsFixed(1)}%',
-                  style: const TextStyle(color: StitchTheme.textMuted),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  widget.formatCompactCurrency(item.value),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item.label,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Text(
+                    '${percent.toStringAsFixed(1)}%',
+                    style: const TextStyle(color: StitchTheme.textMuted),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.formatCompactCurrency(item.value),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
             ),
           );
         }),
@@ -1126,7 +1534,7 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: Container(
-                    height: 18,
+                    height: 20,
                     color: const Color(0xFFE2E8F0),
                     child:
                         total > 0
@@ -1157,7 +1565,18 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                                                         item.meta.key,
                                               ),
                                           child: Container(
-                                            color: item.meta.color,
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: <Color>[
+                                                  item.meta.color,
+                                                  item.meta.color.withValues(
+                                                    alpha: 0.76,
+                                                  ),
+                                                ],
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1184,8 +1603,18 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: StitchTheme.border),
+                    gradient: LinearGradient(
+                      colors: <Color>[
+                        selectedValue.meta.color.withValues(alpha: 0.08),
+                        Colors.white,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: selectedValue.meta.color.withValues(alpha: 0.18),
+                    ),
                   ),
                   child: Row(
                     children: <Widget>[

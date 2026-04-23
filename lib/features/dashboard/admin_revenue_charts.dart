@@ -26,13 +26,17 @@ class AdminRevenueCharts extends StatefulWidget {
   State<AdminRevenueCharts> createState() => _AdminRevenueChartsState();
 }
 
-class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
+class _AdminRevenueChartsState extends State<AdminRevenueCharts>
+    with AutomaticKeepAliveClientMixin<AdminRevenueCharts> {
   bool _loading = true;
   DateTime _selectedMonth = DateTime.now();
   List<Map<String, dynamic>> _serviceBreakdown = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _staffSales = <Map<String, dynamic>>[];
   double _totalRevenue = 0;
   double _totalCashflow = 0;
+
+  /// Khớp API `product_breakdown_total` (tổng các slice, gồm «Hợp đồng chưa có sản phẩm»).
+  double _productBreakdownTotal = 0;
   int? _selectedPieIndex;
 
   static const List<Color> _palette = <Color>[
@@ -109,8 +113,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
     );
     if (!mounted) return;
     final List<dynamic> rawService =
-        (data['product_breakdown'] ?? data['service_breakdown'] ?? <dynamic>[])
-            as List<dynamic>;
+        (data['product_breakdown'] ?? <dynamic>[]) as List<dynamic>;
     final List<dynamic> rawStaff =
         (data['staff_sales_breakdown'] ?? <dynamic>[]) as List<dynamic>;
     setState(() {
@@ -125,9 +128,14 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
               )
               .toList();
       _staffSales =
-          rawStaff.map((dynamic e) => e as Map<String, dynamic>).toList();
+          rawStaff
+              .map((dynamic e) => e as Map<String, dynamic>)
+              .where(_hasMeaningfulStaffMetrics)
+              .toList();
       _totalRevenue = (data['period_revenue_total'] ?? 0).toDouble();
       _totalCashflow = (data['period_cashflow_total'] ?? 0).toDouble();
+      _productBreakdownTotal =
+          (data['product_breakdown_total'] ?? 0).toDouble();
     });
   }
 
@@ -156,8 +164,41 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
     return value.toStringAsFixed(0);
   }
 
+  /// Định dạng số đầy đủ kiểu vi-VN (117.826.500) cho legend / tổng giữa donut.
+  String _fmtCurrencyFull(double value) {
+    final int v = value.round();
+    final String s = v.abs().toString();
+    final List<String> parts = <String>[];
+    for (int i = s.length; i > 0; i -= 3) {
+      final int start = i > 3 ? i - 3 : 0;
+      parts.insert(0, s.substring(start, i));
+    }
+    return (v < 0 ? '-' : '') + parts.join('.');
+  }
+
+  bool _hasMeaningfulStaffMetrics(Map<String, dynamic> row) {
+    return ((row['revenue'] as num?) ?? 0).toDouble() > 0 ||
+        ((row['cashflow'] as num?) ?? 0).toDouble() > 0 ||
+        ((row['contracts_count'] as num?) ?? 0).toInt() > 0;
+  }
+
+  double _pieCenterTotal() {
+    if (_productBreakdownTotal > 0) {
+      return _productBreakdownTotal;
+    }
+    return _serviceBreakdown.fold<double>(
+      0,
+      (double sum, Map<String, dynamic> e) =>
+          sum + (e['value'] as num? ?? 0).toDouble(),
+    );
+  }
+
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final bool isCurrentMonth =
         _selectedMonth.year == DateTime.now().year &&
         _selectedMonth.month == DateTime.now().month;
@@ -342,13 +383,18 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: <Color>[Colors.white, Color(0xFFF8FAFC), Color(0xFFF5F3FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x080F172A),
-            blurRadius: 16,
-            offset: Offset(0, 6),
+            color: Color(0x120F172A),
+            blurRadius: 24,
+            offset: Offset(0, 12),
           ),
         ],
       ),
@@ -356,6 +402,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Container(
                 width: 32,
@@ -371,11 +418,60 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                _roleTitle('pie'),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            _roleTitle('pie'),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF8B5CF6,
+                            ).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF8B5CF6,
+                              ).withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: const Text(
+                            'Theo danh mục',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.06,
+                              color: Color(0xFF6D28D9),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Tỷ trọng theo danh mục / dòng hàng hợp đồng đã duyệt (giá trị hiệu lực). Kỳ theo ngày duyệt.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: StitchTheme.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -393,26 +489,207 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
             )
           else
             Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                SizedBox(
-                  height: 200,
-                  child: GestureDetector(
-                    onTapDown: (TapDownDetails details) {
-                      _handlePieTap(details.localPosition, 200);
-                    },
-                    child: CustomPaint(
-                      size: const Size(200, 200),
-                      painter: _PieChartPainter(
-                        data: _serviceBreakdown,
-                        palette: _palette,
-                        selectedIndex: _selectedPieIndex,
+                Center(
+                  child: Column(
+                    children: <Widget>[
+                      const Text(
+                        'Doanh thu',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.04,
+                          color: StitchTheme.textMuted,
+                        ),
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _fmtCurrencyFull(_pieCenterTotal()),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                          height: 1.15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    _ChartInfoPill(
+                      icon: Icons.pie_chart_rounded,
+                      label: 'Tổng kỳ',
+                      value: _fmtCurrency(_pieCenterTotal()),
+                      accent: const Color(0xFF8B5CF6),
+                    ),
+                    _ChartInfoPill(
+                      icon: Icons.category_rounded,
+                      label: 'Hạng mục',
+                      value: '${_serviceBreakdown.length} mục',
+                      accent: const Color(0xFF3B82F6),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Center(
+                  child: SizedBox(
+                    height: 200,
+                    width: 200,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: <Widget>[
+                        GestureDetector(
+                          onTapDown: (TapDownDetails details) {
+                            _handlePieTap(details.localPosition, 200);
+                          },
+                          child: CustomPaint(
+                            size: const Size(200, 200),
+                            painter: _PieChartPainter(
+                              data: _serviceBreakdown,
+                              palette: _palette,
+                              selectedIndex: _selectedPieIndex,
+                            ),
+                          ),
+                        ),
+                        IgnorePointer(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              SizedBox(
+                                width: 86,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    _fmtCurrencyFull(_pieCenterTotal()),
+                                    maxLines: 1,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF0F172A),
+                                      height: 1.0,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
                 if (_selectedPieIndex != null &&
                     _selectedPieIndex! < _serviceBreakdown.length)
                   _buildPieTooltip(_selectedPieIndex!),
+                const SizedBox(height: 12),
+                const Text(
+                  'Chi tiết theo mục',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.06,
+                    color: StitchTheme.textSubtle,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 280),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: _serviceBreakdown.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (BuildContext context, int index) {
+                      final Map<String, dynamic> item =
+                          _serviceBreakdown[index];
+                      final String label = (item['label'] ?? 'Khác').toString();
+                      final double value =
+                          (item['value'] as num? ?? 0).toDouble();
+                      final double total = _pieCenterTotal();
+                      final double pct = total > 0 ? (value / total) * 100 : 0;
+                      final Color color = _palette[index % _palette.length];
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            setState(() => _selectedPieIndex = index);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color:
+                                  _selectedPieIndex == index
+                                      ? color.withValues(alpha: 0.06)
+                                      : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color:
+                                    _selectedPieIndex == index
+                                        ? color.withValues(alpha: 0.35)
+                                        : StitchTheme.border,
+                              ),
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    label,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: <Widget>[
+                                    Text(
+                                      _fmtCurrencyFull(value),
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${pct.toStringAsFixed(1)}%',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: StitchTheme.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ],
             ),
         ],
@@ -436,7 +713,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: _palette[index % _palette.length].withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: _palette[index % _palette.length].withValues(alpha: 0.3),
         ),
@@ -513,13 +790,18 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: <Color>[Colors.white, Color(0xFFF8FAFC), Color(0xFFECFDF5)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x080F172A),
-            blurRadius: 16,
-            offset: Offset(0, 6),
+            color: Color(0x120F172A),
+            blurRadius: 24,
+            offset: Offset(0, 12),
           ),
         ],
       ),
@@ -552,13 +834,23 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            'Doanh thu: ${_fmtCurrency(_totalRevenue)} • Dòng tiền: ${_fmtCurrency(_totalCashflow)}',
-            style: const TextStyle(
-              fontSize: 12,
-              color: StitchTheme.textMuted,
-              fontWeight: FontWeight.w600,
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              _ChartInfoPill(
+                icon: Icons.trending_up_rounded,
+                label: 'Doanh thu',
+                value: _fmtCurrency(_totalRevenue),
+                accent: const Color(0xFF3B82F6),
+              ),
+              _ChartInfoPill(
+                icon: Icons.account_balance_wallet_rounded,
+                label: 'Dòng tiền',
+                value: _fmtCurrency(_totalCashflow),
+                accent: const Color(0xFF10B981),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
           if (_staffSales.isEmpty)
@@ -618,58 +910,66 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: barColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: TextStyle(
-                      color: barColor,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: StitchTheme.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: barColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        color: barColor,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          _MetricProgressLine(
-            label: 'Doanh thu',
-            valueLabel: _fmtCurrency(revenue),
-            ratio: revenueRatio,
-            barColor: barColor,
-          ),
-          const SizedBox(height: 6),
-          _MetricProgressLine(
-            label: 'Dòng tiền',
-            valueLabel: _fmtCurrency(cashflow),
-            ratio: cashflowRatio,
-            barColor: const Color(0xFF10B981),
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 5),
+            _MetricProgressLine(
+              label: 'Doanh thu',
+              valueLabel: _fmtCurrency(revenue),
+              ratio: revenueRatio,
+              barColor: barColor,
+            ),
+            const SizedBox(height: 6),
+            _MetricProgressLine(
+              label: 'Dòng tiền',
+              valueLabel: _fmtCurrency(cashflow),
+              ratio: cashflowRatio,
+              barColor: const Color(0xFF10B981),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -717,17 +1017,91 @@ class _MetricProgressLine extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: SizedBox(
-            height: 7,
-            child: LinearProgressIndicator(
-              value: clampedRatio,
-              backgroundColor: StitchTheme.surfaceAlt,
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
-            ),
+          borderRadius: BorderRadius.circular(999),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: clampedRatio),
+            duration: const Duration(milliseconds: 650),
+            curve: Curves.easeOutCubic,
+            builder: (
+              BuildContext context,
+              double animatedValue,
+              Widget? child,
+            ) {
+              return SizedBox(
+                height: 8,
+                child: LinearProgressIndicator(
+                  value: animatedValue,
+                  backgroundColor: StitchTheme.surfaceAlt,
+                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                ),
+              );
+            },
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ChartInfoPill extends StatelessWidget {
+  const _ChartInfoPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: accent),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: StitchTheme.textMuted,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: StitchTheme.textMain,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
