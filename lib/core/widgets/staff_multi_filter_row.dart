@@ -31,7 +31,7 @@ class StaffMultiFilterRow extends StatelessWidget {
           title,
           style: const TextStyle(
             fontSize: 12,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             color: StitchTheme.labelEmphasis,
             letterSpacing: 0.2,
           ),
@@ -46,8 +46,7 @@ class StaffMultiFilterRow extends StatelessWidget {
                 if (id <= 0) {
                   return const SizedBox.shrink();
                 }
-                final String name =
-                    (u['name'] ?? u['email'] ?? '?').toString();
+                final String name = (u['name'] ?? u['email'] ?? '?').toString();
                 final bool sel = selectedIds.contains(id);
                 return FilterChip(
                   showCheckmark: true,
@@ -55,19 +54,21 @@ class StaffMultiFilterRow extends StatelessWidget {
                   selectedColor: StitchTheme.primary.withValues(alpha: 0.22),
                   backgroundColor: const Color(0xFFF1F5F9),
                   side: BorderSide(
-                    color: sel
-                        ? StitchTheme.primaryStrong.withValues(alpha: 0.45)
-                        : StitchTheme.inputBorder,
+                    color:
+                        sel
+                            ? StitchTheme.primaryStrong.withValues(alpha: 0.45)
+                            : StitchTheme.inputBorder,
                     width: sel ? 1.35 : 1.1,
                   ),
                   label: Text(
                     name,
                     style: TextStyle(
                       fontSize: compact ? 12.5 : 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: sel
-                          ? StitchTheme.primaryStrong
-                          : StitchTheme.textMain,
+                      fontWeight: FontWeight.w500,
+                      color:
+                          sel
+                              ? StitchTheme.primaryStrong
+                              : StitchTheme.textMain,
                       height: 1.15,
                     ),
                   ),

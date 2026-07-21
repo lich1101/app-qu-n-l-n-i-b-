@@ -138,13 +138,16 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
   }
 
   bool _canApprove() {
-    return currentUserRole == 'admin' || _isProjectOwner();
+    return currentUserRole == 'admin' ||
+        currentUserRole == 'administrator' ||
+        _isProjectOwner();
   }
 
   bool _canSubmitReport() {
     final dynamic raw = item?['assignee_id'];
     final int? id = raw is int ? raw : int.tryParse('${raw ?? ''}');
     return currentUserRole == 'admin' ||
+        currentUserRole == 'administrator' ||
         _isTaskAssignee() ||
         (currentUserId != null && currentUserId == id);
   }
@@ -244,7 +247,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
       ),
       child: Text(
         label,
-        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w600),
+        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w500),
       ),
     );
   }
@@ -304,7 +307,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                         '${item!['title']}',
                         style: const TextStyle(
                           fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -392,7 +395,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                     const SizedBox(width: 8),
                     Text(
                       '$progress%',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -414,7 +417,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                 children: [
                   const Text(
                     'Biểu đồ tiến độ',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -503,7 +506,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                 style: const TextStyle(
                   color: StitchTheme.textMain,
                   fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -530,7 +533,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
           const SizedBox(height: 24),
           const Text(
             'Lịch sử phiếu duyệt',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 12),
 
@@ -569,7 +572,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
         ),
         Text(
           value,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
         ),
       ],
     );
@@ -586,7 +589,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
         const SizedBox(height: 2),
         Text(
           value,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
         ),
       ],
     );
@@ -647,7 +650,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                 Text(
                   'Phiếu #${up['id']}',
                   style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     fontSize: 13,
                   ),
                 ),
@@ -666,7 +669,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                       'Từ thông báo',
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: StitchTheme.primary,
                       ),
                     ),
@@ -889,7 +892,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                           'Báo cáo tiến độ',
                           style: TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -982,6 +985,7 @@ class _TaskItemDetailScreenState extends State<TaskItemDetailScreen> {
                                             progressPercent: p,
                                             note: noteCtrl.text.trim(),
                                           );
+                                      if (!mounted || !ctx.mounted) return;
                                       if (ok) {
                                         Navigator.pop(ctx);
                                         _fetch();
@@ -1032,14 +1036,14 @@ class _MetaChip extends StatelessWidget {
               text: '$label: ',
               style: TextStyle(
                 color: StitchTheme.primaryStrong.withValues(alpha: 0.95),
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
             TextSpan(
               text: value,
               style: const TextStyle(
                 color: StitchTheme.textMain,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -1080,7 +1084,7 @@ class _InsightMetric extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               fontSize: 16,
               color: tone,
             ),

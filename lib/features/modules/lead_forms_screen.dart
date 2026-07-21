@@ -236,7 +236,7 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                   children: <Widget>[
                     Text(
                       editingId == null ? 'Tạo form' : 'Sửa form',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 10),
                     TextField(
@@ -388,7 +388,7 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                       const Expanded(
                         child: Text(
                           'Danh sách form',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                          style: TextStyle(fontWeight: FontWeight.w500),
                         ),
                       ),
                       if (widget.canManage)

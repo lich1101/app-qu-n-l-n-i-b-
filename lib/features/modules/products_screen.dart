@@ -12,6 +12,7 @@ class ProductsScreen extends StatefulWidget {
     required this.apiService,
     required this.canManage,
     required this.canDelete,
+
     /// Mở sheet sửa sản phẩm sau khi tải danh sách (push / thông báo trong app).
     this.initialProductId,
   });
@@ -295,8 +296,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 children: <Widget>[
                   StitchFormSheetTitleBar(
                     title: editingId == null ? 'Tạo sản phẩm' : 'Sửa sản phẩm',
-                    subtitle:
-                        'Mã sản phẩm sẽ tự sinh theo danh mục khi lưu.',
+                    subtitle: 'Mã sản phẩm sẽ tự sinh theo danh mục khi lưu.',
                     icon:
                         editingId == null
                             ? Icons.add_shopping_cart_outlined
@@ -323,7 +323,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 value: null,
                                 child: Text('Chọn danh mục'),
                               ),
-                              ...categories.map((Map<String, dynamic> category) {
+                              ...categories.map((
+                                Map<String, dynamic> category,
+                              ) {
                                 final int? id = _parseId(category['id']);
                                 return DropdownMenuItem<int?>(
                                   value: id,
@@ -460,11 +462,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 ),
                               ),
                               child: Text(
-                                editingId == null
-                                    ? 'Lưu sản phẩm'
-                                    : 'Cập nhật',
+                                editingId == null ? 'Lưu sản phẩm' : 'Cập nhật',
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -636,7 +636,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                     ? 'Lưu danh mục'
                                     : 'Cập nhật',
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -769,7 +769,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   const Expanded(
                     child: Text(
                       'Danh mục sản phẩm',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   if (widget.canManage)
@@ -820,7 +820,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   const Expanded(
                     child: Text(
                       'Danh sách sản phẩm',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   if (widget.canManage)

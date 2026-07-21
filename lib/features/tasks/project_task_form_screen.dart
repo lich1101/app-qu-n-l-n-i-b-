@@ -30,6 +30,7 @@ class ProjectTaskFormScreen extends StatefulWidget {
   final String projectName;
   final List<Map<String, dynamic>> departments;
   final List<Map<String, dynamic>> existingTasksForWeightHint;
+
   /// Khi tạo mới: mặc định theo timeline dự án (nếu có).
   final dynamic defaultStartDate;
   final dynamic defaultDeadline;
@@ -52,6 +53,7 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
   late int? assigneeId;
   late String status;
   late String priority;
+  List<Map<String, dynamic>> assignmentUsers = <Map<String, dynamic>>[];
   bool submitting = false;
   String localMessage = '';
 
@@ -60,7 +62,26 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
     return int.tryParse('${value ?? ''}') ?? 0;
   }
 
+  List<Map<String, dynamic>> _uniqueStaffOptions(
+    Iterable<Map<String, dynamic>> rows,
+  ) {
+    final Map<int, Map<String, dynamic>> unique = <int, Map<String, dynamic>>{};
+    for (final Map<String, dynamic> row in rows) {
+      final int id = _toId(row['id']);
+      if (id <= 0 || unique.containsKey(id)) continue;
+      unique[id] = row;
+    }
+    return unique.values.toList();
+  }
+
   String _toDateInput(dynamic value) => VietnamTime.toYmdInput(value);
+
+  Future<void> _loadAssignmentUsers() async {
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getUsersLookup(widget.token, purpose: 'task_assignment_staff');
+    if (!mounted) return;
+    setState(() => assignmentUsers = rows);
+  }
 
   @override
   void initState() {
@@ -97,6 +118,7 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
     if (assigneeId == 0) assigneeId = null;
     status = (t?['status'] ?? 'todo').toString();
     priority = (t?['priority'] ?? 'medium').toString();
+    _loadAssignmentUsers();
   }
 
   @override
@@ -113,8 +135,9 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
       VietnamTime.parseDateOnly(widget.defaultDeadline);
 
   Future<void> _pickDate(TextEditingController controller) async {
-    final DateTime lastDate =
-        VietnamTime.pickerLastDateWithCap(_projectDeadlineCap);
+    final DateTime lastDate = VietnamTime.pickerLastDateWithCap(
+      _projectDeadlineCap,
+    );
     final DateTime firstDate = VietnamTime.pickerFirstDateSafe(lastDate);
     DateTime initial = VietnamTime.pickerInitialDate(controller.text);
     initial = VietnamTime.clampPickerInitial(initial, firstDate, lastDate);
@@ -146,15 +169,17 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
     final DateTime? cap = _projectDeadlineCap;
     if (!VietnamTime.ymdNotAfterCap(startCtrl.text.trim(), cap)) {
       setState(
-        () => localMessage =
-            'Ngày bắt đầu không được sau ngày kết thúc dự án.',
+        () =>
+            localMessage =
+                'Ngày bắt đầu không được sau mốc kết thúc hợp đồng/dự án.',
       );
       return;
     }
     if (!VietnamTime.ymdNotAfterCap(deadlineCtrl.text.trim(), cap)) {
       setState(
-        () => localMessage =
-            'Deadline công việc không được sau ngày kết thúc dự án.',
+        () =>
+            localMessage =
+                'Deadline công việc không được sau mốc kết thúc hợp đồng/dự án.',
       );
       return;
     }
@@ -222,13 +247,15 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
             ? 'Giao việc trong dự án hiện tại.'
             : 'Giao việc trong dự án «${widget.projectName.trim()}».';
 
-    final List<Map<String, dynamic>> staffOptions = <Map<String, dynamic>>[
-      for (final Map<String, dynamic> department in widget.departments)
-        if (departmentId == null || _toId(department['id']) == departmentId)
-          ...((department['staff'] as List<dynamic>? ?? <dynamic>[])
-              .whereType<Map>()
-              .map((Map row) => row.cast<String, dynamic>())),
-    ];
+    final List<Map<String, dynamic>> staffOptions =
+        assignmentUsers.isNotEmpty
+            ? _uniqueStaffOptions(assignmentUsers)
+            : _uniqueStaffOptions(<Map<String, dynamic>>[
+              for (final Map<String, dynamic> department in widget.departments)
+                ...((department['staff'] as List<dynamic>? ?? <dynamic>[])
+                    .whereType<Map>()
+                    .map((Map row) => row.cast<String, dynamic>())),
+            ]);
 
     return Scaffold(
       backgroundColor: StitchTheme.formPageBackground,
@@ -245,8 +272,7 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
                 ? 'Đang lưu...'
                 : (widget.isEdit ? 'Lưu thay đổi' : 'Tạo công việc'),
         onPrimary: submitting ? null : _submit,
-        onSecondary:
-            submitting ? null : () => Navigator.of(context).maybePop(),
+        onSecondary: submitting ? null : () => Navigator.of(context).maybePop(),
         secondaryLabel: 'Hủy',
       ),
       body: SafeArea(
@@ -256,10 +282,7 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
           children: <Widget>[
             StitchFormSection(
               margin: EdgeInsets.zero,
-              child: stitchTaskFormSheetHeader(
-                context,
-                subtitle: subtitle,
-              ),
+              child: stitchTaskFormSheetHeader(context, subtitle: subtitle),
             ),
             if (localMessage.isNotEmpty)
               StitchFormSection(
@@ -363,9 +386,8 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
                             ),
                           ],
                           onChanged:
-                              (String? value) => setState(
-                                () => priority = value ?? 'medium',
-                              ),
+                              (String? value) =>
+                                  setState(() => priority = value ?? 'medium'),
                           decoration: stitchTaskDropdownDecoration(
                             context,
                             'Ưu tiên',
@@ -434,15 +456,13 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
                               (Map<String, dynamic> d) =>
                                   StitchSelectOption<int>(
                                     value: _toId(d['id']),
-                                    label: (d['name'] ?? 'Phòng ban').toString(),
+                                    label:
+                                        (d['name'] ?? 'Phòng ban').toString(),
                                   ),
                             )
                             .toList(),
                     onChanged: (int? value) {
-                      setState(() {
-                        departmentId = value;
-                        assigneeId = null;
-                      });
+                      setState(() => departmentId = value);
                     },
                     decoration: stitchTaskDropdownDecoration(
                       context,
@@ -476,8 +496,8 @@ class _ProjectTaskFormScreenState extends State<ProjectTaskFormScreen> {
                                   ),
                             )
                             .toList(),
-                    onChanged: (int? value) =>
-                        setState(() => assigneeId = value),
+                    onChanged:
+                        (int? value) => setState(() => assigneeId = value),
                     decoration: stitchTaskDropdownDecoration(
                       context,
                       'Nhân sự phụ trách',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/project_handover_visibility.dart';
 import '../../core/utils/task_item_linear_pace.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -12,10 +13,12 @@ class TaskItemsScreen extends StatefulWidget {
     super.key,
     required this.token,
     required this.apiService,
+    this.currentUserRole,
   });
 
   final String token;
   final MobileApiService apiService;
+  final String? currentUserRole;
 
   @override
   State<TaskItemsScreen> createState() => _TaskItemsScreenState();
@@ -51,7 +54,7 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
 
   Future<void> _loadAssignees() async {
     final List<Map<String, dynamic>> rows = await widget.apiService
-        .getUsersLookup(widget.token, purpose: 'operational_assignee');
+        .getUsersLookup(widget.token, purpose: 'task_assignment_staff');
     if (!mounted) return;
     setState(() => _assigneeLookupUsers = rows);
   }
@@ -96,13 +99,18 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
             .map((Map<dynamic, dynamic> row) => row.cast<String, dynamic>())
             .toList();
 
+    final List<Map<String, dynamic>> visibleRows = filterTaskItemsForEmployee(
+      rows,
+      widget.currentUserRole,
+    );
+
     setState(() {
-      _items = rows;
+      _items = visibleRows;
       _page = ((response['current_page'] as num?) ?? nextPage).toInt();
       _lastPage = ((response['last_page'] as num?) ?? 1).toInt();
-      _total = ((response['total'] as num?) ?? rows.length).toInt();
+      _total = ((response['total'] as num?) ?? visibleRows.length).toInt();
       _loading = false;
-      _message = rows.isEmpty ? 'Không có đầu việc phù hợp bộ lọc.' : '';
+      _message = visibleRows.isEmpty ? 'Không có đầu việc phù hợp bộ lọc.' : '';
     });
   }
 
@@ -191,7 +199,7 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
                       'Bộ lọc đầu việc',
                       style: TextStyle(
                         fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: StitchTheme.textMain,
                       ),
                     ),
@@ -329,7 +337,7 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
                                         (item['title'] ?? 'Đầu việc')
                                             .toString(),
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.w500,
                                           fontSize: 15,
                                           color: StitchTheme.textMain,
                                         ),
@@ -352,7 +360,7 @@ class _TaskItemsScreenState extends State<TaskItemsScreen> {
                                         _statusLabel(status),
                                         style: TextStyle(
                                           color: tone,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w500,
                                           fontSize: 12,
                                         ),
                                       ),

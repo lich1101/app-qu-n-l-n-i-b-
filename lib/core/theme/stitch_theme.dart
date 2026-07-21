@@ -120,7 +120,7 @@ class StitchTheme {
         titleTextStyle: TextStyle(
           color: textMain,
           fontSize: 19,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w500,
         ),
 
         /// Nền sáng → giờ/hệ thống/pin trên status bar dùng màu tối (Android/iOS).
@@ -146,11 +146,11 @@ class StitchTheme {
         selectedItemColor: primary,
         unselectedItemColor: textSubtle,
         selectedLabelStyle: TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           fontSize: 11,
         ),
         unselectedLabelStyle: TextStyle(
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w400,
           fontSize: 11,
         ),
         type: BottomNavigationBarType.fixed,
@@ -170,13 +170,13 @@ class StitchTheme {
         textColor: textMain,
         titleTextStyle: TextStyle(
           color: textMain,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           fontSize: 15,
         ),
         subtitleTextStyle: TextStyle(
           color: textMuted,
           fontSize: 13,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w400,
         ),
       ),
       popupMenuTheme: PopupMenuThemeData(
@@ -184,7 +184,7 @@ class StitchTheme {
         surfaceTintColor: Colors.transparent,
         textStyle: const TextStyle(
           color: textMain,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           fontSize: 14,
         ),
         shape: RoundedRectangleBorder(
@@ -201,7 +201,7 @@ class StitchTheme {
         labelStyle: const TextStyle(
           color: labelEmphasis,
           fontSize: 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           overflow: TextOverflow.ellipsis,
         ),
         hintStyle: const TextStyle(
@@ -213,7 +213,7 @@ class StitchTheme {
         floatingLabelStyle: TextStyle(
           color: primaryStrong.withValues(alpha: 0.92),
           fontSize: 12,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
           overflow: TextOverflow.ellipsis,
         ),
         border: OutlineInputBorder(
@@ -246,13 +246,13 @@ class StitchTheme {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         labelStyle: const TextStyle(
           fontSize: 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           color: textMain,
           height: 1.2,
         ),
         secondaryLabelStyle: TextStyle(
           fontSize: 13,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
           color: primaryStrong,
         ),
         checkmarkColor: primaryStrong,
@@ -266,7 +266,7 @@ class StitchTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          textStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -278,7 +278,7 @@ class StitchTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          textStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -289,13 +289,13 @@ class StitchTheme {
             borderRadius: BorderRadius.circular(16),
           ),
           foregroundColor: textMain,
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          textStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+          textStyle: const TextStyle(fontWeight: FontWeight.w500),
         ),
       ),
       dropdownMenuTheme: DropdownMenuThemeData(
@@ -308,30 +308,30 @@ class StitchTheme {
       ),
       textTheme: base.textTheme.copyWith(
         titleLarge: const TextStyle(
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
           fontSize: 22,
           color: textMain,
         ),
         titleMedium: const TextStyle(
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
           fontSize: 18,
           color: textMain,
         ),
         titleSmall: const TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           fontSize: 14,
           color: textMain,
         ),
         bodyLarge: const TextStyle(
           fontSize: 14,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w400,
           color: textMain,
           height: 1.35,
           overflow: TextOverflow.ellipsis,
         ),
         bodyMedium: const TextStyle(
           fontSize: 14,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w400,
           color: textMain,
           height: 1.35,
           overflow: TextOverflow.ellipsis,

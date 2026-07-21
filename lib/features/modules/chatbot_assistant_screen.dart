@@ -458,21 +458,21 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
       p: TextStyle(fontSize: 14, height: 1.5, color: textColor),
       h1: TextStyle(
         fontSize: 16,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w500,
         color: headingColor,
       ),
       h2: TextStyle(
         fontSize: 15,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w500,
         color: headingColor,
       ),
       h3: TextStyle(
         fontSize: 14,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w500,
         color: headingColor,
       ),
       listBullet: TextStyle(fontSize: 14, height: 1.45, color: textColor),
-      strong: TextStyle(fontWeight: FontWeight.w700, color: headingColor),
+      strong: TextStyle(fontWeight: FontWeight.w500, color: headingColor),
       a: TextStyle(
         color: isUser ? Colors.white : StitchTheme.primary,
         decoration: TextDecoration.underline,
@@ -930,7 +930,7 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
                                                                                 TextOverflow.ellipsis,
                                                                             style: TextStyle(
                                                                               fontWeight:
-                                                                                  FontWeight.w600,
+                                                                                  FontWeight.w500,
                                                                               color:
                                                                                   isUser
                                                                                       ? Colors.white
@@ -1038,7 +1038,7 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
                                                           style: TextStyle(
                                                             fontSize: 11,
                                                             fontWeight:
-                                                                FontWeight.w600,
+                                                                FontWeight.w500,
                                                             color:
                                                                 isUser
                                                                     ? Colors
@@ -1293,7 +1293,7 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
                         const Text(
                           'Hàng chờ',
                           style: TextStyle(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             color: StitchTheme.textMain,
                           ),
                         ),
@@ -1312,7 +1312,7 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
                             '${_queue.length}',
                             style: const TextStyle(
                               fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               color: StitchTheme.textMain,
                             ),
                           ),
@@ -1395,7 +1395,7 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: _statusText(status),
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
                                     ],
@@ -1558,7 +1558,7 @@ class _ChatbotAssistantScreenState extends State<ChatbotAssistantScreen> {
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     fontSize: 13,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w500,
                                     color: StitchTheme.textMain,
                                   ),
                                 ),

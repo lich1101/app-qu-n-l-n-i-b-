@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../core/auth/api_role_access.dart';
 import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -27,12 +29,14 @@ class ClientDetailScreen extends StatefulWidget {
     required this.apiService,
     required this.clientId,
     this.currentUserId,
+    this.currentUserRole,
   });
 
   final String token;
   final MobileApiService apiService;
   final int clientId;
   final int? currentUserId;
+  final String? currentUserRole;
 
   @override
   State<ClientDetailScreen> createState() => _ClientDetailScreenState();
@@ -41,9 +45,10 @@ class ClientDetailScreen extends StatefulWidget {
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
   bool loading = true;
   Map<String, dynamic>? data;
-  final TextEditingController noteTitleCtrl = TextEditingController();
-  final TextEditingController noteDetailCtrl = TextEditingController();
-  bool savingNote = false;
+  final TextEditingController commentTitleCtrl = TextEditingController();
+  final TextEditingController commentDetailCtrl = TextEditingController();
+  bool submittingComment = false;
+  String deletingCommentId = '';
 
   @override
   void initState() {
@@ -53,8 +58,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
   @override
   void dispose() {
-    noteTitleCtrl.dispose();
-    noteDetailCtrl.dispose();
+    commentTitleCtrl.dispose();
+    commentDetailCtrl.dispose();
     super.dispose();
   }
 
@@ -72,115 +77,192 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     }
   }
 
-  Future<void> _addCareNote() async {
-    if (noteTitleCtrl.text.trim().isEmpty ||
-        noteDetailCtrl.text.trim().isEmpty) {
-      AppTagMessage.show('Vui lòng nhập đầy đủ tiêu đề và nội dung.');
+  Future<void> _submitComment() async {
+    if (commentTitleCtrl.text.trim().isEmpty ||
+        commentDetailCtrl.text.trim().isEmpty) {
+      AppTagMessage.show('Vui lòng nhập đầy đủ tiêu đề và nội dung bình luận.');
       return;
     }
 
-    setState(() => savingNote = true);
-    final ok = await widget.apiService.storeClientCareNote(
+    setState(() => submittingComment = true);
+    final bool ok = await widget.apiService.storeClientComment(
       widget.token,
       widget.clientId,
-      title: noteTitleCtrl.text.trim(),
-      detail: noteDetailCtrl.text.trim(),
+      title: commentTitleCtrl.text.trim(),
+      detail: commentDetailCtrl.text.trim(),
     );
 
-    if (mounted) {
-      setState(() => savingNote = false);
-      if (ok) {
-        noteTitleCtrl.clear();
-        noteDetailCtrl.clear();
-        Navigator.of(context).pop();
-        _fetch();
-      } else {
-        AppTagMessage.show('Không thể thêm ghi chú chăm sóc.', isError: true);
-      }
+    if (!mounted) return;
+    setState(() => submittingComment = false);
+    if (ok) {
+      commentTitleCtrl.clear();
+      commentDetailCtrl.clear();
+      AppTagMessage.show('Đã thêm bình luận.');
+      _fetch();
+      return;
     }
+
+    AppTagMessage.show('Không thể thêm bình luận.', isError: true);
   }
 
-  void _showAddNoteSheet() {
-    showModalBottomSheet(
+  Future<void> _deleteComment(String commentId) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Xóa bình luận'),
+          content: const Text('Bạn có chắc muốn xóa bình luận này không?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Xóa'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => deletingCommentId = commentId);
+    final bool ok = await widget.apiService.deleteClientComment(
+      widget.token,
+      widget.clientId,
+      commentId,
+    );
+
+    if (!mounted) return;
+    setState(() => deletingCommentId = '');
+    if (ok) {
+      AppTagMessage.show('Đã xóa bình luận.');
+      _fetch();
+      return;
+    }
+
+    AppTagMessage.show('Không thể xóa bình luận.', isError: true);
+  }
+
+  Future<void> _copyPhoneNumber(dynamic phone) async {
+    final String value = '$phone'.trim();
+    if (value.isEmpty) {
+      AppTagMessage.show('Khách hàng chưa có số điện thoại.', isError: true);
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: value));
+    AppTagMessage.show('Đã copy số điện thoại.');
+  }
+
+  Future<void> _showCommentFullSheet({
+    required String title,
+    required String detail,
+    required String authorMeta,
+    required String createdAt,
+  }) async {
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder:
-          (context) => StatefulBuilder(
-            builder:
-                (context, setSheetState) => Container(
-                  padding: EdgeInsets.only(
-                    left: 20,
-                    right: 20,
-                    top: 20,
-                    bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-                  ),
-                  decoration: const BoxDecoration(
-                    color: StitchTheme.bg,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(24),
+      builder: (BuildContext context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.62,
+          minChildSize: 0.42,
+          maxChildSize: 0.92,
+          builder: (BuildContext context, ScrollController scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Column(
+                children: <Widget>[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 54,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: StitchTheme.border,
+                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Thêm ghi chú chăm sóc',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: noteTitleCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Tiêu đề',
-                          hintText: 'VD: Gọi điện tư vấn, Gặp mặt trực tiếp...',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: noteDetailCtrl,
-                        maxLines: 5,
-                        decoration: const InputDecoration(
-                          labelText: 'Nội dung chi tiết',
-                          alignLabelWithHint: true,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              child: const Text('Hủy'),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                    color: StitchTheme.textMain,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                            ],
+                          ),
+                          if (authorMeta.trim().isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 4),
+                            Text(
+                              authorMeta,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: StitchTheme.textMuted,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Text(
+                            createdAt,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: StitchTheme.textSubtle,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: savingNote ? null : _addCareNote,
-                              child:
-                                  savingNote
-                                      ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                      : const Text('Lưu ghi chú'),
+                          const SizedBox(height: 18),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: SelectableText(
+                              detail,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                height: 1.6,
+                                color: StitchTheme.textMain,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-          ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -205,6 +287,9 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final contracts = (data!['contracts'] as List? ?? []);
     final projects = (data!['projects'] as List? ?? []);
     final careNotes = (data!['care_notes'] as List? ?? []);
+    final commentsHistory = _normalizedComments(
+      (data!['comments_history'] as List? ?? []),
+    );
     final permissions = data!['permissions'] as Map? ?? {};
     final rotation = data!['client_rotation'] as Map? ?? <String, dynamic>{};
     final rotationHistory = (data!['rotation_history'] as List? ?? []);
@@ -215,29 +300,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         title: Text(client['name'] ?? 'Chi tiết khách hàng'),
         elevation: 0,
       ),
-      floatingActionButton:
-          permissions['can_add_care_note'] == true
-              ? Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(28),
-                color: StitchTheme.primary,
-                child: InkWell(
-                  onTap: _showAddNoteSheet,
-                  borderRadius: BorderRadius.circular(28),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    child: Text(
-                      'Chăm sóc',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
-                ),
-              )
-              : null,
       body: RefreshIndicator(
         onRefresh: _fetch,
         child: ListView(
@@ -245,18 +307,24 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           children: [
             _buildClientHeaderCard(client),
             const SizedBox(height: 16),
+            _buildCommentsSection(commentsHistory, permissions),
+            const SizedBox(height: 16),
             _buildSectionCard('Liên hệ', [
               _buildInfoRow(
                 Icons.phone_iphone_rounded,
                 'Điện thoại',
                 _displayStr(client['phone']),
+                onTap:
+                    _hasText(client['phone'])
+                        ? () => _copyPhoneNumber(client['phone'])
+                        : null,
               ),
               _buildInfoRow(
                 Icons.alternate_email_rounded,
                 'Email',
                 _displayStr(client['email']),
               ),
-            ]),
+            ], icon: Icons.contact_phone_rounded),
             _buildSectionCard('Phân loại & kênh', [
               _buildInfoRow(
                 Icons.campaign_rounded,
@@ -311,7 +379,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     ),
                   ),
                 ),
-            ]),
+            ], icon: Icons.hub_rounded),
             _buildSectionCard('Tổ chức', [
               _buildInfoRow(
                 Icons.business_rounded,
@@ -333,7 +401,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 'Phòng ban',
                 _nestedName(client['assigned_department']),
               ),
-            ]),
+            ], icon: Icons.apartment_rounded),
             _buildSectionCard('Tài chính tổng quan', [
               _buildInfoRow(
                 Icons.payments_rounded,
@@ -365,7 +433,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 'Đã mua hàng',
                 _formatBool(client['has_purchased']),
               ),
-            ]),
+            ], icon: Icons.account_balance_wallet_rounded),
             if (_hasText(client['notes']))
               _buildSectionCard('Ghi chú nội bộ', [
                 Text(
@@ -376,7 +444,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     color: StitchTheme.textMain,
                   ),
                 ),
-              ]),
+              ], icon: Icons.sticky_note_2_outlined),
             _buildSectionCard('Nhân sự', [
               _buildStaffRow('Phụ trách', client['assigned_staff']),
               const SizedBox(height: 10),
@@ -407,7 +475,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                           .toList(),
                 ),
               ],
-            ]),
+            ], icon: Icons.groups_rounded),
             if (rotation.isNotEmpty)
               _buildRotationCard(
                 Map<String, dynamic>.from(rotation),
@@ -415,7 +483,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 permissions,
               ),
             if (careNotes.isNotEmpty) ...[
-              _buildSectionTitle('Nhật ký chăm sóc'),
+              _buildSectionTitle('Ghi chú chăm sóc'),
               ...careNotes.map((note) => _buildCareNoteItem(note)),
               const SizedBox(height: 16),
             ],
@@ -434,7 +502,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
               ...projects.map((project) => _buildProjectItem(project)),
               const SizedBox(height: 16),
             ],
-            const SizedBox(height: 80), // Space for FAB
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -448,14 +516,48 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         title,
         style: const TextStyle(
           fontSize: 16,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w500,
           color: StitchTheme.textMain,
         ),
       ),
     );
   }
 
+  List<Map<String, dynamic>> _normalizedComments(List<dynamic> rawRows) {
+    final List<Map<String, dynamic>> rows =
+        rawRows
+            .whereType<Map>()
+            .map(
+              (Map row) => Map<String, dynamic>.from(
+                row.map((key, value) => MapEntry('$key', value)),
+              ),
+            )
+            .where(
+              (Map<String, dynamic> row) =>
+                  _hasText(row['detail']) || _hasText(row['title']),
+            )
+            .toList();
+
+    rows.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+      final int timeA =
+          DateTime.tryParse(
+            '${a['created_at'] ?? ''}',
+          )?.millisecondsSinceEpoch ??
+          0;
+      final int timeB =
+          DateTime.tryParse(
+            '${b['created_at'] ?? ''}',
+          )?.millisecondsSinceEpoch ??
+          0;
+      if (timeA != timeB) return timeA.compareTo(timeB);
+      return '${a['id'] ?? ''}'.compareTo('${b['id'] ?? ''}');
+    });
+
+    return rows;
+  }
+
   Widget _buildClientHeaderCard(Map<String, dynamic> client) {
+    final bool inRotationPool = client['is_in_rotation_pool'] == true;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -495,7 +597,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                   client['name'] ?? '—',
                   style: const TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 if (client['company'] != null)
@@ -506,6 +608,35 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                       style: const TextStyle(color: StitchTheme.textMuted),
                     ),
                   ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    _buildHeaderChip(
+                      Icons.phone_rounded,
+                      _displayStr(client['phone']),
+                      onTap:
+                          _hasText(client['phone'])
+                              ? () => _copyPhoneNumber(client['phone'])
+                              : null,
+                    ),
+                    _buildHeaderChip(
+                      Icons.label_outline_rounded,
+                      _nestedName(client['lead_type']),
+                    ),
+                    _buildHeaderChip(
+                      Icons.flag_outlined,
+                      _displayStr(client['customer_status_label']),
+                    ),
+                    if (inRotationPool)
+                      _buildHeaderChip(
+                        Icons.inventory_2_outlined,
+                        'Đang ở kho số',
+                        accent: const Color(0xFFF59E0B),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -514,7 +645,58 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
   }
 
-  Widget _buildSectionCard(String title, List<Widget> children) {
+  Widget _buildHeaderChip(
+    IconData icon,
+    String label, {
+    Color? accent,
+    VoidCallback? onTap,
+  }) {
+    final Color chipAccent = accent ?? StitchTheme.primary;
+    final Widget child = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: chipAccent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: chipAccent.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 14, color: chipAccent),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: chipAccent,
+            ),
+          ),
+          if (onTap != null) ...<Widget>[
+            const SizedBox(width: 6),
+            Icon(Icons.copy_rounded, size: 13, color: chipAccent),
+          ],
+        ],
+      ),
+    );
+
+    if (onTap == null) return child;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildSectionCard(
+    String title,
+    List<Widget> children, {
+    IconData? icon,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Container(
@@ -534,13 +716,33 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: StitchTheme.textMain,
-              ),
+            Row(
+              children: <Widget>[
+                if (icon != null) ...<Widget>[
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: StitchTheme.primarySoft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 18,
+                      color: StitchTheme.primaryStrong,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: StitchTheme.textMain,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             ...children,
@@ -548,6 +750,431 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildCommentsSection(
+    List<Map<String, dynamic>> commentsHistory,
+    Map permissions,
+  ) {
+    final bool canAddComment = permissions['can_add_comment'] == true;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: StitchTheme.textMain.withValues(alpha: 0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: StitchTheme.primarySoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 18,
+                  color: StitchTheme.primaryStrong,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Bình luận nội bộ',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: StitchTheme.textMain,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Lịch sử trao đổi nội bộ để theo dõi chăm sóc khách hàng.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: StitchTheme.textMuted,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: StitchTheme.primarySoft,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${commentsHistory.length} bình luận',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: StitchTheme.primaryStrong,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (canAddComment) _buildCommentComposer(),
+          if (canAddComment) const SizedBox(height: 16),
+          if (commentsHistory.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: StitchTheme.border),
+              ),
+              child: Column(
+                children: const <Widget>[
+                  Icon(
+                    Icons.forum_outlined,
+                    size: 24,
+                    color: StitchTheme.textSubtle,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Chưa có bình luận nào',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: StitchTheme.textMain,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Thêm bình luận đầu tiên để lưu lịch sử phối hợp nội bộ.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: StitchTheme.textMuted,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...commentsHistory.map(
+              (Map<String, dynamic> note) => _buildCommentItem(note),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommentComposer() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Thêm bình luận mới',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: StitchTheme.textMain,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Ghi ngắn gọn, rõ hành động và kết quả để người sau nắm bối cảnh nhanh.',
+            style: TextStyle(
+              fontSize: 12.5,
+              color: StitchTheme.textMuted,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: commentTitleCtrl,
+            textInputAction: TextInputAction.next,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Tiêu đề bình luận',
+              hintText: 'Ví dụ: Cập nhật sau buổi gọi sáng nay',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: commentDetailCtrl,
+            maxLines: 5,
+            minLines: 4,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Nội dung',
+              hintText:
+                  'Nhập nội dung bình luận, vấn đề cần follow-up hoặc người chịu trách nhiệm...',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  '${commentDetailCtrl.text.trim().length} ký tự',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: StitchTheme.textSubtle,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed:
+                    submittingComment
+                        ? null
+                        : () {
+                          commentTitleCtrl.clear();
+                          commentDetailCtrl.clear();
+                          setState(() {});
+                        },
+                child: const Text('Xóa nội dung'),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: submittingComment ? null : _submitComment,
+                icon:
+                    submittingComment
+                        ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.send_rounded, size: 16),
+                label: Text(
+                  submittingComment ? 'Đang gửi...' : 'Gửi bình luận',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommentItem(Map<String, dynamic> note) {
+    final Map<String, dynamic>? user =
+        note['user'] is Map
+            ? Map<String, dynamic>.from(note['user'] as Map)
+            : null;
+    final bool canDelete = note['can_delete'] == true;
+    final String commentId = '${note['id'] ?? ''}';
+    final bool deleting = deletingCommentId == commentId;
+    final String title = _displayStr(note['title']);
+    final String detail = _displayStr(note['detail']);
+    final String authorMeta = [
+      _displayStr(user?['name']),
+      if (_hasText(user?['email'])) _displayStr(user?['email']),
+    ].join(' • ');
+    final String createdAt = _formatDate(note['created_at']?.toString());
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: StitchTheme.textMain.withValues(alpha: 0.025),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: StitchTheme.primarySoft,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: StitchTheme.primary.withValues(alpha: 0.18),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  _userInitials(user),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: StitchTheme.primaryStrong,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: StitchTheme.textMain,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      authorMeta,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: StitchTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: StitchTheme.border),
+                    ),
+                    child: Text(
+                      createdAt,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        color: StitchTheme.textMuted,
+                      ),
+                    ),
+                  ),
+                  if (canDelete) ...<Widget>[
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: deleting ? null : () => _deleteComment(commentId),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: StitchTheme.dangerSoft,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          deleting ? 'Đang xóa...' : 'Xóa',
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFFDC2626),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: StitchTheme.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                SelectableText(
+                  detail,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    height: 1.55,
+                    color: StitchTheme.textMain,
+                  ),
+                ),
+                if (detail != '—') ...<Widget>[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed:
+                          () => _showCommentFullSheet(
+                            title: title,
+                            detail: detail,
+                            authorMeta: authorMeta,
+                            createdAt: createdAt,
+                          ),
+                      icon: const Icon(Icons.open_in_full_rounded, size: 16),
+                      label: const Text('Mở full'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _userInitials(Map<String, dynamic>? user) {
+    final String source = '${user?['name'] ?? user?['email'] ?? 'NS'}'.trim();
+    if (source.isEmpty) return 'NS';
+    final List<String> parts = source.split(RegExp(r'\s+'));
+    return parts
+        .where((String part) => part.isNotEmpty)
+        .map((String part) => part.substring(0, 1).toUpperCase())
+        .take(2)
+        .join();
   }
 
   bool _hasText(dynamic v) {
@@ -617,15 +1244,20 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         name,
         style: TextStyle(
           fontSize: 13,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w500,
           color: StitchTheme.primary,
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Padding(
+  Widget _buildInfoRow(
+    IconData icon,
+    String label,
+    String value, {
+    VoidCallback? onTap,
+  }) {
+    final Widget row = Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
@@ -638,12 +1270,31 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: onTap != null ? StitchTheme.primaryStrong : null,
+              ),
               textAlign: TextAlign.end,
             ),
           ),
+          if (onTap != null) ...<Widget>[
+            const SizedBox(width: 8),
+            Icon(
+              Icons.copy_rounded,
+              size: 16,
+              color: StitchTheme.primaryStrong,
+            ),
+          ],
         ],
       ),
+    );
+
+    if (onTap == null) return row;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: row,
     );
   }
 
@@ -673,6 +1324,10 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         rotation['thresholds'] is Map
             ? rotation['thresholds'] as Map
             : <String, dynamic>{};
+    final bool hasCommentActivity = rotation['comment_has_activity'] == true;
+    final bool hasOpportunityActivity =
+        rotation['opportunity_has_activity'] == true;
+    final bool hasContractActivity = rotation['contract_has_activity'] == true;
 
     return _buildSectionCard('Theo dõi xoay khách hàng', <Widget>[
       Row(
@@ -686,7 +1341,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                   statusLabel,
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 if (protectingLabel.isNotEmpty)
@@ -720,7 +1375,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
               style: TextStyle(
                 color: statusColor,
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -732,16 +1387,24 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           Expanded(
             child: _buildRotationMetric(
               'Bình luận / ghi chú',
-              '${rotation['days_since_comment'] ?? '—'} ngày',
-              'Mốc: ${thresholds['comment_stale_days'] ?? '—'} ngày • từ ${_formatDate(rotation['effective_comment_at']?.toString())}',
+              hasCommentActivity
+                  ? '${rotation['days_since_comment'] ?? 0} ngày'
+                  : 'Chưa có',
+              hasCommentActivity
+                  ? 'Mốc: ${thresholds['comment_stale_days'] ?? '—'} ngày • từ ${_formatDate(rotation['effective_comment_at']?.toString())}'
+                  : 'Fallback: ${thresholds['comment_stale_days'] ?? '—'} ngày • theo mốc reset ${_formatDate(rotation['rotation_anchor_at']?.toString())}',
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: _buildRotationMetric(
               'Cơ hội mới',
-              '${rotation['days_since_opportunity'] ?? '—'} ngày',
-              'Mốc: ${thresholds['opportunity_stale_days'] ?? '—'} ngày • từ ${_formatDate(rotation['effective_opportunity_at']?.toString())}',
+              hasOpportunityActivity
+                  ? '${rotation['days_since_opportunity'] ?? 0} ngày'
+                  : 'Chưa có',
+              hasOpportunityActivity
+                  ? 'Mốc: ${thresholds['opportunity_stale_days'] ?? '—'} ngày • từ ${_formatDate(rotation['effective_opportunity_at']?.toString())}'
+                  : 'Mốc: ${thresholds['opportunity_stale_days'] ?? '—'} ngày • chưa có cơ hội để gia hạn',
             ),
           ),
         ],
@@ -752,18 +1415,22 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           Expanded(
             child: _buildRotationMetric(
               'Hợp đồng mới',
-              '${rotation['days_since_contract'] ?? '—'} ngày',
-              'Mốc: ${thresholds['contract_stale_days'] ?? '—'} ngày • từ ${_formatDate(rotation['effective_contract_at']?.toString())}',
+              hasContractActivity
+                  ? '${rotation['days_since_contract'] ?? 0} ngày'
+                  : 'Chưa có',
+              hasContractActivity
+                  ? 'Mốc: ${thresholds['contract_stale_days'] ?? '—'} ngày • từ ${_formatDate(rotation['effective_contract_at']?.toString())}'
+                  : 'Mốc: ${thresholds['contract_stale_days'] ?? '—'} ngày • chưa có hợp đồng để gia hạn',
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: _buildRotationMetric(
-              'Mốc reset chung',
+              'Còn tới khi vào diện xoay',
               eligible
                   ? 'Đã đủ điều kiện'
                   : '${rotation['days_until_rotation'] ?? 0} ngày',
-              'Mốc đếm: ${_formatDate(rotation['rotation_anchor_at']?.toString())}',
+              'Mốc đang giữ: ${(rotation['active_rule_label'] ?? 'Mốc reset / tạo khách').toString()} • còn ${rotation['active_stage_remaining_days'] ?? 0} ngày • ngày xoay ${_formatDate(rotation['projected_rotation_at']?.toString())}',
             ),
           ),
         ],
@@ -780,10 +1447,12 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         child: Text(
           [
             (rotation['rotation_anchor_label'] ?? '').toString().trim(),
+            'Mốc đang giữ ngày xoay: ${(rotation['active_rule_label'] ?? 'Mốc reset / tạo khách').toString().trim()}.',
             'Ưu tiên điều chuyển: ${(rotation['priority_label'] ?? _priorityLabel(rotation['priority_bucket'])).toString().trim()}.',
             (rotation['priority_rule_label'] ?? '').toString().trim(),
             'Nhịp nhắc: chăm sóc còn 2 ngày nhắc mỗi ngày, cơ hội còn 14 ngày nhắc mỗi 3 ngày, hợp đồng còn 45 ngày nhắc mỗi 7 ngày.',
-            'Giới hạn nhận/ngày: ${thresholds['daily_receive_limit'] ?? '—'}.',
+            'Giới hạn cron/ngày: ${thresholds['daily_receive_limit'] ?? '—'}.',
+            'Giới hạn nhận kho số/ngày: ${thresholds['pool_claim_daily_limit'] ?? '—'}.',
           ].where((String value) => value.isNotEmpty).join(' '),
           style: const TextStyle(color: Color(0xFF475569), height: 1.45),
         ),
@@ -792,7 +1461,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         const SizedBox(height: 16),
         const Text(
           'Lịch sử điều chuyển',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 10),
         if (history.isEmpty)
@@ -828,7 +1497,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
           const SizedBox(height: 6),
           Text(
             value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 4),
           Text(
@@ -861,7 +1530,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         children: <Widget>[
           Text(
             actionLabel,
-            style: const TextStyle(fontWeight: FontWeight.w700),
+            style: const TextStyle(fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 6),
           Text('$fromName → $toName', style: const TextStyle(fontSize: 13)),
@@ -915,7 +1584,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
               Expanded(
                 child: Text(
                   note['title'] ?? 'Ghi chú',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
               ),
               Text(
@@ -988,7 +1657,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 : null,
         title: Text(
           opp['title'] ?? 'Cơ hội',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
         ),
         subtitle: Text(
           '${opp['amount'] ?? 0} VNĐ • XS: ${opp['success_probability'] ?? 0}%',
@@ -1009,7 +1678,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
               label,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w500,
                 color: chipColor,
               ),
             ),
@@ -1020,6 +1689,9 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   }
 
   Widget _buildContractItem(Map<String, dynamic> contract) {
+    final int contractId = int.tryParse('${contract['id'] ?? 0}') ?? 0;
+    final String role = (widget.currentUserRole ?? '').toLowerCase();
+    final bool canViewContract = apiRoleMatches(role, kApiContractReadCreate);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -1028,37 +1700,55 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         border: Border.all(color: StitchTheme.border),
       ),
       child: ListTile(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder:
-                  (_) => ContractsScreen(
-                    token: widget.token,
-                    apiService: widget.apiService,
-                    canManage: false,
-                    canCreate: false,
-                    canDelete: false,
-                    canApprove: false,
-                    canCreateContractFinanceLines: false,
-                    canEditContractFinanceLines: false,
-                    currentUserRole: '',
-                    currentUserId: widget.currentUserId,
-                    // Ideally, pass a filter for this client
-                  ),
-            ),
-          );
-        },
+        onTap:
+            canViewContract && contractId > 0
+                ? () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (_) => ContractsScreen(
+                            token: widget.token,
+                            apiService: widget.apiService,
+                            canManage: apiRoleMatches(
+                              role,
+                              kApiContractUpdateDelete,
+                            ),
+                            canCreate: canViewContract,
+                            canDelete: false,
+                            canApprove: apiRoleMatches(
+                              role,
+                              kApiContractApprove,
+                            ),
+                            canCreateContractFinanceLines: apiRoleMatches(
+                              role,
+                              kApiContractPaymentLineCreate,
+                            ),
+                            canEditContractFinanceLines: apiRoleMatches(
+                              role,
+                              kApiContractPaymentLineMutate,
+                            ),
+                            currentUserRole: role,
+                            currentUserId: widget.currentUserId,
+                            initialContractId: contractId,
+                          ),
+                    ),
+                  );
+                }
+                : null,
         title: Text(
           contract['title'] ?? 'Hợp đồng',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
         ),
         subtitle: Text(
           'Số: ${contract['code'] ?? '—'} • ${contract['value'] ?? 0} VNĐ',
         ),
-        trailing: const Icon(
-          Icons.chevron_right_rounded,
-          color: StitchTheme.textMuted,
-        ),
+        trailing:
+            canViewContract && contractId > 0
+                ? const Icon(
+                  Icons.chevron_right_rounded,
+                  color: StitchTheme.textMuted,
+                )
+                : null,
       ),
     );
   }
@@ -1074,7 +1764,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       child: ListTile(
         title: Text(
           project['name'] ?? 'Dự án',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
         ),
         subtitle: Row(
           children: [

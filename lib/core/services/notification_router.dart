@@ -6,6 +6,7 @@ import 'dart:convert';
 import '../../config/app_env.dart';
 import '../messaging/app_tag_message.dart';
 import '../auth/api_role_access.dart';
+import '../auth/web_menu_roles.dart';
 import '../../data/services/mobile_api_service.dart';
 import '../../features/modules/client_detail_screen.dart';
 import '../../features/modules/client_staff_transfer_screen.dart';
@@ -121,6 +122,7 @@ class NotificationRouter {
           apiService: apiService,
           clientId: clientId,
           currentUserId: currentUserId,
+          currentUserRole: currentUserRole,
         );
       } else {
         missingMessage = 'Khách hàng không tồn tại.';
@@ -202,7 +204,9 @@ class NotificationRouter {
         screen = ProjectsScreen(
           token: token,
           apiService: apiService,
+          canView: webMenuHasRole(role, kWebMenuOperationsProjects),
           canCreate: apiRoleMatches(role, kApiProjectStore),
+          currentUserRole: role,
         );
       }
     } else if (type == 'lead_form' || _isLeadFormSettingsType(type)) {

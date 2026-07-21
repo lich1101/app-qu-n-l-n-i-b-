@@ -99,7 +99,9 @@ class _OpportunityStatusesScreenState extends State<OpportunityStatusesScreen> {
       id,
     );
     if (!mounted) return;
-    setState(() => message = ok ? 'Đã xóa trạng thái cơ hội.' : 'Xóa thất bại.');
+    setState(
+      () => message = ok ? 'Đã xóa trạng thái cơ hội.' : 'Xóa thất bại.',
+    );
     if (ok) await _fetch();
   }
 
@@ -142,7 +144,7 @@ class _OpportunityStatusesScreenState extends State<OpportunityStatusesScreen> {
                       editingId == null
                           ? 'Tạo trạng thái cơ hội'
                           : 'Sửa trạng thái cơ hội',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 10),
                     TextField(
@@ -230,7 +232,7 @@ class _OpportunityStatusesScreenState extends State<OpportunityStatusesScreen> {
                   const Expanded(
                     child: Text(
                       'Danh sách trạng thái cơ hội',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   ElevatedButton.icon(

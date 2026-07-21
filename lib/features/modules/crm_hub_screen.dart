@@ -6,6 +6,7 @@ class CrmHubScreen extends StatelessWidget {
   const CrmHubScreen({
     super.key,
     this.onOpenCrm,
+    this.onOpenClientPool,
     this.onOpenOpportunities,
     this.onOpenContracts,
     this.onOpenProducts,
@@ -16,6 +17,7 @@ class CrmHubScreen extends StatelessWidget {
   });
 
   final VoidCallback? onOpenCrm;
+  final VoidCallback? onOpenClientPool;
   final VoidCallback? onOpenOpportunities;
   final VoidCallback? onOpenContracts;
   final VoidCallback? onOpenProducts;
@@ -34,6 +36,13 @@ class CrmHubScreen extends StatelessWidget {
           subtitle: 'Danh sách khách hàng & phân công',
           icon: Icons.people_alt_outlined,
           onTap: onOpenCrm!,
+        ),
+      if (onOpenClientPool != null)
+        _CrmItem(
+          title: 'Kho số',
+          subtitle: 'Khách chờ nhận thủ công sau cron xoay',
+          icon: Icons.inventory_2_outlined,
+          onTap: onOpenClientPool!,
         ),
       if (onOpenOpportunities != null)
         _CrmItem(
@@ -95,7 +104,7 @@ class CrmHubScreen extends StatelessWidget {
         children: <Widget>[
           const Text(
             'CRM & Sales',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 6),
           const Text(
@@ -108,7 +117,7 @@ class CrmHubScreen extends StatelessWidget {
           if (configItems.isNotEmpty) ...<Widget>[
             const Text(
               'Cấu hình CRM',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 10),
             ...configItems.map(_CrmItemCard.new),
@@ -175,7 +184,7 @@ class _CrmItemCard extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     item.title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 4),
                   Text(

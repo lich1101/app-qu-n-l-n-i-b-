@@ -104,7 +104,7 @@ class _ChatScreenState extends State<ChatScreen> {
           children: <Widget>[
             const Text(
               'Đoạn chat',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 6),
             const Text(
@@ -186,7 +186,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           initial.toUpperCase(),
                           style: const TextStyle(
                             color: Color(0xFF4338CA),
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
@@ -200,7 +200,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                             const SizedBox(height: 3),
@@ -233,7 +233,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -975,7 +975,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           style: (style ?? const TextStyle()).copyWith(
             color: StitchTheme.primary,
             decoration: TextDecoration.underline,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
           ),
           recognizer:
               TapGestureRecognizer()..onTap = () => _openExternal(rawUrl),
@@ -1011,7 +1011,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 _initials(fallbackName),
                 style: TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   fontSize: radius * 0.66,
                 ),
               )
@@ -1087,7 +1087,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           text: text.substring(range.start, range.end),
           style: TextStyle(
             color: StitchTheme.successStrong,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             backgroundColor: StitchTheme.successSoft,
           ),
         ),
@@ -1171,7 +1171,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           crossAxisAlignment:
               isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: <Widget>[
-            Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(name, style: const TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 6),
             isRecalled
                 ? const Text(
@@ -1221,7 +1221,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           style: TextStyle(
                             fontSize: 11,
                             color: StitchTheme.primary,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1408,7 +1408,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             children: <Widget>[
               const Text(
                 'Thông tin tin nhắn',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
               Row(
@@ -1742,7 +1742,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                               backgroundColor: StitchTheme.successSoft,
                               labelStyle: TextStyle(
                                 color: StitchTheme.successStrong,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w500,
                               ),
                               label: Text('@$name'),
                               onDeleted: () {

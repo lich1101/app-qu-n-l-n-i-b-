@@ -209,11 +209,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: <Color>[Color(0xFFF8FAFC), Color(0xFFF1F5F9)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
@@ -266,7 +262,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                       Text(
                         _monthLabel(_selectedMonth),
                         style: TextStyle(
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           fontSize: 15,
                           color:
                               isCurrentMonth
@@ -291,7 +287,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                             'Hiện tại',
                             style: TextStyle(
                               fontSize: 10,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               color: Color(0xFF3B82F6),
                             ),
                           ),
@@ -383,11 +379,6 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        gradient: const LinearGradient(
-          colors: <Color>[Colors.white, Color(0xFFF8FAFC), Color(0xFFF5F3FF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
@@ -429,7 +420,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                           child: Text(
                             _roleTitle('pie'),
                             style: const TextStyle(
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               fontSize: 14,
                             ),
                           ),
@@ -454,7 +445,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                             'Theo danh mục',
                             style: TextStyle(
                               fontSize: 10,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               letterSpacing: 0.06,
                               color: Color(0xFF6D28D9),
                             ),
@@ -498,7 +489,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                         'Doanh thu',
                         style: TextStyle(
                           fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                           letterSpacing: 0.04,
                           color: StitchTheme.textMuted,
                         ),
@@ -508,7 +499,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                         _fmtCurrencyFull(_pieCenterTotal()),
                         style: const TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           color: Color(0xFF0F172A),
                           height: 1.15,
                         ),
@@ -569,7 +560,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                                     maxLines: 1,
                                     style: const TextStyle(
                                       fontSize: 13,
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w500,
                                       color: Color(0xFF0F172A),
                                       height: 1.0,
                                     ),
@@ -591,7 +582,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                   'Chi tiết theo mục',
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     letterSpacing: 0.06,
                     color: StitchTheme.textSubtle,
                   ),
@@ -656,7 +647,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       fontSize: 13,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w500,
                                       color: Color(0xFF334155),
                                     ),
                                   ),
@@ -669,7 +660,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                                       _fmtCurrencyFull(value),
                                       style: const TextStyle(
                                         fontSize: 13,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w500,
                                         color: Color(0xFF0F172A),
                                       ),
                                     ),
@@ -732,13 +723,13 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
             ),
           ),
           Text(
             '${_fmtCurrency(value)} (${percent.toStringAsFixed(1)}%)',
             style: TextStyle(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               fontSize: 13,
               color: _palette[index % _palette.length],
             ),
@@ -790,11 +781,6 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        gradient: const LinearGradient(
-          colors: <Color>[Colors.white, Color(0xFFF8FAFC), Color(0xFFECFDF5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
@@ -827,7 +813,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
               Text(
                 _roleTitle('staff'),
                 style: const TextStyle(
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   fontSize: 14,
                 ),
               ),
@@ -934,7 +920,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                       name.isNotEmpty ? name[0].toUpperCase() : '?',
                       style: TextStyle(
                         color: barColor,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         fontSize: 12,
                       ),
                     ),
@@ -948,7 +934,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -1001,7 +987,7 @@ class _MetricProgressLine extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 color: StitchTheme.textMuted,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const Spacer(),
@@ -1009,7 +995,7 @@ class _MetricProgressLine extends StatelessWidget {
               valueLabel,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 color: barColor,
               ),
             ),
@@ -1085,7 +1071,7 @@ class _ChartInfoPill extends StatelessWidget {
                 label,
                 style: const TextStyle(
                   fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: StitchTheme.textMuted,
                 ),
               ),
@@ -1094,7 +1080,7 @@ class _ChartInfoPill extends StatelessWidget {
                 value,
                 style: const TextStyle(
                   fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: StitchTheme.textMain,
                 ),
               ),
@@ -1123,6 +1109,7 @@ class _PieChartPainter extends CustomPainter {
     final double cy = size.height / 2;
     final double radius = math.min(cx, cy) - 4;
     final double innerRadius = radius * 0.38;
+    const double fullCircleEpsilon = 0.0001;
 
     final double total = data.fold<double>(
       0,
@@ -1143,35 +1130,44 @@ class _PieChartPainter extends CustomPainter {
             ..style = PaintingStyle.fill;
 
       final double drawRadius = isSelected ? radius + 4 : radius;
+      final Offset center = Offset(cx, cy);
 
-      // Draw arc segment
-      final Path path =
-          Path()
-            ..moveTo(
-              cx + innerRadius * math.cos(startAngle),
-              cy + innerRadius * math.sin(startAngle),
-            )
-            ..lineTo(
-              cx + drawRadius * math.cos(startAngle),
-              cy + drawRadius * math.sin(startAngle),
-            )
-            ..arcTo(
-              Rect.fromCircle(center: Offset(cx, cy), radius: drawRadius),
-              startAngle,
-              sweepAngle,
-              false,
-            )
-            ..lineTo(
-              cx + innerRadius * math.cos(startAngle + sweepAngle),
-              cy + innerRadius * math.sin(startAngle + sweepAngle),
-            )
-            ..arcTo(
-              Rect.fromCircle(center: Offset(cx, cy), radius: innerRadius),
-              startAngle + sweepAngle,
-              -sweepAngle,
-              false,
-            )
-            ..close();
+      final Path path;
+      if (sweepAngle >= (2 * math.pi) - fullCircleEpsilon) {
+        path =
+            Path()
+              ..fillType = PathFillType.evenOdd
+              ..addOval(Rect.fromCircle(center: center, radius: drawRadius))
+              ..addOval(Rect.fromCircle(center: center, radius: innerRadius));
+      } else {
+        path =
+            Path()
+              ..moveTo(
+                cx + innerRadius * math.cos(startAngle),
+                cy + innerRadius * math.sin(startAngle),
+              )
+              ..lineTo(
+                cx + drawRadius * math.cos(startAngle),
+                cy + drawRadius * math.sin(startAngle),
+              )
+              ..arcTo(
+                Rect.fromCircle(center: center, radius: drawRadius),
+                startAngle,
+                sweepAngle,
+                false,
+              )
+              ..lineTo(
+                cx + innerRadius * math.cos(startAngle + sweepAngle),
+                cy + innerRadius * math.sin(startAngle + sweepAngle),
+              )
+              ..arcTo(
+                Rect.fromCircle(center: center, radius: innerRadius),
+                startAngle + sweepAngle,
+                -sweepAngle,
+                false,
+              )
+              ..close();
+      }
 
       canvas.drawPath(path, paint);
 
@@ -1189,7 +1185,7 @@ class _PieChartPainter extends CustomPainter {
             style: const TextStyle(
               color: Colors.white,
               fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
             ),
           ),
           textDirection: TextDirection.ltr,

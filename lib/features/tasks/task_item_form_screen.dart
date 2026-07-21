@@ -54,6 +54,7 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
   late String status;
   late String priority;
   int? assigneeId;
+  List<Map<String, dynamic>> assignmentUsers = <Map<String, dynamic>>[];
   bool submitting = false;
   String localMessage = '';
 
@@ -62,7 +63,26 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
     return int.tryParse('${value ?? ''}') ?? 0;
   }
 
+  List<Map<String, dynamic>> _uniqueStaffOptions(
+    Iterable<Map<String, dynamic>> rows,
+  ) {
+    final Map<int, Map<String, dynamic>> unique = <int, Map<String, dynamic>>{};
+    for (final Map<String, dynamic> row in rows) {
+      final int id = _toInt(row['id']);
+      if (id <= 0 || unique.containsKey(id)) continue;
+      unique[id] = row;
+    }
+    return unique.values.toList();
+  }
+
   String _toDateInput(dynamic value) => VietnamTime.toYmdInput(value);
+
+  Future<void> _loadAssignmentUsers() async {
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getUsersLookup(widget.token, purpose: 'task_assignment_staff');
+    if (!mounted) return;
+    setState(() => assignmentUsers = rows);
+  }
 
   @override
   void initState() {
@@ -104,6 +124,7 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
     priority = (item?['priority'] ?? 'medium').toString();
     assigneeId =
         _toInt(item?['assignee_id']) == 0 ? null : _toInt(item?['assignee_id']);
+    _loadAssignmentUsers();
   }
 
   @override
@@ -118,7 +139,13 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
   }
 
   DateTime? get _taskDeadlineCap =>
-      VietnamTime.parseDateOnly(widget.taskDeadline);
+      TimelineDefaults.taskItemDefaults(
+        task: <String, dynamic>{
+          'start_at': widget.taskStartAt,
+          'deadline': widget.taskDeadline,
+        },
+        project: widget.projectSummary,
+      ).end;
 
   Future<void> _pickDate(TextEditingController controller) async {
     final DateTime lastDate = VietnamTime.pickerLastDateWithCap(
@@ -169,13 +196,15 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
       setState(
         () =>
             localMessage =
-                'Ngày bắt đầu đầu việc không được sau deadline công việc.',
+                'Ngày bắt đầu đầu việc không được sau mốc kết thúc hợp đồng/dự án/công việc.',
       );
       return;
     }
     if (!VietnamTime.ymdNotAfterCap(deadlineCtrl.text.trim(), cap)) {
       setState(
-        () => localMessage = 'Hạn đầu việc không được sau deadline công việc.',
+        () =>
+            localMessage =
+                'Hạn đầu việc không được sau mốc kết thúc hợp đồng/dự án/công việc.',
       );
       return;
     }
@@ -239,15 +268,15 @@ class _TaskItemFormScreenState extends State<TaskItemFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final int taskDepartmentId = widget.taskDepartmentId;
-    final List<Map<String, dynamic>> staffOptions = <Map<String, dynamic>>[
-      for (final Map<String, dynamic> department in widget.departments)
-        if (taskDepartmentId == 0 ||
-            _toInt(department['id']) == taskDepartmentId)
-          ...((department['staff'] as List<dynamic>? ?? <dynamic>[])
-              .whereType<Map>()
-              .map((Map row) => row.cast<String, dynamic>())),
-    ];
+    final List<Map<String, dynamic>> staffOptions =
+        assignmentUsers.isNotEmpty
+            ? _uniqueStaffOptions(assignmentUsers)
+            : _uniqueStaffOptions(<Map<String, dynamic>>[
+              for (final Map<String, dynamic> department in widget.departments)
+                ...((department['staff'] as List<dynamic>? ?? <dynamic>[])
+                    .whereType<Map>()
+                    .map((Map row) => row.cast<String, dynamic>())),
+            ]);
 
     return Scaffold(
       backgroundColor: StitchTheme.formPageBackground,

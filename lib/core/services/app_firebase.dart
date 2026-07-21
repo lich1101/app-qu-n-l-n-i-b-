@@ -118,11 +118,12 @@ class AppFirebase {
 
     // iOS: tắt banner hệ thống khi app đang mở — luôn dùng flutter_local_notifications
     // để mọi tin (kể cả có notification payload) đều hiển thị nhất quán, tránh trường hợp không thấy gì.
-    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-      alert: !Platform.isIOS,
-      badge: true,
-      sound: !Platform.isIOS,
-    );
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+          alert: !Platform.isIOS,
+          badge: true,
+          sound: !Platform.isIOS,
+        );
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       if (kDebugMode) {
@@ -264,6 +265,11 @@ class AppFirebase {
     return _database!.ref('task_chats/$taskId/messages').onValue;
   }
 
+  static Stream<DatabaseEvent>? rotationPoolSignalStream() {
+    if (!_initialized || _database == null) return null;
+    return _database!.ref('rotation_pool/meta').onValue;
+  }
+
   static Query? taskChatQuery(int taskId, {int? limit}) {
     if (!_initialized || _database == null) return null;
     Query query = _database!
@@ -305,7 +311,9 @@ class AppFirebase {
     }
 
     await _tokenRefreshSubscription?.cancel();
-    _tokenRefreshSubscription = messaging.onTokenRefresh.listen((String newToken) {
+    _tokenRefreshSubscription = messaging.onTokenRefresh.listen((
+      String newToken,
+    ) {
       if (newToken.isNotEmpty) {
         _lastPushToken = newToken;
         _lastPushTokenAt = DateTime.now();

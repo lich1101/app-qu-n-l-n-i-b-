@@ -362,7 +362,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
     }
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: <String>['xls', 'xlsx', 'csv'],
+      allowedExtensions: <String>['xls', 'xlsx', 'xlsm', 'csv', 'tsv', 'ods'],
     );
     if (result == null || result.files.single.path == null) return;
     final File file = File(result.files.single.path!);
@@ -628,7 +628,6 @@ class _ContractsScreenState extends State<ContractsScreen> {
   }
 
   bool _canManageContract(Map<String, dynamic>? contract) {
-    if (!widget.canManage) return false;
     if (contract == null) return widget.canManage;
 
     final bool? apiPermission = _readBool(contract['can_manage']);
@@ -637,7 +636,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
     }
 
     if (widget.currentUserRole != 'nhan_vien') {
-      return true;
+      return widget.canManage;
     }
 
     final int uid = widget.currentUserId ?? 0;
@@ -645,11 +644,12 @@ class _ContractsScreenState extends State<ContractsScreen> {
 
     final Map<String, dynamic>? client =
         contract['client'] as Map<String, dynamic>?;
+    final int assignedStaffId = _readInt(client?['assigned_staff_id']) ?? 0;
+    final int salesOwnerId = _readInt(client?['sales_owner_id']) ?? 0;
 
-    return _readInt(contract['created_by']) == uid ||
-        _readInt(contract['collector_user_id']) == uid ||
-        _readInt(client?['assigned_staff_id']) == uid ||
-        _readInt(client?['sales_owner_id']) == uid;
+    return _readInt(contract['collector_user_id']) == uid ||
+        assignedStaffId == uid ||
+        (assignedStaffId <= 0 && salesOwnerId == uid);
   }
 
   bool _canDeleteContract(Map<String, dynamic>? contract) {
@@ -700,7 +700,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
       const SizedBox(height: 24),
       const Text(
         'Lịch sử thao tác (sau duyệt)',
-        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+        style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
       ),
       const SizedBox(height: 6),
       const Text(
@@ -751,7 +751,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                   style: const TextStyle(
                     fontSize: 11,
                     color: StitchTheme.textMuted,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -771,7 +771,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
   bool get _isEmployee => widget.currentUserRole == 'nhan_vien';
 
   bool get _canChooseCollector =>
-      <String>['admin', 'quan_ly', 'ke_toan'].contains(widget.currentUserRole);
+      <String>['admin', 'administrator'].contains(widget.currentUserRole);
 
   /// Khi tạo mới: mặc định là người đang đăng nhập (có thể đổi nếu được phép).
   int? get _defaultCollectorUserId {
@@ -889,7 +889,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
             child: Text(
               _statusLabel(value),
               style: TextStyle(
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 fontSize: 15,
                 color: fg,
               ),
@@ -907,10 +907,6 @@ class _ContractsScreenState extends State<ContractsScreen> {
     final bool isCreating = editingId == null;
     if (isCreating && !widget.canCreate && !widget.canManage) {
       setState(() => message = 'Bạn không có quyền tạo hợp đồng.');
-      return false;
-    }
-    if (!isCreating && !widget.canManage) {
-      setState(() => message = 'Bạn không có quyền sửa hợp đồng.');
       return false;
     }
     if (editingId != null && !editingCanManage) {
@@ -1177,6 +1173,14 @@ class _ContractsScreenState extends State<ContractsScreen> {
       setState(() => message = 'Bạn chỉ có quyền xem hợp đồng này.');
       return;
     }
+    if (contract == null && formClients.isEmpty) {
+      setState(
+        () =>
+            message =
+                'Bạn chưa có khách hàng phụ trách trực tiếp để tạo hợp đồng.',
+      );
+      return;
+    }
 
     Map<String, dynamic>? detail = contract;
     if (contract != null) {
@@ -1317,7 +1321,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                             ? 'Tạo hợp đồng mới'
                                             : 'Chỉnh sửa hợp đồng hiện có',
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
+                                          fontWeight: FontWeight.w500,
                                           color: StitchTheme.textMain,
                                         ),
                                       ),
@@ -1468,7 +1472,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                             child: Text(
                                               'Nhân viên thu theo hợp đồng',
                                               style: TextStyle(
-                                                fontWeight: FontWeight.w700,
+                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
                                           ),
@@ -1478,14 +1482,9 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                       Text(
                                         _isEmployee
                                             ? 'Bạn tạo hợp đồng nào thì hợp đồng đó tự đứng tên bạn và không đổi sang người khác.'
-                                            : widget.currentUserRole ==
-                                                'quan_ly'
-                                            ? 'Trưởng phòng có thể giữ chính mình hoặc chọn nhân sự trong phòng để đứng tên thu hợp đồng.'
-                                            : widget.canApprove
-                                            ? 'Admin/Kế toán có thể chọn mọi nhân viên và có thêm nút tạo và duyệt.'
-                                            : widget.canEditContractFinanceLines
-                                            ? 'Admin/Kế toán có thể chỉnh sửa cả dòng thu chi đã ghi nhận.'
-                                            : 'Chọn nhân sự phụ trách thu hợp đồng.',
+                                            : _canChooseCollector
+                                            ? 'Chỉ admin/administrator mới được đổi nhân sự thu của hợp đồng.'
+                                            : 'Người thu hợp đồng được giữ nguyên; chỉ admin/administrator mới được đổi.',
                                         style: const TextStyle(
                                           color: StitchTheme.textMuted,
                                           fontSize: 12.5,
@@ -1624,7 +1623,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                           'Sản phẩm ${index + 1}',
                                                           style: TextStyle(
                                                             fontWeight:
-                                                                FontWeight.w700,
+                                                                FontWeight.w500,
                                                             fontSize: 12,
                                                             color:
                                                                 StitchTheme
@@ -2112,7 +2111,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                           style: TextStyle(
                                                             fontSize: 11,
                                                             fontWeight:
-                                                                FontWeight.w700,
+                                                                FontWeight.w500,
                                                             color:
                                                                 isDraft
                                                                     ? StitchTheme
@@ -2256,7 +2255,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                           style: TextStyle(
                                                             fontSize: 11,
                                                             fontWeight:
-                                                                FontWeight.w700,
+                                                                FontWeight.w500,
                                                             color:
                                                                 isDraft
                                                                     ? StitchTheme
@@ -2395,7 +2394,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                     ? 'Đang tạo...'
                                     : 'Tạo và duyệt',
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -2527,7 +2526,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                   Text(
                                     'Giá trị hợp đồng: ${_money(total)}',
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -2538,7 +2537,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                           remaining > 0
                                               ? StitchTheme.successStrong
                                               : StitchTheme.dangerStrong,
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                   if (projected > total + 0.0001)
@@ -3495,7 +3494,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                   (detailData['title'] ?? 'Chi tiết hợp đồng')
                                       .toString(),
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: FontWeight.w500,
                                     fontSize: 20,
                                     height: 1.2,
                                   ),
@@ -3644,7 +3643,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                           child: Text(
                                             'Duyệt hợp đồng',
                                             style: TextStyle(
-                                              fontWeight: FontWeight.w800,
+                                              fontWeight: FontWeight.w500,
                                               fontSize: 16,
                                             ),
                                           ),
@@ -3804,7 +3803,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                           const Text(
                             'Thông tin Tài chính',
                             style: TextStyle(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w500,
                               fontSize: 16,
                             ),
                           ),
@@ -3874,7 +3873,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                           const Text(
                             'Phiếu duyệt thu/chi hợp đồng',
                             style: TextStyle(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w500,
                               fontSize: 16,
                             ),
                           ),
@@ -3944,7 +3943,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                   .toString(),
                                             ),
                                             style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                         ),
@@ -3958,7 +3957,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                     Text(
                                       'Số tiền: ${_money(row['amount'])}',
                                       style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -4053,7 +4052,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                           const Text(
                             'Thông tin Chung',
                             style: TextStyle(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w500,
                               fontSize: 16,
                             ),
                           ),
@@ -4112,6 +4111,31 @@ class _ContractsScreenState extends State<ContractsScreen> {
                           ),
                           const SizedBox(height: 20),
 
+                          const Text(
+                            'Ghi chú',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildContractNoteCard(
+                            'Ghi chú hợp đồng',
+                            _noteOrFallback(
+                              detailData['notes'],
+                              'Chưa có ghi chú hợp đồng.',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _buildContractNoteCard(
+                            'Ghi chú duyệt',
+                            _noteOrFallback(
+                              detailData['approval_note'],
+                              'Chưa có ghi chú duyệt.',
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
                           if (showCreateProjectBtn) ...<Widget>[
                             SizedBox(
                               width: double.infinity,
@@ -4151,7 +4175,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                           const Text(
                             'Nhật ký chăm sóc',
                             style: TextStyle(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w500,
                               fontSize: 16,
                             ),
                           ),
@@ -4303,7 +4327,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                         style: TextStyle(
                                           color: StitchTheme.primary,
                                           fontSize: 14,
-                                          fontWeight: FontWeight.bold,
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
                                     ),
@@ -4333,7 +4357,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                                     uName,
                                                     style: const TextStyle(
                                                       fontWeight:
-                                                          FontWeight.w700,
+                                                          FontWeight.w500,
                                                       fontSize: 13,
                                                     ),
                                                   ),
@@ -4354,7 +4378,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                             Text(
                                               (note['title'] ?? '').toString(),
                                               style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
+                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
                                             const SizedBox(height: 4),
@@ -4397,7 +4421,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
         label,
         style: TextStyle(
           fontSize: 11,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w500,
           color: color,
         ),
       ),
@@ -4417,7 +4441,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
         Text(
           value,
           style: TextStyle(
-            fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+            fontWeight: bold ? FontWeight.w500 : FontWeight.w500,
             color: textColor ?? StitchTheme.textMain,
           ),
         ),
@@ -4425,8 +4449,160 @@ class _ContractsScreenState extends State<ContractsScreen> {
     );
   }
 
+  String _noteOrFallback(dynamic raw, String fallback) {
+    final String value = (raw ?? '').toString().trim();
+    return value.isEmpty ? fallback : value;
+  }
+
+  Future<void> _showContractNoteFullSheet({
+    required String title,
+    required String value,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.56,
+          minChildSize: 0.38,
+          maxChildSize: 0.9,
+          builder: (BuildContext context, ScrollController scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Column(
+                children: <Widget>[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 54,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: StitchTheme.border,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                    color: StitchTheme.textMain,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: SelectableText(
+                              value,
+                              style: const TextStyle(
+                                color: StitchTheme.textMain,
+                                fontSize: 14,
+                                height: 1.6,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildContractNoteCard(String title, String value) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: StitchTheme.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  title.toUpperCase(),
+                  style: const TextStyle(
+                    color: StitchTheme.textSubtle,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed:
+                    () =>
+                        _showContractNoteFullSheet(title: title, value: value),
+                icon: const Icon(Icons.open_in_full_rounded, size: 16),
+                label: const Text('Mở full'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            value,
+            style: const TextStyle(
+              color: StitchTheme.textMain,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool canCreateContractRecord =
+        (widget.canCreate || widget.canManage) && formClients.isNotEmpty;
     final int active =
         contracts
             .where((Map<String, dynamic> c) => c['status'] == 'active')
@@ -4449,7 +4625,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
               icon: const Icon(Icons.file_upload_outlined),
               onPressed: _importContracts,
             ),
-          if (widget.canCreate || widget.canManage)
+          if (canCreateContractRecord)
             IconButton(
               icon: const Icon(Icons.add),
               onPressed: () => _openForm(),
@@ -4642,7 +4818,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                           'Tổng theo bộ lọc (tất cả trang)',
                           style: TextStyle(
                             fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w500,
                             letterSpacing: 0.08,
                             color: StitchTheme.textSubtle,
                           ),
@@ -4779,7 +4955,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                   Text(
                                     (c['title'] ?? 'Hợp đồng').toString(),
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
+                                      fontWeight: FontWeight.w500,
                                       fontSize: 16,
                                       height: 1.3,
                                     ),
@@ -4795,7 +4971,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                 ],
                               ),
                             ),
-                            if (widget.canManage ||
+                            if (_canManageContract(c) ||
                                 _canDeleteContract(c)) ...<Widget>[
                               const SizedBox(width: 8),
                               SizedBox(
@@ -4820,7 +4996,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                   itemBuilder:
                                       (BuildContext context) =>
                                           <PopupMenuEntry<String>>[
-                                            if (widget.canManage)
+                                            if (_canManageContract(c))
                                               const PopupMenuItem<String>(
                                                 value: 'edit',
                                                 child: Text('Sửa hợp đồng'),
@@ -4862,7 +5038,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                 _statusLabel((c['status'] ?? '').toString()),
                                 style: TextStyle(
                                   fontSize: 11,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                   color: statusColor,
                                 ),
                               ),
@@ -4883,7 +5059,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
                                   'Chờ duyệt',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w500,
                                     color: StitchTheme.warning,
                                   ),
                                 ),
@@ -5072,7 +5248,7 @@ class _ContractsScreenState extends State<ContractsScreen> {
           value,
           style: TextStyle(
             fontSize: 13,
-            fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
+            fontWeight: highlight ? FontWeight.w500 : FontWeight.w500,
             color: color ?? StitchTheme.textMain,
           ),
           maxLines: 1,
@@ -5233,7 +5409,7 @@ class _ContractSoftCopySheetState extends State<_ContractSoftCopySheet> {
                 const Expanded(
                   child: Text(
                     'Hợp đồng bản mềm',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                   ),
                 ),
                 IconButton(

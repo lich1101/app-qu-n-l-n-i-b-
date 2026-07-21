@@ -213,7 +213,7 @@ class _ClientStaffTransferScreenState extends State<ClientStaffTransferScreen> {
                           : 'Khách hàng',
                       style: const TextStyle(
                         fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 8),

@@ -36,14 +36,16 @@ class AttendanceDeviceIdentityService {
 
   static Future<AttendanceDeviceIdentity> resolve() async {
     final String deviceUuid = await _getOrCreateDeviceUuid();
-    final String platform = Platform.isIOS
-        ? 'ios'
-        : Platform.isAndroid
+    final String platform =
+        Platform.isIOS
+            ? 'ios'
+            : Platform.isAndroid
             ? 'android'
             : Platform.operatingSystem;
-    final String deviceName = Platform.isIOS
-        ? 'iPhone cá nhân'
-        : Platform.isAndroid
+    final String deviceName =
+        Platform.isIOS
+            ? 'iPhone cá nhân'
+            : Platform.isAndroid
             ? 'Android cá nhân'
             : 'Thiết bị cá nhân';
     final String deviceModel =
@@ -70,12 +72,14 @@ class AttendanceDeviceIdentityService {
     }
 
     final Random random = Random.secure();
-    final String millis =
-        DateTime.now().millisecondsSinceEpoch.toRadixString(16);
-    final String seed = List<String>.generate(
+    final String millis = DateTime.now().millisecondsSinceEpoch.toRadixString(
       16,
-      (_) => random.nextInt(16).toRadixString(16),
-    ).join();
+    );
+    final String seed =
+        List<String>.generate(
+          16,
+          (_) => random.nextInt(16).toRadixString(16),
+        ).join();
     final String created = 'attendance-$millis-$seed';
     await _storage.write(key: _deviceUuidKey, value: created);
     return created;

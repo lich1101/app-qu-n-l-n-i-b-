@@ -498,13 +498,7 @@ class _CompactPeriodBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: <Color>[
-            Colors.white,
-            const Color(0xFFF8FAFC),
-            const Color(0xFFE6FFFB),
-          ],
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: const <BoxShadow>[
@@ -548,7 +542,7 @@ class _CompactPeriodBar extends StatelessWidget {
                   'Khoảng thời gian đang xem',
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     letterSpacing: 0.18,
                     color: Color(0xFF64748B),
                   ),
@@ -557,7 +551,7 @@ class _CompactPeriodBar extends StatelessWidget {
                 Text(
                   periodLabel,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     fontSize: 13.5,
                     color: Color(0xFF0F172A),
                   ),
@@ -594,7 +588,7 @@ class _CompactPeriodBar extends StatelessWidget {
                     'Toàn bộ',
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       color: Color(0xFF3B82F6),
                     ),
                   ),
@@ -674,7 +668,7 @@ class _InfoPill extends StatelessWidget {
                 label,
                 style: const TextStyle(
                   fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   letterSpacing: 0.14,
                   color: StitchTheme.textMuted,
                 ),
@@ -684,7 +678,7 @@ class _InfoPill extends StatelessWidget {
                 value,
                 style: const TextStyle(
                   fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: StitchTheme.textMain,
                 ),
               ),
@@ -746,7 +740,7 @@ class _CompactFilterPanel extends StatelessWidget {
             'Preset nhanh',
             style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               letterSpacing: 0.18,
               color: StitchTheme.textMuted,
             ),
@@ -852,7 +846,7 @@ class _MiniDateField extends StatelessWidget {
           label,
           style: const TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
             color: Color(0xFF64748B),
           ),
         ),
@@ -911,13 +905,8 @@ class _SummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        gradient: LinearGradient(
-          colors: <Color>[color.withValues(alpha: 0.08), Colors.white],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x120F172A),
@@ -946,7 +935,7 @@ class _SummaryCard extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     color: Color(0xFF475569),
                   ),
                 ),
@@ -958,7 +947,7 @@ class _SummaryCard extends StatelessWidget {
             value,
             style: TextStyle(
               fontSize: 17,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
               color: color,
             ),
           ),
@@ -998,11 +987,6 @@ class _SectionCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        gradient: LinearGradient(
-          colors: <Color>[Colors.white, accentColor.withValues(alpha: 0.04)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: StitchTheme.border),
         boxShadow: const <BoxShadow>[
@@ -1036,7 +1020,7 @@ class _SectionCard extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                         fontSize: 15,
                       ),
                     ),
@@ -1062,7 +1046,7 @@ class _SectionCard extends StatelessWidget {
                     badge!,
                     style: TextStyle(
                       fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       color: accentColor,
                     ),
                   ),
@@ -1102,7 +1086,7 @@ class _QuickFilterChip extends StatelessWidget {
             label,
             style: const TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: StitchTheme.textMain,
             ),
           ),
@@ -1234,7 +1218,7 @@ class _ProductPieCardState extends State<_ProductPieCard> {
                           widget.formatCompactCurrency(total),
                           style: const TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -1251,14 +1235,6 @@ class _ProductPieCardState extends State<_ProductPieCard> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.white,
-            gradient: LinearGradient(
-              colors: <Color>[
-                selectedItem.color.withValues(alpha: 0.08),
-                Colors.white,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selectedItem.color.withValues(alpha: 0.22),
@@ -1281,7 +1257,7 @@ class _ProductPieCardState extends State<_ProductPieCard> {
                   children: <Widget>[
                     Text(
                       selectedItem.label,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     Text(
                       '${selectedPercent.toStringAsFixed(1)}% trong tổng doanh thu. Chạm vào mảng màu để xem sản phẩm khác.',
@@ -1296,7 +1272,7 @@ class _ProductPieCardState extends State<_ProductPieCard> {
               const SizedBox(width: 10),
               Text(
                 widget.formatCompactCurrency(selectedItem.value),
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: const TextStyle(fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -1331,7 +1307,7 @@ class _ProductPieCardState extends State<_ProductPieCard> {
                   Expanded(
                     child: Text(
                       item.label,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   Text(
@@ -1341,7 +1317,7 @@ class _ProductPieCardState extends State<_ProductPieCard> {
                   const SizedBox(width: 8),
                   Text(
                     widget.formatCompactCurrency(item.value),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -1447,7 +1423,7 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                         item.label,
                         style: const TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -1505,7 +1481,7 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                         _initials((row['staff_name'] ?? 'NV').toString()),
                         style: const TextStyle(
                           color: Color(0xFF1D4ED8),
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -1517,7 +1493,7 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                           Text(
                             (row['staff_name'] ?? 'Chưa gán nhân viên')
                                 .toString(),
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                           Text(
                             '${row['contracts_count'] ?? 0} hợp đồng',
@@ -1603,14 +1579,6 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    gradient: LinearGradient(
-                      colors: <Color>[
-                        selectedValue.meta.color.withValues(alpha: 0.08),
-                        Colors.white,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: selectedValue.meta.color.withValues(alpha: 0.18),
@@ -1634,7 +1602,7 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                             Text(
                               selectedValue.meta.label,
                               style: const TextStyle(
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                             Text(
@@ -1650,7 +1618,7 @@ class _StaffRevenueCardState extends State<_StaffRevenueCard> {
                       const SizedBox(width: 8),
                       Text(
                         widget.formatCompactCurrency(selectedValue.value),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),

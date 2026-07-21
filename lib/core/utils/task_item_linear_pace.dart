@@ -15,8 +15,10 @@ class TaskItemLinearPaceResult {
 
   final int expectedToday;
   final int actualToday;
+
   /// max(0, expected − actual) — dùng khi chậm.
   final int behindPercent;
+
   /// max(0, actual − expected) — dùng khi vượt.
   final int aheadPercent;
   final String pace; // behind | on_track | ahead
@@ -98,7 +100,10 @@ int _toPercent(dynamic v) {
 }
 
 /// Dòng trạng thái tiến độ (chữ nhỏ): đỏ chậm / xanh vượt.
-Widget taskItemPaceStatusLine(TaskItemLinearPaceResult pace, {double fontSize = 11}) {
+Widget taskItemPaceStatusLine(
+  TaskItemLinearPaceResult pace, {
+  double fontSize = 11,
+}) {
   if (pace.isBehind && pace.behindPercent > 0) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,

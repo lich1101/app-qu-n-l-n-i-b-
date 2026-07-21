@@ -130,7 +130,7 @@ class StitchFormSectionHeader extends StatelessWidget {
               title,
               style: const TextStyle(
                 fontSize: 15,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 color: StitchTheme.textMain,
                 height: 1.25,
                 letterSpacing: -0.2,
@@ -238,7 +238,7 @@ class StitchSelectionRow extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: fg,
                         fontSize: 15,
                         height: 1.25,

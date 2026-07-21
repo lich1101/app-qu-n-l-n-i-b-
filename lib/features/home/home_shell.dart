@@ -10,11 +10,15 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../core/auth/api_role_access.dart';
 import '../../core/auth/web_menu_roles.dart';
 import '../../config/app_env.dart';
+import '../../core/messaging/app_tag_message.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/services/app_permission_bootstrap_service.dart';
+import '../../core/services/attendance_device_identity_service.dart';
+import '../../core/services/attendance_wifi_service.dart';
 import '../../core/services/notification_router.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../data/services/mobile_api_service.dart';
 import '../auth/login_screen.dart';
 import '../accounts/accounts_screen.dart';
@@ -27,6 +31,7 @@ import '../modules/chat_screen.dart';
 import '../modules/activity_log_screen.dart';
 import '../modules/attendance_wifi_screen.dart';
 import '../modules/chatbot_bot_list_screen.dart';
+import '../modules/client_pool_screen.dart';
 import '../modules/meetings_screen.dart';
 import '../modules/module_center_screen.dart';
 import '../modules/notifications_screen.dart';
@@ -79,6 +84,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   bool _isCheckingSession = false;
   bool _permissionPromptQueued = false;
   bool _permissionPromptVisible = false;
+  bool _quickAttendanceSubmitting = false;
   static const Duration _splashBootstrapGuard = Duration(seconds: 8);
 
   final TextEditingController emailController = TextEditingController();
@@ -239,6 +245,367 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     } catch (_) {
       return <String, dynamic>{};
     }
+  }
+
+  static Map<String, dynamic>? _castMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return value.cast<String, dynamic>();
+    return null;
+  }
+
+  String _attendanceStatusLabel(String status, {int minutesLate = 0}) {
+    switch (status) {
+      case 'present':
+        return 'Đúng công';
+      case 'late_pending':
+      case 'late':
+        return 'Đi muộn${minutesLate > 0 ? ' $minutesLate phút' : ''}';
+      case 'approved_full':
+        return 'Duyệt đủ công';
+      case 'approved_no_count':
+        return 'Nghỉ duyệt không công';
+      case 'approved_partial':
+        return 'Duyệt công';
+      case 'holiday_auto':
+        return 'Ngày lễ tự động';
+      case 'pending':
+        return 'Chờ duyệt';
+      case 'approved':
+        return 'Đã duyệt';
+      case 'rejected':
+        return 'Từ chối';
+      default:
+        return status.isEmpty ? 'Đã ghi nhận' : status;
+    }
+  }
+
+  Color _attendanceStatusColor(String status) {
+    switch (status) {
+      case 'present':
+      case 'approved':
+      case 'approved_full':
+      case 'holiday_auto':
+        return StitchTheme.successStrong;
+      case 'approved_no_count':
+        return Colors.blue.shade700;
+      case 'late_pending':
+      case 'late':
+      case 'pending':
+      case 'approved_partial':
+        return StitchTheme.warningStrong;
+      case 'rejected':
+        return StitchTheme.dangerStrong;
+      default:
+        return StitchTheme.textMuted;
+    }
+  }
+
+  String _checkInTimeLabel(String? raw) {
+    final DateTime? parsed = VietnamTime.parse(raw);
+    if (parsed != null) return VietnamTime.formatTime(parsed);
+    final String value = raw?.trim() ?? '';
+    if (value.isEmpty) return VietnamTime.formatTime(VietnamTime.now());
+    final List<String> parts = value.split(RegExp(r'\s+'));
+    if (parts.isEmpty) return value;
+    final String tail = parts.last;
+    return tail.length > 5 ? tail.substring(0, 5) : tail;
+  }
+
+  Future<void> _refreshAuthenticatedSummaries() async {
+    final String? token = authToken;
+    if (token == null || token.isEmpty) return;
+    final List<Map<String, dynamic>> summaryResults =
+        await Future.wait(<Future<Map<String, dynamic>>>[
+          _safeMap(_api.getPublicSummary(token)),
+          _safeMap(_api.getPublicAccountsSummary(token)),
+        ]);
+    if (!mounted) return;
+    setState(() {
+      if (summaryResults[0].isNotEmpty) {
+        overview = summaryResults[0];
+      }
+      if (summaryResults[1].isNotEmpty) {
+        accounts = summaryResults[1];
+      }
+    });
+  }
+
+  Future<void> _performQuickAttendance() async {
+    if (_quickAttendanceSubmitting) return;
+    final String? token = authToken;
+    if (token == null || token.isEmpty) {
+      AppTagMessage.show('Phiên đăng nhập không hợp lệ.', isError: true);
+      return;
+    }
+    final String currentRole = (authUser?['role'] ?? '').toString();
+    if (currentRole == 'administrator') {
+      AppTagMessage.show(
+        'Tài khoản quản trị hệ thống không dùng chấm công nhanh.',
+      );
+      return;
+    }
+
+    setState(() => _quickAttendanceSubmitting = true);
+    try {
+      final AttendanceDeviceIdentity identity =
+          await AttendanceDeviceIdentityService.resolve();
+      final Map<String, dynamic> dashboard = await _api.getAttendanceDashboard(
+        token,
+      );
+      if (dashboard['ok'] != true) {
+        AppTagMessage.show(
+          (dashboard['message'] ?? 'Không tải được dữ liệu chấm công.')
+              .toString(),
+          isError: true,
+        );
+        return;
+      }
+
+      final Map<String, dynamic>? settings = _castMap(dashboard['settings']);
+      final bool attendanceEnabled =
+          settings == null ? true : settings['enabled'] == true;
+      final String workStartTime =
+          (settings?['work_start_time'] ?? '08:30').toString();
+      final String workEndTime =
+          (settings?['work_end_time'] ?? '17:30').toString();
+      if (!attendanceEnabled) {
+        AppTagMessage.show('Hệ thống đang tạm tắt chấm công Wi-Fi.');
+        return;
+      }
+
+      final Map<String, dynamic>? device = _castMap(dashboard['device']);
+      final String registeredDeviceUuid =
+          (device?['device_uuid'] ?? '').toString();
+      final bool isDifferentRegisteredDevice =
+          device != null &&
+          registeredDeviceUuid.isNotEmpty &&
+          registeredDeviceUuid != identity.deviceUuid;
+
+      if (device == null || isDifferentRegisteredDevice) {
+        final Map<String, dynamic> response = await _api.submitAttendanceDevice(
+          token,
+          deviceUuid: identity.deviceUuid,
+          deviceName: identity.deviceName,
+          devicePlatform: identity.devicePlatform,
+          deviceModel: identity.deviceModel,
+        );
+        if (response['ok'] == true) {
+          if (!mounted) return;
+          await _showQuickDeviceRegisteredSheet(identity.deviceName);
+        } else {
+          AppTagMessage.show(
+            (response['message'] ?? 'Không đăng ký được thiết bị.').toString(),
+            isError: true,
+          );
+        }
+        return;
+      }
+
+      if (registeredDeviceUuid != identity.deviceUuid ||
+          (device['status'] ?? '').toString() != 'approved') {
+        AppTagMessage.show('Thiết bị này chưa được duyệt để chấm công.');
+        return;
+      }
+
+      final Map<String, dynamic>? todayRecord = _castMap(
+        dashboard['today_record'],
+      );
+      final bool alreadyCheckedIn =
+          (todayRecord?['check_in_at'] ?? '').toString().trim().isNotEmpty;
+      if (alreadyCheckedIn && todayRecord != null) {
+        if (!mounted) return;
+        await _showQuickAttendanceSuccessSheet(
+          record: todayRecord,
+          schedule: '$workStartTime - $workEndTime',
+          alreadyRecorded: true,
+        );
+        return;
+      }
+
+      if (dashboard['check_in_allowed'] == false) {
+        AppTagMessage.show(
+          (dashboard['check_in_block_reason'] ??
+                  'Chưa đến giờ hoặc ngoài ca làm.')
+              .toString(),
+        );
+        return;
+      }
+
+      final AttendanceWifiPermissionState permissionState =
+          await AttendanceWifiService.requestPermission();
+      final AttendanceWifiSnapshot snapshot =
+          await AttendanceWifiService.readCurrentWifi(
+            requestPermissions: false,
+          );
+      if (!permissionState.permissionGranted) {
+        AppTagMessage.show(
+          permissionState.requiresSettings
+              ? 'Quyền vị trí đang bị chặn. Vui lòng mở Cài đặt để cấp quyền rồi thử lại.'
+              : 'Ứng dụng cần quyền Vị trí để kiểm tra Wi-Fi công ty.',
+          isError: true,
+        );
+        return;
+      }
+      if (!snapshot.hasWifi) {
+        AppTagMessage.show('Wi-Fi hiện tại chưa đúng Wi-Fi công ty.');
+        return;
+      }
+
+      final Map<String, dynamic> response = await _api.checkInAttendance(
+        token,
+        deviceUuid: identity.deviceUuid,
+        deviceName: identity.deviceName,
+        devicePlatform: identity.devicePlatform,
+        deviceModel: identity.deviceModel,
+        wifiSsid: snapshot.ssid!,
+        wifiBssid: snapshot.bssid,
+      );
+      if (response['ok'] != true) {
+        AppTagMessage.show(
+          (response['message'] ?? 'Không chấm công được.').toString(),
+          isError: true,
+        );
+        return;
+      }
+
+      unawaited(_refreshAuthenticatedSummaries());
+      final Map<String, dynamic> record =
+          _castMap(response['record']) ?? <String, dynamic>{};
+      if (!mounted) return;
+      await _showQuickAttendanceSuccessSheet(
+        record: record,
+        schedule: '$workStartTime - $workEndTime',
+      );
+    } catch (e) {
+      AppTagMessage.show(e.toString(), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _quickAttendanceSubmitting = false);
+      }
+    }
+  }
+
+  Future<void> _showQuickDeviceRegisteredSheet(String deviceName) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return _QuickAttendanceSheetFrame(
+          accent: StitchTheme.primaryStrong,
+          icon: Icons.phonelink_lock_rounded,
+          title: 'Thiết bị vừa được đăng ký',
+          subtitle:
+              '$deviceName đã được gửi lên hệ thống. Khi thiết bị được duyệt, bấm nút chấm công nhanh để ghi nhận giờ vào.',
+          children: <Widget>[
+            _QuickAttendanceInfoTile(
+              icon: Icons.verified_user_outlined,
+              label: 'Trạng thái',
+              value: 'Chờ duyệt thiết bị',
+              valueColor: StitchTheme.warningStrong,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: StitchTheme.primaryStrong,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text(
+                  'Đã hiểu',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showQuickAttendanceSuccessSheet({
+    required Map<String, dynamic> record,
+    required String schedule,
+    bool alreadyRecorded = false,
+  }) async {
+    final String status = (record['status'] ?? '').toString();
+    final int minutesLate = ((record['minutes_late'] as num?) ?? 0).toInt();
+    final String checkInTime = _checkInTimeLabel(
+      (record['check_in_at'] ?? '').toString(),
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return _QuickAttendanceSheetFrame(
+          accent: StitchTheme.successStrong,
+          icon: alreadyRecorded ? Icons.task_alt_rounded : Icons.check_rounded,
+          title:
+              alreadyRecorded
+                  ? 'Bạn đã chấm công hôm nay'
+                  : 'Chấm công thành công',
+          subtitle:
+              alreadyRecorded
+                  ? 'Giờ vào làm hôm nay đã được ghi nhận trước đó.'
+                  : 'Hệ thống đã ghi nhận giờ vào làm của bạn.',
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _QuickAttendanceInfoTile(
+                    icon: Icons.schedule_rounded,
+                    label: 'Giờ vào',
+                    value: checkInTime,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _QuickAttendanceInfoTile(
+                    icon: Icons.fact_check_outlined,
+                    label: 'Trạng thái',
+                    value: _attendanceStatusLabel(
+                      status,
+                      minutesLate: minutesLate,
+                    ),
+                    valueColor: _attendanceStatusColor(status),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _QuickAttendanceInfoTile(
+              icon: Icons.access_time_filled_rounded,
+              label: 'Ca làm việc',
+              value: schedule,
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: StitchTheme.primaryStrong,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text(
+                  'Hoàn tất',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _loadBootstrapPublicData() async {
@@ -967,10 +1334,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
     // CRM — "Khách hàng": xem menu vs CRUD (API clients: admin,quan_ly,nhan_vien)
     final bool canViewCrm = webMenuHasRole(role, kWebMenuCrmClients);
+    final bool canViewClientPool = webMenuHasRole(role, kWebMenuClientPool);
     // Hợp đồng — menu Sales; sửa/xóa: không nhan_vien (khớp Contracts web)
     final bool canViewContracts = webMenuHasRole(role, kWebMenuContracts);
 
     final bool canViewProjects = webMenuHasRole(
+      role,
+      kWebMenuOperationsProjects,
+    );
+    final bool canViewProjectTasks = webMenuHasRole(
       role,
       kWebMenuOperationsProjectsTasks,
     );
@@ -1011,6 +1383,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
     final bool canViewCrmHub =
         canViewCrm ||
+        canViewClientPool ||
         canViewOpportunities ||
         canViewContracts ||
         canViewProducts ||
@@ -1034,6 +1407,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         apiService: _api,
         canView: canViewProjects,
         canCreate: canCreateProject,
+        currentUserRole: currentUserRole,
       ),
     );
     void openHandover() => openScreen(
@@ -1079,8 +1453,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         token: authToken!,
         apiService: _api,
         canManageClients: apiRoleMatches(role, kApiCrmClientWrite),
+        canExportClients: apiRoleMatches(role, kApiCrmClientExport),
         canManagePayments: apiRoleMatches(role, kApiCrmPaymentWrite),
         canDelete: apiRoleMatches(role, kApiCrmClientDelete),
+        currentUserRole: currentUserRole,
+      ),
+    );
+    void openClientPool() => openScreen(
+      () => ClientPoolScreen(
+        token: authToken!,
+        apiService: _api,
         currentUserRole: currentUserRole,
       ),
     );
@@ -1156,11 +1538,21 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         currentUserRole: currentUserRole,
       ),
     );
-    void openTasksList() =>
-        openScreen(() => TasksListScreen(token: authToken!, apiService: _api));
+    void openTasksList() => openScreen(
+      () => TasksListScreen(
+        token: authToken!,
+        apiService: _api,
+        currentUserRole: currentUserRole,
+      ),
+    );
 
-    void openTaskItems() =>
-        openScreen(() => TaskItemsScreen(token: authToken!, apiService: _api));
+    void openTaskItems() => openScreen(
+      () => TaskItemsScreen(
+        token: authToken!,
+        apiService: _api,
+        currentUserRole: currentUserRole,
+      ),
+    );
     void openCreateProject() => openScreen(
       () => CreateProjectScreen(token: authToken!, apiService: _api),
     );
@@ -1175,6 +1567,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenCreateProject: canCreateProject ? openCreateProject : null,
       onOpenMeetings: canViewMeetings ? openMeetings : null,
       onOpenCrm: canViewCrm ? openCrm : null,
+      onOpenClientPool: canViewClientPool ? openClientPool : null,
       onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
       onOpenContracts: canViewContracts ? openContracts : null,
       onOpenProducts: canViewProducts ? openProducts : null,
@@ -1186,8 +1579,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onOpenReports: canViewReports ? openReports : null,
       onOpenServices: canViewServiceWorkflows ? openServices : null,
       onOpenAttendance: canViewAttendance ? openAttendance : null,
-      onOpenTasks: canViewProjects ? openTasksList : null,
-      onOpenTaskItems: canViewProjects ? openTaskItems : null,
+      onOpenTasks: canViewProjectTasks ? openTasksList : null,
+      onOpenTaskItems: canViewProjectTasks ? openTaskItems : null,
     );
 
     final List<OverviewQuickAction> quickActions = <OverviewQuickAction>[
@@ -1285,10 +1678,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           apiService: _api,
           canView: true,
           canCreate: canCreateProject,
+          currentUserRole: currentUserRole,
         ),
       if (canViewCrmHub)
         CrmHubScreen(
           onOpenCrm: canViewCrm ? openCrm : null,
+          onOpenClientPool: canViewClientPool ? openClientPool : null,
           onOpenOpportunities: canViewOpportunities ? openOpportunities : null,
           onOpenContracts: canViewContracts ? openContracts : null,
           onOpenProducts: canViewProducts ? openProducts : null,
@@ -1315,7 +1710,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       });
     }
 
-    final bool showFabSlot = canCreateProject && canViewProjects;
+    final bool showFabSlot = canViewAttendance;
     final int? tabProjectsIndex = canViewProjects ? 1 : null;
     final int? tabCrmIndex = canViewCrmHub ? (canViewProjects ? 2 : 1) : null;
 
@@ -1327,18 +1722,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         child: mainTabs[safeTabIndex],
       ),
       floatingActionButton:
-          canCreateProject && canViewProjects
-              ? FloatingActionButton(
-                elevation: 0,
-                focusElevation: 0,
-                hoverElevation: 0,
-                highlightElevation: 0,
-                disabledElevation: 0,
-                backgroundColor: StitchTheme.primary,
-                foregroundColor: Colors.white,
-                shape: const CircleBorder(),
-                onPressed: authToken == null ? null : openCreateProject,
-                child: const Icon(Icons.add, color: Colors.white),
+          canViewAttendance
+              ? _QuickAttendanceFab(
+                busy: _quickAttendanceSubmitting,
+                onPressed:
+                    authToken == null || _quickAttendanceSubmitting
+                        ? null
+                        : _performQuickAttendance,
               )
               : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
@@ -1351,6 +1741,218 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         tabProjectsIndex: tabProjectsIndex,
         tabCrmIndex: tabCrmIndex,
         accountTabIndex: lastTabIndex,
+      ),
+    );
+  }
+}
+
+class _QuickAttendanceFab extends StatelessWidget {
+  const _QuickAttendanceFab({required this.busy, required this.onPressed});
+
+  final bool busy;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool disabled = onPressed == null;
+    return SizedBox(
+      width: 72,
+      height: 72,
+      child: FloatingActionButton(
+        heroTag: 'quick-attendance-fab',
+        elevation: 0,
+        focusElevation: 0,
+        hoverElevation: 0,
+        highlightElevation: 0,
+        disabledElevation: 0,
+        backgroundColor:
+            disabled ? StitchTheme.textSubtle : StitchTheme.primary,
+        foregroundColor: Colors.white,
+        shape: const CircleBorder(),
+        onPressed: onPressed,
+        tooltip: 'Chấm công nhanh',
+        child:
+            busy
+                ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.6,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+                : const Icon(
+                  Icons.fingerprint_rounded,
+                  color: Colors.white,
+                  size: 36,
+                ),
+      ),
+    );
+  }
+}
+
+class _QuickAttendanceSheetFrame extends StatelessWidget {
+  const _QuickAttendanceSheetFrame({
+    required this.accent,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  final Color accent;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(34)),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Color(0x24000000),
+            blurRadius: 24,
+            offset: Offset(0, -8),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: StitchTheme.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 26),
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent.withValues(alpha: 0.1),
+                ),
+                child: Center(
+                  child: Container(
+                    width: 62,
+                    height: 62,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: <Color>[accent.withValues(alpha: 0.78), accent],
+                      ),
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.28),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 34),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: StitchTheme.textMain,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w500,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: StitchTheme.textMuted,
+                  fontSize: 14,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ...children,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAttendanceInfoTile extends StatelessWidget {
+  const _QuickAttendanceInfoTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(icon, size: 16, color: StitchTheme.textMuted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: StitchTheme.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: valueColor ?? StitchTheme.textMain,
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1493,7 +2095,7 @@ class _NavItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: compact ? 9.5 : 10.5,
                 height: 1.1,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                fontWeight: isActive ? FontWeight.w500 : FontWeight.w500,
                 color: color,
               ),
             ),
@@ -1604,7 +2206,7 @@ class _EssentialPermissionSheet extends StatelessWidget {
             'Cấp quyền cần thiết ngay từ đầu',
             style: TextStyle(
               fontSize: 22,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: StitchTheme.textMain,
             ),
           ),
@@ -1743,7 +2345,7 @@ class _EssentialPermissionTile extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     color: StitchTheme.textMain,
                   ),
                 ),
@@ -1752,7 +2354,7 @@ class _EssentialPermissionTile extends StatelessWidget {
                   status,
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     color: color,
                   ),
                 ),

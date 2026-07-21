@@ -12,6 +12,7 @@ class ModuleCenterScreen extends StatelessWidget {
     this.onOpenActivityLogs,
     this.onOpenMeetings,
     this.onOpenCrm,
+    this.onOpenClientPool,
     this.onOpenContracts,
     this.onOpenOpportunities,
     this.onOpenProducts,
@@ -36,6 +37,7 @@ class ModuleCenterScreen extends StatelessWidget {
   final VoidCallback? onOpenActivityLogs;
   final VoidCallback? onOpenMeetings;
   final VoidCallback? onOpenCrm;
+  final VoidCallback? onOpenClientPool;
   final VoidCallback? onOpenContracts;
   final VoidCallback? onOpenOpportunities;
   final VoidCallback? onOpenProducts;
@@ -59,147 +61,153 @@ class ModuleCenterScreen extends StatelessWidget {
       minScaleFactor: 0.95,
       maxScaleFactor: 1.1,
     );
-    final List<_ModuleItem> modules = <_ModuleItem>[
-      _ModuleItem(
-        title: 'Quản lý dự án',
-        subtitle: 'Bảng Kanban/Dòng thời gian/Biểu đồ Gantt + tiến độ',
-        icon: Icons.account_tree_outlined,
-        onTap: onOpenProjects,
-      ),
-      _ModuleItem(
-        title: 'Danh sách công việc',
-        subtitle: 'Xem công việc theo quyền của tài khoản',
-        icon: Icons.assignment_turned_in_outlined,
-        onTap: onOpenTasks,
-      ),
-      _ModuleItem(
-        title: 'Danh sách đầu việc',
-        subtitle: 'Xem đầu việc theo quyền của tài khoản',
-        icon: Icons.checklist_rtl_outlined,
-        onTap: onOpenTaskItems,
-      ),
-      _ModuleItem(
-        title: 'Bàn giao dự án',
-        subtitle: 'Gửi duyệt bàn giao và phản hồi phiếu bàn giao dự án',
-        icon: Icons.assignment_turned_in_outlined,
-        onTap: onOpenHandover,
-      ),
-      _ModuleItem(
-        title: 'Báo cáo & KPI',
-        subtitle: 'Tổng hợp hiệu suất dự án/cá nhân',
-        icon: Icons.bar_chart_outlined,
-        onTap: onOpenReports,
-      ),
-      _ModuleItem(
-        title: 'Quy trình theo dịch vụ',
-        subtitle: 'Backlinks/Content/Audit Content/Website Care',
-        icon: Icons.design_services_outlined,
-        onTap: onOpenServices,
-      ),
-      _ModuleItem(
-        title: 'Quản lý lịch họp',
-        subtitle: 'Tạo lịch, biên bản, người tham dự',
-        icon: Icons.event_note_outlined,
-        onTap: onOpenMeetings,
-      ),
-      _ModuleItem(
-        title: 'Chat nội bộ',
-        subtitle: 'Trao đổi theo công việc/dự án',
-        icon: Icons.chat_bubble_outline,
-        onTap: onOpenChat,
-      ),
-      _ModuleItem(
-        title: 'AI Chatbot',
-        subtitle: 'Hỏi đáp với các bot AI đã cấu hình trên hệ thống',
-        icon: Icons.smart_toy_outlined,
-        onTap: onOpenChatbot,
-      ),
-      _ModuleItem(
-        title: 'Chấm công Wi-Fi',
-        subtitle: 'Thiết bị duyệt, Wi-Fi/BSSID, đơn đi muộn và báo cáo công',
-        icon: Icons.wifi_tethering_outlined,
-        onTap: onOpenAttendance,
-      ),
-      _ModuleItem(
-        title: 'Thông báo nội bộ',
-        subtitle: 'Thông báo hệ thống và cập nhật nghiệp vụ',
-        icon: Icons.notifications_outlined,
-        onTap: onOpenNotifications,
-      ),
-      _ModuleItem(
-        title: 'Nhật ký hệ thống',
-        subtitle: 'Lịch sử thao tác & đổi trạng thái',
-        icon: Icons.history_toggle_off_outlined,
-        onTap: onOpenActivityLogs,
-      ),
-      _ModuleItem(
-        title: 'Quản lý khách hàng',
-        subtitle: 'Khách hàng, thanh toán, người phụ trách',
-        icon: Icons.people_alt_outlined,
-        onTap: onOpenCrm,
-      ),
-      _ModuleItem(
-        title: 'Cơ hội bán hàng',
-        subtitle: 'Phễu khách hàng tiềm năng',
-        icon: Icons.trending_up_outlined,
-        onTap: onOpenOpportunities,
-      ),
-      _ModuleItem(
-        title: 'Hợp đồng',
-        subtitle: 'Khách hàng → hợp đồng → dự án',
-        icon: Icons.description_outlined,
-        onTap: onOpenContracts,
-      ),
-      _ModuleItem(
-        title: 'Sản phẩm & danh mục',
-        subtitle: 'Danh mục sản phẩm, nhóm hàng và đơn giá',
-        icon: Icons.shopping_bag_outlined,
-        onTap: onOpenProducts,
-      ),
-      _ModuleItem(
-        title: 'Phòng ban',
-        subtitle: 'Quản lý phòng ban & quản lý',
-        icon: Icons.account_tree_outlined,
-        onTap: onOpenDepartments,
-      ),
-      _ModuleItem(
-        title: 'Báo cáo doanh thu công ty',
-        subtitle: 'Tổng hợp doanh thu toàn công ty',
-        icon: Icons.stacked_line_chart_outlined,
-        onTap: onOpenRevenueReport,
-      ),
-      _ModuleItem(
-        title: 'Trạng thái khách hàng tiềm năng',
-        subtitle: 'Cấu hình thẻ & màu sắc',
-        icon: Icons.label_outline,
-        onTap: onOpenLeadTypes,
-      ),
-      _ModuleItem(
-        title: 'Trạng thái cơ hội',
-        subtitle: 'Cấu hình màu và thứ tự các bước bán hàng',
-        icon: Icons.flag_outlined,
-        onTap: onOpenOpportunityStatuses,
-      ),
-      _ModuleItem(
-        title: 'Hạng doanh thu',
-        subtitle: 'Đã từng mua hàng/Bạc/Vàng/Kim cương',
-        icon: Icons.workspace_premium_outlined,
-        onTap: onOpenRevenueTiers,
-      ),
-      _ModuleItem(
-        title: 'Chuẩn kỹ thuật',
-        subtitle: 'Bảo mật, mở rộng, tích hợp API',
-        icon: Icons.security_outlined,
-      ),
-    ].where((item) => item.onTap != null).toList();
+    final List<_ModuleItem> modules =
+        <_ModuleItem>[
+          _ModuleItem(
+            title: 'Quản lý dự án',
+            subtitle: 'Bảng Kanban/Dòng thời gian/Biểu đồ Gantt + tiến độ',
+            icon: Icons.account_tree_outlined,
+            onTap: onOpenProjects,
+          ),
+          _ModuleItem(
+            title: 'Danh sách công việc',
+            subtitle: 'Xem công việc theo quyền của tài khoản',
+            icon: Icons.assignment_turned_in_outlined,
+            onTap: onOpenTasks,
+          ),
+          _ModuleItem(
+            title: 'Danh sách đầu việc',
+            subtitle: 'Xem đầu việc theo quyền của tài khoản',
+            icon: Icons.checklist_rtl_outlined,
+            onTap: onOpenTaskItems,
+          ),
+          _ModuleItem(
+            title: 'Bàn giao dự án',
+            subtitle: 'Gửi duyệt bàn giao và phản hồi phiếu bàn giao dự án',
+            icon: Icons.assignment_turned_in_outlined,
+            onTap: onOpenHandover,
+          ),
+          _ModuleItem(
+            title: 'Báo cáo & KPI',
+            subtitle: 'Tổng hợp hiệu suất dự án/cá nhân',
+            icon: Icons.bar_chart_outlined,
+            onTap: onOpenReports,
+          ),
+          _ModuleItem(
+            title: 'Quy trình theo dịch vụ',
+            subtitle: 'Backlinks/Content/Audit Content/Website Care',
+            icon: Icons.design_services_outlined,
+            onTap: onOpenServices,
+          ),
+          _ModuleItem(
+            title: 'Quản lý lịch họp',
+            subtitle: 'Tạo lịch, biên bản, người tham dự',
+            icon: Icons.event_note_outlined,
+            onTap: onOpenMeetings,
+          ),
+          _ModuleItem(
+            title: 'Chat nội bộ',
+            subtitle: 'Trao đổi theo công việc/dự án',
+            icon: Icons.chat_bubble_outline,
+            onTap: onOpenChat,
+          ),
+          _ModuleItem(
+            title: 'AI Chatbot',
+            subtitle: 'Hỏi đáp với các bot AI đã cấu hình trên hệ thống',
+            icon: Icons.smart_toy_outlined,
+            onTap: onOpenChatbot,
+          ),
+          _ModuleItem(
+            title: 'Chấm công Wi-Fi',
+            subtitle:
+                'Thiết bị duyệt, Wi-Fi/BSSID, đơn đi muộn và báo cáo công',
+            icon: Icons.wifi_tethering_outlined,
+            onTap: onOpenAttendance,
+          ),
+          _ModuleItem(
+            title: 'Thông báo nội bộ',
+            subtitle: 'Thông báo hệ thống và cập nhật nghiệp vụ',
+            icon: Icons.notifications_outlined,
+            onTap: onOpenNotifications,
+          ),
+          _ModuleItem(
+            title: 'Nhật ký hệ thống',
+            subtitle: 'Lịch sử thao tác & đổi trạng thái',
+            icon: Icons.history_toggle_off_outlined,
+            onTap: onOpenActivityLogs,
+          ),
+          _ModuleItem(
+            title: 'Quản lý khách hàng',
+            subtitle: 'Khách hàng, thanh toán, người phụ trách',
+            icon: Icons.people_alt_outlined,
+            onTap: onOpenCrm,
+          ),
+          _ModuleItem(
+            title: 'Kho số',
+            subtitle: 'Khách chờ nhận thủ công sau cron xoay',
+            icon: Icons.inventory_2_outlined,
+            onTap: onOpenClientPool,
+          ),
+          _ModuleItem(
+            title: 'Cơ hội bán hàng',
+            subtitle: 'Phễu khách hàng tiềm năng',
+            icon: Icons.trending_up_outlined,
+            onTap: onOpenOpportunities,
+          ),
+          _ModuleItem(
+            title: 'Hợp đồng',
+            subtitle: 'Khách hàng → hợp đồng → dự án',
+            icon: Icons.description_outlined,
+            onTap: onOpenContracts,
+          ),
+          _ModuleItem(
+            title: 'Sản phẩm & danh mục',
+            subtitle: 'Danh mục sản phẩm, nhóm hàng và đơn giá',
+            icon: Icons.shopping_bag_outlined,
+            onTap: onOpenProducts,
+          ),
+          _ModuleItem(
+            title: 'Phòng ban',
+            subtitle: 'Quản lý phòng ban & quản lý',
+            icon: Icons.account_tree_outlined,
+            onTap: onOpenDepartments,
+          ),
+          _ModuleItem(
+            title: 'Báo cáo doanh thu công ty',
+            subtitle: 'Tổng hợp doanh thu toàn công ty',
+            icon: Icons.stacked_line_chart_outlined,
+            onTap: onOpenRevenueReport,
+          ),
+          _ModuleItem(
+            title: 'Trạng thái khách hàng tiềm năng',
+            subtitle: 'Cấu hình thẻ & màu sắc',
+            icon: Icons.label_outline,
+            onTap: onOpenLeadTypes,
+          ),
+          _ModuleItem(
+            title: 'Trạng thái cơ hội',
+            subtitle: 'Cấu hình màu và thứ tự các bước bán hàng',
+            icon: Icons.flag_outlined,
+            onTap: onOpenOpportunityStatuses,
+          ),
+          _ModuleItem(
+            title: 'Hạng doanh thu',
+            subtitle: 'Đã từng mua hàng/Bạc/Vàng/Kim cương',
+            icon: Icons.workspace_premium_outlined,
+            onTap: onOpenRevenueTiers,
+          ),
+          _ModuleItem(
+            title: 'Chuẩn kỹ thuật',
+            subtitle: 'Bảo mật, mở rộng, tích hợp API',
+            icon: Icons.security_outlined,
+          ),
+        ].where((item) => item.onTap != null).toList();
 
     return MediaQuery(
       data: media.copyWith(textScaler: scaler),
       child: Scaffold(
         backgroundColor: StitchTheme.bg,
-        appBar: AppBar(
-          title: const Text('Trung tâm phân hệ'),
-        ),
+        appBar: AppBar(title: const Text('Trung tâm phân hệ')),
         body: SafeArea(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -241,20 +249,26 @@ class ModuleCenterScreen extends StatelessWidget {
                         children: const <Widget>[
                           Text(
                             'Tạo dự án mới',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                            style: TextStyle(fontWeight: FontWeight.w500),
                           ),
                           SizedBox(height: 4),
                           Text(
                             'Khởi tạo dự án mới theo mẫu Stitch.',
-                            style: TextStyle(fontSize: 12, color: StitchTheme.textMuted),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: StitchTheme.textMuted,
+                            ),
                           ),
                         ],
                       ),
                     ),
                     TextButton(
                       onPressed: onOpenCreateProject,
-                      child:
-                          Text(onOpenCreateProject == null ? 'Không có quyền' : 'Tạo mới'),
+                      child: Text(
+                        onOpenCreateProject == null
+                            ? 'Không có quyền'
+                            : 'Tạo mới',
+                      ),
                     ),
                   ],
                 ),
@@ -296,7 +310,9 @@ class ModuleCenterScreen extends StatelessWidget {
                             children: <Widget>[
                               Text(
                                 item.title,
-                                style: const TextStyle(fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -314,9 +330,10 @@ class ModuleCenterScreen extends StatelessWidget {
                               ? Icons.arrow_forward_ios
                               : Icons.info_outline,
                           size: 16,
-                          color: item.onTap != null
-                              ? StitchTheme.textMuted
-                              : StitchTheme.textSubtle,
+                          color:
+                              item.onTap != null
+                                  ? StitchTheme.textMuted
+                                  : StitchTheme.textSubtle,
                         ),
                       ],
                     ),

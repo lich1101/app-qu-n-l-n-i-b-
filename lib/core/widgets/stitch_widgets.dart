@@ -52,7 +52,7 @@ class StitchHeroCard extends StatelessWidget {
                     style: TextStyle(
                       color: StitchTheme.primaryStrong,
                       fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       letterSpacing: 1.1,
                     ),
                   ),
@@ -63,7 +63,7 @@ class StitchHeroCard extends StatelessWidget {
                   style: const TextStyle(
                     color: StitchTheme.textMain,
                     fontSize: 20,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -134,7 +134,7 @@ class StitchInfoCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
@@ -170,14 +170,14 @@ class StitchSectionHeader extends StatelessWidget {
       children: <Widget>[
         Text(
           title,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
         ),
         if (actionLabel != null)
           TextButton(
             onPressed: onAction,
             child: Text(
               actionLabel!,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
       ],
@@ -239,7 +239,7 @@ class StitchMetricCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 12,
                     color: StitchTheme.textMuted,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -247,7 +247,7 @@ class StitchMetricCard extends StatelessWidget {
                   value,
                   style: const TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -294,7 +294,7 @@ class StitchProgressCard extends StatelessWidget {
         children: <Widget>[
           Text(
             title,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
           ),
           const SizedBox(height: 4),
           Text(
@@ -307,7 +307,7 @@ class StitchProgressCard extends StatelessWidget {
             children: <Widget>[
               Text(
                 '$clamped%',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: const TextStyle(fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -373,7 +373,7 @@ class StitchFilterCard extends StatelessWidget {
                       title,
                       style: const TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: StitchTheme.textMain,
                       ),
                     ),
@@ -426,7 +426,7 @@ class StitchFilterField extends StatelessWidget {
           label,
           style: const TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             letterSpacing: 0.9,
             color: StitchTheme.labelEmphasis,
           ),

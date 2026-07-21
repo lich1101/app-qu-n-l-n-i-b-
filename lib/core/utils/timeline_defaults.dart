@@ -42,7 +42,7 @@ class TimelineDefaults {
     return (start: start, end: end);
   }
 
-  /// Mặc định công việc: dự án → hợp đồng gắn dự án.
+  /// Mặc định công việc: hợp đồng gắn dự án → dự án.
   static ({DateTime? start, DateTime? end}) taskDefaultsFromProject(
     Map<String, dynamic>? project,
   ) {
@@ -52,17 +52,17 @@ class TimelineDefaults {
     final Map<String, dynamic>? contract = _contractFromProject(project);
     return (
       start: _parseFirstNonEmpty(<dynamic>[
-        project['start_date'],
         contract?['start_date'],
+        project['start_date'],
       ]),
       end: _parseFirstNonEmpty(<dynamic>[
-        project['deadline'],
         contract?['end_date'],
+        project['deadline'],
       ]),
     );
   }
 
-  /// Mặc định đầu việc: công việc → dự án → hợp đồng.
+  /// Mặc định đầu việc: hợp đồng gắn dự án → dự án → công việc.
   static ({DateTime? start, DateTime? end}) taskItemDefaults({
     required Map<String, dynamic>? task,
     required Map<String, dynamic>? project,
@@ -71,10 +71,10 @@ class TimelineDefaults {
         taskDefaultsFromProject(project);
     return (
       start: _parseFirstNonEmpty(<dynamic>[
-        task?['start_at'],
         fromProject.start,
+        task?['start_at'],
       ]),
-      end: _parseFirstNonEmpty(<dynamic>[task?['deadline'], fromProject.end]),
+      end: _parseFirstNonEmpty(<dynamic>[fromProject.end, task?['deadline']]),
     );
   }
 }

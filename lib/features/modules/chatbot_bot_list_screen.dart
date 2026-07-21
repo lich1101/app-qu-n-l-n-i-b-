@@ -198,7 +198,7 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
                             name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                         ),
                         if (isDefault)
@@ -216,7 +216,7 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
                               'Mặc định',
                               style: TextStyle(
                                 fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                                 color: Color(0xFF166534),
                               ),
                             ),
@@ -256,7 +256,7 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
                                   configured ? 'Đã cấu hình' : 'Thiếu cấu hình',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w500,
                                     color:
                                         configured
                                             ? const Color(0xFF1D4ED8)

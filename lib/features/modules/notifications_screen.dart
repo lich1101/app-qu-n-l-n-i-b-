@@ -284,7 +284,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 children: <Widget>[
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   if (body.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 4),
@@ -329,7 +329,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 foregroundColor: StitchTheme.primary,
                 textStyle: const TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               icon: const Icon(Icons.done_all_rounded, size: 18),
@@ -372,7 +372,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         style: const TextStyle(
                           fontSize: 12,
                           color: StitchTheme.textMuted,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),

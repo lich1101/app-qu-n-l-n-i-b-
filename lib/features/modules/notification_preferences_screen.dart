@@ -197,7 +197,7 @@ class _NotificationPreferencesScreenState
                           brand,
                           style: const TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -299,7 +299,7 @@ class _NotificationPreferencesScreenState
                       children: <Widget>[
                         const Text(
                           'Trạng thái thiết bị',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                          style: TextStyle(fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(height: 8),
                         Text(

@@ -56,6 +56,23 @@ class TasksScreen extends StatefulWidget {
 class _TasksScreenState extends State<TasksScreen> {
   String _viewMode = 'board';
 
+  int _toId(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse('${value ?? ''}') ?? 0;
+  }
+
+  List<Map<String, dynamic>> _uniqueStaffOptions(
+    Iterable<Map<String, dynamic>> rows,
+  ) {
+    final Map<int, Map<String, dynamic>> unique = <int, Map<String, dynamic>>{};
+    for (final Map<String, dynamic> row in rows) {
+      final int id = _toId(row['id']);
+      if (id <= 0 || unique.containsKey(id)) continue;
+      unique[id] = row;
+    }
+    return unique.values.toList();
+  }
+
   String _prettyStatus(String status) {
     if (status.trim().isEmpty) return 'Tất cả';
     const Map<String, String> labels = <String, String>{
@@ -132,7 +149,7 @@ class _TasksScreenState extends State<TasksScreen> {
     if (!_canImportTasks || widget.token == null) return;
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: <String>['xls', 'xlsx', 'csv'],
+      allowedExtensions: <String>['xls', 'xlsx', 'xlsm', 'csv', 'tsv', 'ods'],
     );
     if (result == null || result.files.single.path == null) return;
     final File file = File(result.files.single.path!);
@@ -142,9 +159,9 @@ class _TasksScreenState extends State<TasksScreen> {
     );
     if (!mounted) return;
     AppTagMessage.show(
-          report['error'] != null
-              ? 'Import thất bại.'
-              : 'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới.',
+      report['error'] != null
+          ? 'Import thất bại.'
+          : 'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới.',
       isError: report['error'] != null,
     );
     await widget.onRefresh(status: widget.currentFilter, silent: true);
@@ -187,7 +204,7 @@ class _TasksScreenState extends State<TasksScreen> {
     if (projects.isEmpty) {
       if (!mounted) return;
       AppTagMessage.show(
-            'Bạn chưa được gán phụ trách dự án nào để tạo công việc.',
+        'Bạn chưa được gán phụ trách dự án nào để tạo công việc.',
         isError: true,
       );
       return;
@@ -205,11 +222,11 @@ class _TasksScreenState extends State<TasksScreen> {
               statuses: widget.statuses,
             ),
       ),
-      );
-      if (!mounted) return;
+    );
+    if (!mounted) return;
     if (created == true) {
       await widget.onRefresh(status: widget.currentFilter, silent: true);
-              if (!mounted) return;
+      if (!mounted) return;
       AppTagMessage.show('Đã tạo công việc mới.');
     }
   }
@@ -439,7 +456,7 @@ class _TasksScreenState extends State<TasksScreen> {
                           'Biểu đồ tiến độ: ${(item['title'] ?? 'Đầu việc').toString()}',
                           style: const TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -582,7 +599,7 @@ class _TasksScreenState extends State<TasksScreen> {
                               children: <Widget>[
                                 const Text(
                                   'Phiếu duyệt đã được chấp thuận',
-                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                  style: TextStyle(fontWeight: FontWeight.w500),
                                 ),
                                 const SizedBox(height: 10),
                                 if (approvedUpdates.isEmpty)
@@ -621,7 +638,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                           Text(
                                             '${_toInsightPercent(update['progress_percent'])}% • ${_prettyStatus((update['status'] ?? '').toString())}',
                                             style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                           if ((update['note'] ?? '')
@@ -773,7 +790,7 @@ class _TasksScreenState extends State<TasksScreen> {
                         'Báo cáo đầu việc: ${(item['title'] ?? 'Đầu việc').toString()}',
                         style: const TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                       if (localMessage.isNotEmpty) ...<Widget>[
@@ -1029,47 +1046,47 @@ class _TasksScreenState extends State<TasksScreen> {
                   void Function(void Function()) setD,
                 ) {
                   return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
                       StitchSearchableSelectField<String>(
-                    value: statusValue.isEmpty ? null : statusValue,
+                        value: statusValue.isEmpty ? null : statusValue,
                         sheetTitle: 'Chọn trạng thái',
                         label: 'Trạng thái',
                         searchHint: 'Tìm trạng thái...',
                         options:
-                        widget.statuses
-                            .map(
+                            widget.statuses
+                                .map(
                                   (String s) => StitchSelectOption<String>(
-                                value: s,
+                                    value: s,
                                     label: _prettyStatus(s),
-                              ),
-                            )
-                            .toList(),
+                                  ),
+                                )
+                                .toList(),
                         onChanged:
                             (String? v) => setD(() => statusValue = v ?? ''),
                         decoration: const InputDecoration(
                           labelText: 'Trạng thái',
                         ).applyDefaults(Theme.of(dCtx).inputDecorationTheme),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: progressCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(3),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: progressCtrl,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(3),
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Tiến độ (%)',
+                          helperText: 'Chỉ 0–100%',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: noteCtrl,
+                        decoration: const InputDecoration(labelText: 'Ghi chú'),
+                      ),
                     ],
-                    decoration: const InputDecoration(
-                      labelText: 'Tiến độ (%)',
-                      helperText: 'Chỉ 0–100%',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: noteCtrl,
-                    decoration: const InputDecoration(labelText: 'Ghi chú'),
-                  ),
-                ],
                   );
                 },
               ),
@@ -1146,7 +1163,7 @@ class _TasksScreenState extends State<TasksScreen> {
                       'Duyệt báo cáo: ${(item['title'] ?? 'Đầu việc').toString()}',
                       style: const TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     if (localMessage.isNotEmpty) ...<Widget>[
@@ -1185,7 +1202,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                     ? u['note'].toString()
                                     : 'Không có ghi chú',
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                               const SizedBox(height: 6),
@@ -1295,6 +1312,8 @@ class _TasksScreenState extends State<TasksScreen> {
                 )
                 .toList();
       }
+      final List<Map<String, dynamic>> assignmentUsers = await widget.apiService
+          .getUsersLookup(token, purpose: 'task_assignment_staff');
       int? departmentId = taskDeptId;
 
       final TextEditingController titleCtrl = TextEditingController();
@@ -1328,11 +1347,7 @@ class _TasksScreenState extends State<TasksScreen> {
       bool submitting = false;
       String localMsg = '';
 
-      DateTime? taskDeadlineCap = VietnamTime.parseDateOnly(task['deadline']);
-      if (taskDeadlineCap == null && projectMap != null) {
-        taskDeadlineCap =
-            TimelineDefaults.taskDefaultsFromProject(projectMap).end;
-      }
+      final DateTime? taskDeadlineCap = itemFall.end;
 
       Future<void> pickDeadline(StateSetter setModalState) async {
         final DateTime lastDate = VietnamTime.pickerLastDateWithCap(
@@ -1394,25 +1409,24 @@ class _TasksScreenState extends State<TasksScreen> {
                   orElse: () => <String, dynamic>{},
                 );
               }
-              List<Map<String, dynamic>> staffOptions =
-                  <Map<String, dynamic>>[];
-              if (selectedDept != null && selectedDept.isNotEmpty) {
-                staffOptions =
+              List<Map<String, dynamic>> staffOptions = assignmentUsers;
+              if (staffOptions.isEmpty) {
+                if (selectedDept != null && selectedDept.isNotEmpty) {
+                  staffOptions = _uniqueStaffOptions(
                     ((selectedDept['staff'] ?? <dynamic>[]) as List<dynamic>)
-                        .map((dynamic e) => e as Map<String, dynamic>)
-                        .toList();
-              }
-              if (staffOptions.isEmpty &&
-                  departmentId == null &&
-                  departments.isNotEmpty) {
-                staffOptions =
+                        .map((dynamic e) => e as Map<String, dynamic>),
+                  );
+                }
+                if (staffOptions.isEmpty && departments.isNotEmpty) {
+                  staffOptions = _uniqueStaffOptions(
                     departments
                         .expand(
                           (Map<String, dynamic> d) =>
                               (d['staff'] ?? <dynamic>[]) as List<dynamic>,
                         )
-                        .map((dynamic e) => e as Map<String, dynamic>)
-                        .toList();
+                        .map((dynamic e) => e as Map<String, dynamic>),
+                  );
+                }
               }
               final int siblingWeightTotal = existingItems.fold<int>(
                 0,
@@ -1461,7 +1475,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   setModalState(
                     () =>
                         localMsg =
-                            'Ngày bắt đầu đầu việc không được sau deadline công việc.',
+                            'Ngày bắt đầu đầu việc không được sau mốc kết thúc hợp đồng/dự án/công việc.',
                   );
                   return;
                 }
@@ -1472,7 +1486,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   setModalState(
                     () =>
                         localMsg =
-                            'Hạn đầu việc không được sau deadline công việc.',
+                            'Hạn đầu việc không được sau mốc kết thúc hợp đồng/dự án/công việc.',
                   );
                   return;
                 }
@@ -1545,15 +1559,14 @@ class _TasksScreenState extends State<TasksScreen> {
                                         StitchSelectOption<int>(
                                           value: d['id'] as int,
                                           label:
-                                            (d['name'] ?? 'Phòng ban')
-                                                .toString(),
+                                              (d['name'] ?? 'Phòng ban')
+                                                  .toString(),
                                         ),
                                   )
                                   .toList(),
                           onChanged:
                               (int? v) => setModalState(() {
                                 departmentId = v;
-                                assigneeId = null;
                               }),
                           decoration: stitchTaskDropdownDecoration(
                             ctx,
@@ -1748,7 +1761,7 @@ class _TasksScreenState extends State<TasksScreen> {
                         const Padding(
                           padding: EdgeInsets.only(top: 6),
                           child: Text(
-                            'Chưa có nhân sự trong phòng ban này.',
+                            'Chưa có nhân sự phù hợp trong công ty.',
                             style: TextStyle(
                               color: StitchTheme.textMuted,
                               fontSize: 12,
@@ -1987,7 +2000,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                 'Chi tiết Công việc',
                                 style: TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                               const Spacer(),
@@ -2041,7 +2054,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                 title,
                                 style: const TextStyle(
                                   fontSize: 22,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                               const SizedBox(height: 16),
@@ -2158,7 +2171,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                                       itemTitle,
                                                       style: const TextStyle(
                                                         fontWeight:
-                                                            FontWeight.w600,
+                                                            FontWeight.w500,
                                                       ),
                                                     ),
                                                   ),
@@ -2184,7 +2197,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                                         color:
                                                             StitchTheme.primary,
                                                         fontWeight:
-                                                            FontWeight.w600,
+                                                            FontWeight.w500,
                                                       ),
                                                     ),
                                                   ),
@@ -2422,7 +2435,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 12,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ),
@@ -2688,38 +2701,38 @@ class _TasksScreenState extends State<TasksScreen> {
                                         (r['scheduled_at'] ?? '').toString(),
                                       ),
                                       trailing:
-                                            _canManageReminders
+                                          _canManageReminders
                                               ? Row(
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: <Widget>[
                                                   TextButton.icon(
                                                     onPressed: () {
-                                                  final int reminderId =
-                                                      (r['id'] ?? 0) as int;
-                                                  final String scheduled =
+                                                      final int reminderId =
+                                                          (r['id'] ?? 0) as int;
+                                                      final String scheduled =
                                                           (r['scheduled_at'] ??
                                                                   '')
-                                                          .toString();
-                                                  final String channel =
+                                                              .toString();
+                                                      final String channel =
                                                           (r['channel'] ??
                                                                   'in_app')
-                                                          .toString();
-                                                  final String trigger =
-                                                      (r['trigger_type'] ??
-                                                              'custom')
-                                                          .toString();
-                                                    setSheetState(() {
-                                                      editingReminderId =
-                                                          reminderId;
-                                                      reminderAtCtrl.text =
-                                                          scheduled;
+                                                              .toString();
+                                                      final String trigger =
+                                                          (r['trigger_type'] ??
+                                                                  'custom')
+                                                              .toString();
+                                                      setSheetState(() {
+                                                        editingReminderId =
+                                                            reminderId;
+                                                        reminderAtCtrl.text =
+                                                            scheduled;
                                                         reminderChannel =
                                                             channel;
                                                         reminderTrigger =
                                                             trigger;
-                                                      localMessage =
-                                                          'Đang sửa reminder #$editingReminderId';
-                                                    });
+                                                        localMessage =
+                                                            'Đang sửa reminder #$editingReminderId';
+                                                      });
                                                     },
                                                     icon: const Icon(
                                                       Icons.edit_outlined,
@@ -2733,21 +2746,21 @@ class _TasksScreenState extends State<TasksScreen> {
                                                           (r['id'] ?? 0) as int;
                                                       final bool
                                                       ok = await widget
-                                                        .apiService
-                                                        .deleteTaskReminder(
-                                                          token,
-                                                          taskId,
-                                                          reminderId,
-                                                        );
-                                                    setSheetState(() {
-                                                      localMessage =
-                                                          ok
-                                                              ? 'Đã xoá reminder.'
-                                                              : 'Xoá reminder thất bại.';
-                                                    });
-                                                    await refresh(
-                                                      setSheetState,
-                                                    );
+                                                          .apiService
+                                                          .deleteTaskReminder(
+                                                            token,
+                                                            taskId,
+                                                            reminderId,
+                                                          );
+                                                      setSheetState(() {
+                                                        localMessage =
+                                                            ok
+                                                                ? 'Đã xoá reminder.'
+                                                                : 'Xoá reminder thất bại.';
+                                                      });
+                                                      await refresh(
+                                                        setSheetState,
+                                                      );
                                                     },
                                                     icon: Icon(
                                                       Icons.delete_outline,
@@ -3041,7 +3054,7 @@ class _TasksScreenState extends State<TasksScreen> {
               children: <Widget>[
                 const Text(
                   'Bảng công việc',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -3073,7 +3086,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     'Chế độ hiển thị',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       color: StitchTheme.textMuted,
                     ),
                   ),
@@ -3095,7 +3108,7 @@ class _TasksScreenState extends State<TasksScreen> {
                       'Thao tác nhanh',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: StitchTheme.textMuted,
                       ),
                     ),
@@ -3181,7 +3194,7 @@ class _TasksScreenState extends State<TasksScreen> {
                           label,
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             color:
                                 selected
                                     ? StitchTheme.primary
@@ -3318,7 +3331,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     title,
                     style: const TextStyle(
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -3339,7 +3352,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     _prettyStatus(taskStatus),
                     style: TextStyle(
                       color: statusTone,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       fontSize: 12,
                     ),
                   ),
@@ -3349,30 +3362,30 @@ class _TasksScreenState extends State<TasksScreen> {
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: priorityStyle.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
+              decoration: BoxDecoration(
+                color: priorityStyle.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(
-                        priorityStyle.icon,
-                        size: 14,
-                        color: priorityStyle.foreground,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        priorityStyle.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: priorityStyle.foreground,
-                        ),
-                      ),
-                    ],
+                children: <Widget>[
+                  Icon(
+                    priorityStyle.icon,
+                    size: 14,
+                    color: priorityStyle.foreground,
                   ),
-                ),
+                  const SizedBox(width: 4),
+                  Text(
+                    priorityStyle.label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: priorityStyle.foreground,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               projectName,
@@ -3410,22 +3423,22 @@ class _TasksScreenState extends State<TasksScreen> {
               ],
             ),
             const SizedBox(height: 6),
-                  Row(
-                    children: <Widget>[
-                      const Icon(
+            Row(
+              children: <Widget>[
+                const Icon(
                   Icons.timer_outlined,
-                        size: 16,
+                  size: 16,
                   color: StitchTheme.textMuted,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     'Hạn: $deadlineLabel',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: StitchTheme.textMuted,
-                        ),
-                      ),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: StitchTheme.textMuted,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -3462,16 +3475,16 @@ class _TasksScreenState extends State<TasksScreen> {
                   ),
                   const SizedBox(width: 6),
                   Expanded(
-                  child: Text(
+                    child: Text(
                       'Người duyệt: $reviewerName',
-                    style: const TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
-                      color: StitchTheme.textMuted,
+                        color: StitchTheme.textMuted,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
             ],
             if (comments > 0 || attachments > 0) ...<Widget>[
               const SizedBox(height: 8),
@@ -3482,7 +3495,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   if (comments > 0)
                     Row(
                       mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
+                      children: <Widget>[
                         const Icon(
                           Icons.chat_bubble_outline,
                           size: 16,
@@ -3492,10 +3505,10 @@ class _TasksScreenState extends State<TasksScreen> {
                         Text(
                           '$comments bình luận',
                           style: const TextStyle(
-                      fontSize: 12,
-                      color: StitchTheme.textMuted,
-                    ),
-                  ),
+                            fontSize: 12,
+                            color: StitchTheme.textMuted,
+                          ),
+                        ),
                       ],
                     ),
                   if (attachments > 0)
@@ -3508,15 +3521,15 @@ class _TasksScreenState extends State<TasksScreen> {
                           color: StitchTheme.textSubtle,
                         ),
                         const SizedBox(width: 4),
-                  Text(
+                        Text(
                           '$attachments tệp đính kèm',
-                    style: const TextStyle(
-                      fontSize: 12,
+                          style: const TextStyle(
+                            fontSize: 12,
                             color: StitchTheme.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
                 ],
               ),
             ],
@@ -3529,13 +3542,13 @@ class _TasksScreenState extends State<TasksScreen> {
               ),
             ),
             const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0, 100) / 100,
-                  minHeight: 6,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0, 100) / 100,
+                minHeight: 6,
                 color: StitchTheme.progressPercentFillColor(progress),
-                  backgroundColor: StitchTheme.surfaceAlt,
+                backgroundColor: StitchTheme.surfaceAlt,
               ),
             ),
             const SizedBox(height: 10),
@@ -3578,9 +3591,9 @@ class _TasksScreenState extends State<TasksScreen> {
                         fontSize: 11,
                         color: StitchTheme.textMuted.withValues(alpha: 0.9),
                       ),
-                ),
-              ),
-            ],
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -3636,7 +3649,7 @@ class _TasksScreenState extends State<TasksScreen> {
                         Expanded(
                           child: Text(
                             title,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                         ),
                         Text(
@@ -3846,7 +3859,7 @@ class _SegmentedControl extends StatelessWidget {
                         entry.value,
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           color:
                               selected
                                   ? StitchTheme.primary
@@ -3893,7 +3906,7 @@ class _Badge extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 10,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: textColor,
             ),
           ),
@@ -3938,14 +3951,14 @@ class _InfoTile extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 10,
                   color: StitchTheme.textSubtle,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   letterSpacing: 1.2,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -3975,7 +3988,7 @@ class _SectionCard extends StatelessWidget {
             style: const TextStyle(
               fontSize: 10,
               color: StitchTheme.textSubtle,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               letterSpacing: 1.2,
             ),
           ),
@@ -4029,7 +4042,7 @@ class _AttachmentTile extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     fontSize: 13,
                   ),
                 ),
@@ -4087,7 +4100,7 @@ class _CommentBubble extends StatelessWidget {
             child: Text(
               name.isEmpty ? 'U' : name.characters.first.toUpperCase(),
               style: TextStyle(
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
                 color: Colors.white,
               ),
             ),
@@ -4102,7 +4115,7 @@ class _CommentBubble extends StatelessWidget {
                     Text(
                       name,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         fontSize: 12,
                       ),
                     ),
@@ -4170,7 +4183,7 @@ class _CommentBubble extends StatelessWidget {
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: StitchTheme.primary,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -4228,7 +4241,7 @@ class _ReviewInfoRow extends StatelessWidget {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
           ),
         ),
       ],
@@ -4267,7 +4280,7 @@ class _InsightMetric extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               fontSize: 16,
               color: tone,
             ),
@@ -4517,7 +4530,7 @@ List<InlineSpan> _buildLinkifiedTextSpans(BuildContext context, String text) {
         text: rawUrl,
         style: TextStyle(
           color: StitchTheme.primary,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
           decoration: TextDecoration.underline,
         ),
         recognizer:

@@ -53,20 +53,22 @@ class _DepartmentAssignmentsScreenState
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> rows =
-        await widget.apiService.getDepartmentAssignments(widget.token);
-    final List<Map<String, dynamic>> deptRows =
-        await widget.apiService.getDepartments(widget.token);
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getDepartmentAssignments(widget.token);
+    final List<Map<String, dynamic>> deptRows = await widget.apiService
+        .getDepartments(widget.token);
 
-    final Map<String, dynamic> clientPayload =
-        await widget.apiService.getClients(widget.token, perPage: 100);
-    final Map<String, dynamic> contractPayload =
-        await widget.apiService.getContracts(widget.token, perPage: 100);
+    final Map<String, dynamic> clientPayload = await widget.apiService
+        .getClients(widget.token, perPage: 100);
+    final Map<String, dynamic> contractPayload = await widget.apiService
+        .getContracts(widget.token, perPage: 100);
 
     if (!mounted) return;
 
-    final List<dynamic> clientData = (clientPayload['data'] ?? []) as List<dynamic>;
-    final List<dynamic> contractData = (contractPayload['data'] ?? []) as List<dynamic>;
+    final List<dynamic> clientData =
+        (clientPayload['data'] ?? []) as List<dynamic>;
+    final List<dynamic> contractData =
+        (contractPayload['data'] ?? []) as List<dynamic>;
 
     setState(() {
       loading = false;
@@ -155,7 +157,7 @@ class _DepartmentAssignmentsScreenState
                   children: <Widget>[
                     const Text(
                       'Tạo điều phối',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<int>(
@@ -324,7 +326,7 @@ class _DepartmentAssignmentsScreenState
                   const Expanded(
                     child: Text(
                       'Danh sách điều phối',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   if (widget.canCreate)
@@ -369,7 +371,7 @@ class _DepartmentAssignmentsScreenState
                         children: <Widget>[
                           Text(
                             (client?['name'] ?? 'Khách hàng').toString(),
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                           Text(
                             (dept?['name'] ?? 'Phòng ban').toString(),

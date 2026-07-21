@@ -82,7 +82,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
 
   Future<void> _loadStaffLookup() async {
     final List<Map<String, dynamic>> rows = await widget.apiService
-        .getUsersLookup(widget.token);
+        .getStaffFilterOptions(widget.token, context: 'opportunities');
     if (!mounted) return;
     setState(() => staffLookupUsers = rows);
   }
@@ -127,7 +127,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
         );
 
     final Map<String, dynamic> clientPayload = await widget.apiService
-        .getClients(widget.token, perPage: 100);
+        .getClients(widget.token, perPage: 100, assignedOnly: true);
 
     if (!mounted) return;
 
@@ -237,6 +237,15 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
   }
 
   Future<void> _openForm({Map<String, dynamic>? opp}) async {
+    if (opp == null && clients.isEmpty) {
+      if (!mounted) return;
+      setState(
+        () =>
+            message =
+                'Bạn chưa có khách hàng phụ trách trực tiếp để tạo cơ hội.',
+      );
+      return;
+    }
     final bool? ok = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder:
@@ -262,11 +271,12 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool canCreateOpportunity = widget.canManage && clients.isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cơ hội bán hàng'),
         actions: <Widget>[
-          if (widget.canManage)
+          if (canCreateOpportunity)
             IconButton(
               icon: const Icon(Icons.add),
               onPressed: () => _openForm(),
@@ -366,7 +376,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                     StaffMultiFilterRow(
                       users: staffLookupUsers,
                       selectedIds: staffFilterIds,
-                      title: 'Nhân sự (phụ trách / chăm sóc KH)',
+                      title: 'Nhân sự phụ trách cơ hội',
                       onChanged: (List<int> ids) {
                         setState(() => staffFilterIds = ids);
                       },
@@ -417,7 +427,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                           'Tổng doanh số theo bộ lọc (tất cả trang): ${_formatVndDigits(aggregateRevenueTotal)}',
                           style: const TextStyle(
                             fontSize: 13,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             color: StitchTheme.textMain,
                           ),
                         ),
@@ -523,7 +533,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                             (opp['title'] ?? 'Cơ hội')
                                                 .toString(),
                                             style: const TextStyle(
-                                              fontWeight: FontWeight.w800,
+                                              fontWeight: FontWeight.w500,
                                               fontSize: 16,
                                               height: 1.2,
                                             ),
@@ -548,12 +558,14 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                             style: TextStyle(
                                               color: chipColor,
                                               fontSize: 12,
-                                              fontWeight: FontWeight.bold,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                         ),
-                                        if (widget.canManage ||
-                                            widget.canDelete)
+                                        if ((widget.canManage &&
+                                                opp['can_edit'] == true) ||
+                                            (widget.canDelete &&
+                                                opp['can_delete'] == true))
                                           PopupMenuButton<String>(
                                             icon: const Icon(
                                               Icons.more_vert,
@@ -564,17 +576,20 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                             offset: const Offset(0, 40),
                                             onSelected: (val) {
                                               if (val == 'edit' &&
-                                                  widget.canManage) {
+                                                  widget.canManage &&
+                                                  opp['can_edit'] == true) {
                                                 _openForm(opp: opp);
                                               }
                                               if (val == 'delete' &&
-                                                  widget.canDelete) {
+                                                  widget.canDelete &&
+                                                  opp['can_delete'] == true) {
                                                 _delete(opp['id'] as int);
                                               }
                                             },
                                             itemBuilder:
                                                 (context) => [
-                                                  if (widget.canManage)
+                                                  if (widget.canManage &&
+                                                      opp['can_edit'] == true)
                                                     const PopupMenuItem(
                                                       value: 'edit',
                                                       child: Row(
@@ -588,7 +603,8 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                                         ],
                                                       ),
                                                     ),
-                                                  if (widget.canDelete)
+                                                  if (widget.canDelete &&
+                                                      opp['can_delete'] == true)
                                                     const PopupMenuItem(
                                                       value: 'delete',
                                                       child: Row(
@@ -647,7 +663,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                         Text(
                                           _formatCurrency(opp['amount']),
                                           style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: FontWeight.w500,
                                             fontSize: 14,
                                           ),
                                         ),
@@ -664,7 +680,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                             style: const TextStyle(
                                               color: StitchTheme.textSubtle,
                                               fontSize: 13,
-                                              fontWeight: FontWeight.w600,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                         ],

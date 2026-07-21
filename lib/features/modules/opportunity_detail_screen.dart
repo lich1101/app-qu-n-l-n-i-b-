@@ -50,7 +50,11 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
               widget.token,
               widget.opportunityId,
             ),
-            widget.apiService.getClients(widget.token, perPage: 300),
+            widget.apiService.getClients(
+              widget.token,
+              perPage: 300,
+              assignedOnly: true,
+            ),
           ]);
       final Map<String, dynamic>? detail =
           responses[0] as Map<String, dynamic>?;
@@ -171,7 +175,9 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết cơ hội'),
         actions: <Widget>[
-          if (widget.canManage && opportunity != null)
+          if (widget.canManage &&
+              opportunity != null &&
+              opportunity['can_edit'] == true)
             IconButton(
               tooltip: 'Sửa cơ hội',
               onPressed: _openEditSheet,
@@ -242,7 +248,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                                 (opportunity['title'] ?? '—').toString(),
                                 style: const TextStyle(
                                   fontSize: 20,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w500,
                                   height: 1.25,
                                 ),
                               ),
@@ -266,7 +272,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                                       _statusName(),
                                       style: TextStyle(
                                         color: statusColor,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w500,
                                         fontSize: 12,
                                       ),
                                     ),
@@ -293,7 +299,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                                         (opportunity['opportunity_type'] ?? '')
                                             .toString(),
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.w500,
                                           fontSize: 12,
                                           color: StitchTheme.textMain,
                                         ),
@@ -425,7 +431,7 @@ class _InfoRow extends StatelessWidget {
                     style: const TextStyle(
                       color: StitchTheme.textSubtle,
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   TextSpan(
@@ -433,7 +439,7 @@ class _InfoRow extends StatelessWidget {
                     style: const TextStyle(
                       color: StitchTheme.textMain,
                       fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -485,7 +491,7 @@ class _OpportunityMetricTile extends StatelessWidget {
             label,
             style: const TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: StitchTheme.textMuted,
             ),
           ),
@@ -494,7 +500,7 @@ class _OpportunityMetricTile extends StatelessWidget {
             value,
             style: const TextStyle(
               fontSize: 15,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
               color: StitchTheme.textMain,
             ),
           ),
@@ -527,7 +533,7 @@ class _DetailSection extends StatelessWidget {
             title,
             style: const TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
               color: StitchTheme.textSubtle,
             ),
           ),

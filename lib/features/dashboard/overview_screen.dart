@@ -160,7 +160,7 @@ class OverviewScreen extends StatelessWidget {
                               _initials(name),
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                               ),
                             )
                             : null,
@@ -176,7 +176,7 @@ class OverviewScreen extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: compact ? 17 : 18,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -187,7 +187,7 @@ class OverviewScreen extends StatelessWidget {
                           style: const TextStyle(
                             fontSize: 12,
                             color: StitchTheme.textMuted,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -346,7 +346,7 @@ class _UnreadBadge extends StatelessWidget {
         style: const TextStyle(
           color: Colors.white,
           fontSize: 10,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w500,
           height: 1,
         ),
       ),
@@ -446,7 +446,7 @@ class _QuickActionTile extends StatelessWidget {
             Text(
               action.label,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
             ),
           ],
         ),

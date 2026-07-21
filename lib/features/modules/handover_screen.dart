@@ -262,7 +262,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                                     : 'Từ chối phiếu bàn giao',
                                 style: const TextStyle(
                                   fontSize: 18,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w500,
                                   color: StitchTheme.textMain,
                                 ),
                               ),
@@ -307,7 +307,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                       'Lý do / ghi chú phản hồi',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: StitchTheme.textMuted,
                       ),
                     ),
@@ -359,7 +359,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                                       ? 'Xác nhận duyệt'
                                       : 'Gửi từ chối'),
                               style: const TextStyle(
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
@@ -439,7 +439,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                       'Hàng đợi duyệt bàn giao',
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -592,7 +592,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                                   Text(
                                     (project['name'] ?? 'Dự án').toString(),
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w500,
                                       fontSize: 16,
                                     ),
                                   ),
@@ -623,7 +623,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                                 _handoverLabel(handoverStatus),
                                 style: TextStyle(
                                   color: statusColor,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                   fontSize: 12,
                                 ),
                               ),
@@ -691,7 +691,7 @@ class _HandoverCenterScreenState extends State<HandoverCenterScreen> {
                                   'Ghi chú phản hồi gần nhất',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w500,
                                     color: StitchTheme.textMuted,
                                   ),
                                 ),
@@ -773,7 +773,7 @@ class _SummaryChip extends StatelessWidget {
             label,
             style: const TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: StitchTheme.labelEmphasis,
             ),
           ),
@@ -782,7 +782,7 @@ class _SummaryChip extends StatelessWidget {
             value,
             style: TextStyle(
               fontSize: 18,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: tone,
             ),
           ),
@@ -814,7 +814,7 @@ class _ReviewInfoRow extends StatelessWidget {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
           ),
         ),
       ],

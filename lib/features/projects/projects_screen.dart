@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/project_handover_visibility.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'create_project_screen.dart';
@@ -15,12 +16,14 @@ class ProjectsScreen extends StatefulWidget {
     required this.apiService,
     this.canView = true,
     this.canCreate = false,
+    this.currentUserRole,
   });
 
   final String token;
   final MobileApiService apiService;
   final bool canView;
   final bool canCreate;
+  final String? currentUserRole;
 
   @override
   State<ProjectsScreen> createState() => _ProjectsScreenState();
@@ -76,10 +79,14 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       ownerIds: _ownerFilterIds.isEmpty ? null : _ownerFilterIds,
     );
     if (!mounted) return;
+    final List<Map<String, dynamic>> visibleRows = filterProjectsForEmployee(
+      rows,
+      widget.currentUserRole,
+    );
     setState(() {
-      projects = rows;
+      projects = visibleRows;
       loading = false;
-      message = rows.isEmpty ? 'Chưa có dự án nào.' : '';
+      message = visibleRows.isEmpty ? 'Chưa có dự án nào.' : '';
     });
   }
 
@@ -318,6 +325,24 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                     children: <Widget>[
+                      if (widget.currentUserRole == 'ke_toan')
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFF7DD3FC)),
+                          ),
+                          child: const Text(
+                            'Tài khoản kế toán chỉ được xem danh sách dự án (chỉ đọc). Không truy cập công việc hay đầu việc.',
+                            style: TextStyle(
+                              color: Color(0xFF0C4A6E),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                       Container(
                         margin: const EdgeInsets.only(bottom: 14),
                         decoration: BoxDecoration(
@@ -354,7 +379,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                         child: Text(
                                           'Bộ lọc dự án',
                                           style: TextStyle(
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: FontWeight.w500,
                                             fontSize: 14,
                                           ),
                                         ),
@@ -369,7 +394,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                             'đang lọc',
                                             style: TextStyle(
                                               fontSize: 11,
-                                              fontWeight: FontWeight.w600,
+                                              fontWeight: FontWeight.w500,
                                               color: StitchTheme.primaryStrong,
                                             ),
                                           ),
@@ -589,7 +614,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                             child: Text(
                                               name,
                                               style: const TextStyle(
-                                                fontWeight: FontWeight.w700,
+                                                fontWeight: FontWeight.w500,
                                                 fontSize: 16,
                                               ),
                                             ),
@@ -617,7 +642,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                         _statusLabel(status),
                                         style: TextStyle(
                                           color: _statusColor(status),
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w500,
                                           fontSize: 12,
                                         ),
                                       ),
@@ -871,7 +896,7 @@ class _ProjectSummaryTile extends StatelessWidget {
           style: const TextStyle(
             fontSize: 11,
             color: StitchTheme.textMuted,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 6),
@@ -879,7 +904,7 @@ class _ProjectSummaryTile extends StatelessWidget {
           value,
           style: TextStyle(
             fontSize: 20,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             color: resolvedColor,
           ),
         ),

@@ -30,17 +30,20 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
   final TextEditingController contractDaysCtrl = TextEditingController();
   final TextEditingController warningDaysCtrl = TextEditingController();
   final TextEditingController dailyLimitCtrl = TextEditingController();
+  final TextEditingController poolClaimDailyLimitCtrl = TextEditingController();
+  final TextEditingController rotationRunTimeCtrl = TextEditingController();
 
   File? logoFile;
   bool saving = false;
   bool loading = true;
   String message = '';
   bool rotationEnabled = false;
-  bool rotationSameDepartmentOnly = false;
+  String rotationScopeMode = 'global_staff';
   List<Map<String, dynamic>> leadTypes = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> participants = <Map<String, dynamic>>[];
   List<int> selectedLeadTypeIds = <int>[];
   Set<int> selectedParticipantIds = <int>{};
+  Map<int, Map<String, bool>> participantModes = <int, Map<String, bool>>{};
 
   static const List<String> _palette = <String>[
     '#0F172A',
@@ -67,6 +70,8 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     contractDaysCtrl.text = '90';
     warningDaysCtrl.text = '3';
     dailyLimitCtrl.text = '5';
+    poolClaimDailyLimitCtrl.text = '5';
+    rotationRunTimeCtrl.text = '12:00';
     _load();
   }
 
@@ -80,6 +85,8 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     contractDaysCtrl.dispose();
     warningDaysCtrl.dispose();
     dailyLimitCtrl.dispose();
+    poolClaimDailyLimitCtrl.dispose();
+    rotationRunTimeCtrl.dispose();
     super.dispose();
   }
 
@@ -103,6 +110,94 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
 
   Set<int> _idSetFromValue(dynamic value) {
     return _idListFromValue(value).toSet();
+  }
+
+  String _rotationScopeModeFromSettings(Map<String, dynamic> settings) {
+    final String scope =
+        (settings['client_rotation_scope_mode'] ?? '').toString().trim();
+    if (scope == 'same_department' ||
+        scope == 'global_staff' ||
+        scope == 'balanced_department') {
+      return scope;
+    }
+    return settings['client_rotation_same_department_only'] == true
+        ? 'same_department'
+        : 'global_staff';
+  }
+
+  Map<int, Map<String, bool>> _participantModesFromValue(
+    dynamic value,
+    Set<int> selectedIds,
+  ) {
+    if (value is! Map || selectedIds.isEmpty) {
+      return <int, Map<String, bool>>{};
+    }
+
+    final Map<int, Map<String, bool>> next = <int, Map<String, bool>>{};
+    value.forEach((dynamic rawUserId, dynamic rawMode) {
+      final int userId = int.tryParse('$rawUserId') ?? 0;
+      if (userId <= 0 || !selectedIds.contains(userId) || rawMode is! Map) {
+        return;
+      }
+
+      final bool onlyReceive = rawMode['only_receive'] == true;
+      final bool onlyGive = rawMode['only_give'] == true;
+      if (!onlyReceive && !onlyGive) {
+        return;
+      }
+
+      next[userId] = <String, bool>{
+        'only_receive': onlyReceive,
+        'only_give': onlyGive,
+      };
+    });
+
+    return next;
+  }
+
+  Map<String, dynamic> _participantModeMeta(int userId) {
+    final Map<String, bool> mode =
+        participantModes[userId] ?? const <String, bool>{};
+    final bool onlyReceive = mode['only_receive'] == true;
+    final bool onlyGive = mode['only_give'] == true;
+
+    if (onlyReceive && !onlyGive) {
+      return <String, dynamic>{
+        'onlyReceive': true,
+        'onlyGive': false,
+        'label': 'Chỉ nhận vào',
+        'hint':
+            'Khách của nhân sự này không bị xoay ra, nhưng vẫn được nhận khách mới.',
+      };
+    }
+
+    if (onlyGive && !onlyReceive) {
+      return <String, dynamic>{
+        'onlyReceive': false,
+        'onlyGive': true,
+        'label': 'Chỉ cho đi',
+        'hint':
+            'Nhân sự này vẫn có thể mất khách khi quá hạn nhưng sẽ không nhận khách auto-rotation vào.',
+      };
+    }
+
+    if (onlyReceive && onlyGive) {
+      return <String, dynamic>{
+        'onlyReceive': true,
+        'onlyGive': true,
+        'label': 'Đang bật cả 2 nên xử lý như bình thường',
+        'hint':
+            'Khi bật đồng thời cả 2, hệ thống coi nhân sự này như chế độ bình thường.',
+      };
+    }
+
+    return <String, dynamic>{
+      'onlyReceive': false,
+      'onlyGive': false,
+      'label': 'Bình thường',
+      'hint':
+          'Nhân sự này vừa có thể nhận vào, vừa có thể bị xoay khách ra nếu quá hạn.',
+    };
   }
 
   int _readInt(
@@ -157,13 +252,20 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     warningDaysCtrl.text = '${settings['client_rotation_warning_days'] ?? 3}';
     dailyLimitCtrl.text =
         '${settings['client_rotation_daily_receive_limit'] ?? 5}';
-    rotationSameDepartmentOnly =
-        settings['client_rotation_same_department_only'] == true;
+    poolClaimDailyLimitCtrl.text =
+        '${settings['client_rotation_pool_claim_daily_limit'] ?? 5}';
+    rotationRunTimeCtrl.text =
+        (settings['client_rotation_run_time'] ?? '12:00').toString();
+    rotationScopeMode = _rotationScopeModeFromSettings(settings);
     selectedLeadTypeIds = _idListFromValue(
       settings['client_rotation_lead_type_ids'],
     );
     selectedParticipantIds = _idSetFromValue(
       settings['client_rotation_participant_user_ids'],
+    );
+    participantModes = _participantModesFromValue(
+      settings['client_rotation_participant_modes'],
+      selectedParticipantIds,
     );
   }
 
@@ -257,6 +359,40 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     }
     setState(() {
       selectedParticipantIds = next;
+      participantModes = _participantModesFromValue(participantModes, next);
+    });
+  }
+
+  void _toggleParticipantMode(int id, String field) {
+    if (id <= 0 || !selectedParticipantIds.contains(id)) return;
+
+    final Map<int, Map<String, bool>> next = <int, Map<String, bool>>{
+      for (final MapEntry<int, Map<String, bool>> entry
+          in participantModes.entries)
+        entry.key: <String, bool>{...entry.value},
+    };
+    final Map<String, bool> current =
+        next[id] ?? <String, bool>{'only_receive': false, 'only_give': false};
+    final bool onlyReceive =
+        field == 'only_receive'
+            ? !(current['only_receive'] == true)
+            : (current['only_receive'] == true);
+    final bool onlyGive =
+        field == 'only_give'
+            ? !(current['only_give'] == true)
+            : (current['only_give'] == true);
+
+    if (!onlyReceive && !onlyGive) {
+      next.remove(id);
+    } else {
+      next[id] = <String, bool>{
+        'only_receive': onlyReceive,
+        'only_give': onlyGive,
+      };
+    }
+
+    setState(() {
+      participantModes = next;
     });
   }
 
@@ -279,19 +415,19 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
         'client_rotation_comment_stale_days': _readInt(
           commentDaysCtrl,
           3,
-          min: 1,
+          min: 0,
           max: 3650,
         ),
         'client_rotation_opportunity_stale_days': _readInt(
           opportunityDaysCtrl,
           30,
-          min: 1,
+          min: 0,
           max: 3650,
         ),
         'client_rotation_contract_stale_days': _readInt(
           contractDaysCtrl,
           90,
-          min: 1,
+          min: 0,
           max: 3650,
         ),
         'client_rotation_warning_days': _readInt(
@@ -300,16 +436,38 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
           min: 0,
           max: 60,
         ),
-        'client_rotation_same_department_only': rotationSameDepartmentOnly,
+        'client_rotation_scope_mode': rotationScopeMode,
+        'client_rotation_same_department_only':
+            rotationScopeMode == 'same_department',
         'client_rotation_daily_receive_limit': _readInt(
           dailyLimitCtrl,
           5,
-          min: 1,
+          min: 0,
           max: 100,
         ),
+        'client_rotation_pool_claim_daily_limit': _readInt(
+          poolClaimDailyLimitCtrl,
+          5,
+          min: 0,
+          max: 100,
+        ),
+        'client_rotation_run_time':
+            rotationRunTimeCtrl.text.trim().isEmpty
+                ? '12:00'
+                : rotationRunTimeCtrl.text.trim(),
         'client_rotation_lead_type_ids': List<int>.from(selectedLeadTypeIds),
         'client_rotation_participant_user_ids':
             selectedParticipantIds.toList()..sort(),
+        'client_rotation_participant_modes': <String, dynamic>{
+          for (final int userId in (selectedParticipantIds.toList()..sort()))
+            if ((participantModes[userId]?['only_receive'] == true) ||
+                (participantModes[userId]?['only_give'] == true))
+              '$userId': <String, bool>{
+                'only_receive':
+                    participantModes[userId]?['only_receive'] == true,
+                'only_give': participantModes[userId]?['only_give'] == true,
+              },
+        },
       },
     );
 
@@ -332,11 +490,31 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     });
   }
 
+  Future<void> _pickRotationRunTime() async {
+    final List<String> parts = rotationRunTimeCtrl.text.trim().split(':');
+    final int hour = parts.isNotEmpty ? int.tryParse(parts[0]) ?? 12 : 12;
+    final int minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: hour.clamp(0, 23).toInt(),
+        minute: minute.clamp(0, 59).toInt(),
+      ),
+    );
+    if (picked == null) {
+      return;
+    }
+    final String hh = picked.hour.toString().padLeft(2, '0');
+    final String mm = picked.minute.toString().padLeft(2, '0');
+    setState(() => rotationRunTimeCtrl.text = '$hh:$mm');
+  }
+
   Widget _buildSection({
     required String title,
-    required String subtitle,
+    String? subtitle,
     required List<Widget> children,
   }) {
+    final String normalizedSubtitle = (subtitle ?? '').trim();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -356,13 +534,18 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
         children: <Widget>[
           Text(
             title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: const TextStyle(color: StitchTheme.textMuted, height: 1.45),
-          ),
+          if (normalizedSubtitle.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              normalizedSubtitle,
+              style: const TextStyle(
+                color: StitchTheme.textMuted,
+                height: 1.45,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           ...children,
         ],
@@ -370,16 +553,37 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     );
   }
 
-  Widget _buildSelectionCard({
-    required String title,
-    required String subtitle,
-    required int selectedCount,
-    required List<Map<String, dynamic>> rows,
-    required Set<int> selectedIds,
-    required void Function(int id) onToggle,
-    required String Function(Map<String, dynamic> row) secondaryText,
-    String emptyText = 'Chưa có dữ liệu.',
-  }) {
+  Widget _buildScopeOptionCard({required String value, required String title}) {
+    final bool selected = rotationScopeMode == value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap:
+          () => setState(() {
+            rotationScopeMode = value;
+          }),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFF0FDF4) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color:
+                selected
+                    ? StitchTheme.primary.withValues(alpha: 0.28)
+                    : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildParticipantSelectionCard() {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -392,26 +596,10 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: StitchTheme.textMuted,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
+              const Expanded(
+                child: Text(
+                  'Nhân sự tham gia xoay vòng',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                 ),
               ),
               Container(
@@ -424,10 +612,10 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  'Đã chọn $selectedCount',
+                  'Đã chọn ${selectedParticipantIds.length}',
                   style: const TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     color: Color(0xFF334155),
                   ),
                 ),
@@ -435,7 +623,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          if (rows.isEmpty)
+          if (participants.isEmpty)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
@@ -444,19 +632,26 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: Text(
-                emptyText,
-                style: const TextStyle(color: StitchTheme.textMuted),
+              child: const Text(
+                'Chưa tải được danh sách nhân sự xoay vòng.',
+                style: TextStyle(color: StitchTheme.textMuted),
               ),
             )
           else
             Column(
               children:
-                  rows.map((Map<String, dynamic> row) {
+                  participants.map((Map<String, dynamic> row) {
                     final int id = int.tryParse('${row['id']}') ?? 0;
-                    final bool checked = selectedIds.contains(id);
+                    final bool checked = selectedParticipantIds.contains(id);
+                    final Map<String, dynamic> mode = _participantModeMeta(id);
+                    final String role = (row['role'] ?? '').toString();
+                    final String email = (row['email'] ?? '').toString();
+                    final String dept =
+                        (row['department_id'] ?? '').toString().trim();
+
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color:
                             checked
@@ -470,28 +665,101 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                                   : const Color(0xFFE2E8F0),
                         ),
                       ),
-                      child: CheckboxListTile(
-                        value: checked,
-                        onChanged: (_) => onToggle(id),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        checkboxShape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        title: Text(
-                          (row['name'] ?? 'Không rõ').toString(),
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            secondaryText(row),
-                            style: const TextStyle(height: 1.35),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Checkbox(
+                            value: checked,
+                            onChanged: (_) => _toggleParticipant(id),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
                           ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: <Widget>[
+                                    Text(
+                                      (row['name'] ?? 'Không rõ').toString(),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    if (checked)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          mode['label'].toString(),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w500,
+                                            color: Color(0xFF334155),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  <String>[
+                                    if (role.isNotEmpty) role,
+                                    if (email.isNotEmpty) email,
+                                    if (dept.isNotEmpty) 'Phòng ban #$dept',
+                                  ].join(' • '),
+                                  style: const TextStyle(
+                                    height: 1.35,
+                                    color: StitchTheme.textMuted,
+                                  ),
+                                ),
+                                if (checked) ...<Widget>[
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: <Widget>[
+                                      FilterChip(
+                                        label: const Text('Chỉ nhận vào'),
+                                        selected: mode['onlyReceive'] == true,
+                                        onSelected:
+                                            (_) => _toggleParticipantMode(
+                                              id,
+                                              'only_receive',
+                                            ),
+                                        selectedColor: const Color(0xFFD1FAE5),
+                                        checkmarkColor: StitchTheme.success,
+                                      ),
+                                      FilterChip(
+                                        label: const Text('Chỉ cho đi'),
+                                        selected: mode['onlyGive'] == true,
+                                        onSelected:
+                                            (_) => _toggleParticipantMode(
+                                              id,
+                                              'only_give',
+                                            ),
+                                        selectedColor: const Color(0xFFFEF3C7),
+                                        checkmarkColor: StitchTheme.warning,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   }).toList(),
@@ -533,25 +801,9 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
           Row(
             children: <Widget>[
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const <Widget>[
-                    Text(
-                      'Loại khách áp dụng',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Chỉ những loại khách được chọn mới đi vào cơ chế xoay vòng. Nếu chọn nhiều loại, thứ tự ưu tiên bên dưới sẽ quyết định loại nào được xét trước.',
-                      style: TextStyle(
-                        color: StitchTheme.textMuted,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
+                child: const Text(
+                  'Loại khách áp dụng',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                 ),
               ),
               Container(
@@ -567,7 +819,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                   'Đã chọn ${selectedLeadTypeIds.length}',
                   style: const TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     color: Color(0xFF334155),
                   ),
                 ),
@@ -591,17 +843,8 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                     'Thứ tự ưu tiên loại khách',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w500,
                       color: Color(0xFF334155),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    '#1 là ưu tiên cao nhất. Trong cùng một loại khách, hệ thống vẫn giữ nguyên rule hiện tại: xét loại khách trước, rồi tới số hợp đồng, số cơ hội và các tie-break còn lại.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.45,
-                      color: StitchTheme.textMuted,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -638,7 +881,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                                 color: StitchTheme.primaryStrong,
                               ),
                             ),
@@ -651,7 +894,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                                 Text(
                                   (row['name'] ?? 'Không rõ').toString(),
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -743,7 +986,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                               child: Text(
                                 (row['name'] ?? 'Không rõ').toString(),
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -763,7 +1006,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                                   'Ưu tiên #${selectedIndex + 1}',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w500,
                                     color: StitchTheme.primaryStrong,
                                   ),
                                 ),
@@ -801,6 +1044,26 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
       controller: controller,
       keyboardType: TextInputType.number,
       decoration: InputDecoration(labelText: label, hintText: hint),
+    );
+  }
+
+  Widget _buildTimeField(
+    String label,
+    TextEditingController controller, {
+    String? hint,
+  }) {
+    return TextField(
+      controller: controller,
+      readOnly: true,
+      onTap: _pickRotationRunTime,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        suffixIcon: IconButton(
+          onPressed: _pickRotationRunTime,
+          icon: const Icon(Icons.schedule_rounded),
+        ),
+      ),
     );
   }
 
@@ -929,8 +1192,6 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                   const SizedBox(height: 16),
                   _buildSection(
                     title: 'Xoay vòng khách hàng không được chăm sóc',
-                    subtitle:
-                        'Cron chạy lúc 12h trưa mỗi ngày để cảnh báo trước hạn và điều chuyển khách theo ưu tiên: nhiều hợp đồng hơn, nếu bằng nhau thì nhiều cơ hội hơn, còn hai khách tiềm năng thuần thì random.',
                     children: <Widget>[
                       SwitchListTile.adaptive(
                         value: rotationEnabled,
@@ -940,44 +1201,13 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                         contentPadding: EdgeInsets.zero,
                         title: const Text(
                           'Bật tự động xoay khách',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: const Text(
-                          'Chạm mốc nào trước thì điều chuyển theo mốc đó: bình luận, cơ hội hoặc hợp đồng đều có thể kích hoạt xoay.',
+                          style: TextStyle(fontWeight: FontWeight.w500),
                         ),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 6),
-                        child: Text(
-                          'Bình luận mới chỉ reset mốc chăm sóc. Cơ hội mới reset cả mốc cơ hội và chăm sóc. Hợp đồng mới reset cả 3 mốc.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: StitchTheme.textMuted,
-                            height: 1.45,
-                          ),
-                        ),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Thứ tự đưa khách vào hàng chờ xoay: số hợp đồng giảm dần, nếu bằng nhau thì xét số cơ hội giảm dần; nếu cả hai cùng là khách tiềm năng thuần thì random trong nhóm đồng hạng.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: StitchTheme.textMuted,
-                            height: 1.45,
-                          ),
-                        ),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Nếu chọn nhiều loại khách, hệ thống sẽ ưu tiên theo đúng thứ tự loại khách bạn sắp xếp ở danh sách bên dưới, rồi mới áp dụng các rule xoay còn lại trong từng loại.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: StitchTheme.textMuted,
-                            height: 1.45,
-                          ),
-                        ),
+                      const SizedBox(height: 12),
+                      _buildTimeField(
+                        'Giờ cron chạy mỗi ngày',
+                        rotationRunTimeCtrl,
                       ),
                       const SizedBox(height: 12),
                       _buildNumberField(
@@ -995,90 +1225,41 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                         contractDaysCtrl,
                       ),
                       const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: StitchTheme.border),
-                        ),
-                        child: const Text(
-                          'Nhịp cảnh báo cố định:\n- Chăm sóc: còn 2 ngày thì nhắc mỗi ngày.\n- Cơ hội: còn 14 ngày thì nhắc mỗi 3 ngày.\n- Hợp đồng: còn 45 ngày thì nhắc mỗi 7 ngày.',
-                          style: TextStyle(
-                            color: StitchTheme.textMuted,
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
                       _buildNumberField(
-                        'Giới hạn mỗi người nhận / ngày',
+                        'Giới hạn nhận từ cron / người / ngày',
                         dailyLimitCtrl,
                       ),
                       const SizedBox(height: 12),
-                      SwitchListTile.adaptive(
-                        value: rotationSameDepartmentOnly,
-                        onChanged:
-                            (bool value) => setState(
-                              () => rotationSameDepartmentOnly = value,
-                            ),
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text(
-                          'Chỉ xoay trong cùng phòng ban',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: Text(
-                          rotationSameDepartmentOnly
-                              ? 'Người nhận phải vừa nằm trong danh sách xoay, vừa cùng phòng ban với người đang giữ khách.'
-                              : 'Người nhận được phép ở bất kỳ phòng ban nào, miễn là đã được chọn trong danh sách xoay.',
-                        ),
+                      _buildNumberField(
+                        'Giới hạn nhận kho số / người / ngày',
+                        poolClaimDailyLimitCtrl,
                       ),
-                      const SizedBox(height: 14),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: Text(
-                          rotationSameDepartmentOnly
-                              ? 'Người nhận được chọn trong nhóm cùng phòng ban đã được tick trong setting. Thứ tự ưu tiên là số auto-rotation tích lũy ít nhất, rồi tới số khách đang phụ trách ít nhất, rồi tới số nhận hôm nay ít nhất. Khi bằng nhau thì random.'
-                              : 'Người nhận được chọn trên toàn bộ danh sách nhân sự đã tick trong setting. Thứ tự ưu tiên là số auto-rotation tích lũy ít nhất, rồi tới số khách đang phụ trách ít nhất, rồi tới số nhận hôm nay ít nhất. Khi bằng nhau thì random.',
-                          style: TextStyle(
-                            color: Color(0xFF475569),
-                            height: 1.45,
-                          ),
-                        ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Phạm vi nhận khách',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildScopeOptionCard(
+                        value: 'same_department',
+                        title: 'Chỉ trong cùng phòng ban',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildScopeOptionCard(
+                        value: 'global_staff',
+                        title: 'Toàn bộ nhân sự đã chọn',
+                      ),
+                      const SizedBox(height: 10),
+                      _buildScopeOptionCard(
+                        value: 'balanced_department',
+                        title: 'Chia đều theo phòng ban',
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildLeadTypePriorityCard(),
                   const SizedBox(height: 16),
-                  _buildSelectionCard(
-                    title: 'Nhân sự tham gia xoay vòng',
-                    subtitle:
-                        'Chỉ quản lý/nhân viên đang hoạt động mới hợp lệ.',
-                    selectedCount: selectedParticipantIds.length,
-                    rows: participants,
-                    selectedIds: selectedParticipantIds,
-                    onToggle: _toggleParticipant,
-                    secondaryText: (Map<String, dynamic> row) {
-                      final String role = (row['role'] ?? '').toString();
-                      final String email = (row['email'] ?? '').toString();
-                      final String dept =
-                          (row['department_id'] ?? '').toString();
-                      return <String>[
-                        if (role.isNotEmpty) role,
-                        if (email.isNotEmpty) email,
-                        if (dept.isNotEmpty) 'Phòng ban #$dept',
-                      ].join(' • ');
-                    },
-                    emptyText: 'Chưa tải được danh sách nhân sự xoay vòng.',
-                  ),
+                  _buildParticipantSelectionCard(),
                   if (message.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 14),

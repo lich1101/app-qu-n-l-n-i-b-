@@ -132,7 +132,7 @@ class StitchFormSheetTitleBar extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                         fontSize: 18,
                         color: StitchTheme.textMain,
                       ),

@@ -135,7 +135,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -219,7 +219,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                   Text(
                                     'Phân bổ DA',
                                     style: TextStyle(
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                   SizedBox(height: 4),
@@ -276,7 +276,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                           'DA ${(index + 1) * 20}+',
                                           style: const TextStyle(
                                             fontSize: 10,
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: FontWeight.w500,
                                             color: StitchTheme.textSubtle,
                                           ),
                                         ),
@@ -297,7 +297,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         const Text(
                           'Thống kê Content',
                           style: TextStyle(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             fontSize: 16,
                           ),
                         ),
@@ -329,7 +329,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const Text(
                       'Audit Content & Website Care',
                       style: TextStyle(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         fontSize: 16,
                       ),
                     ),
@@ -373,7 +373,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const Text(
                       'Vị trí đặt Backlinks gần đây',
                       style: TextStyle(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         fontSize: 16,
                       ),
                     ),
@@ -445,7 +445,7 @@ class _SegmentedControl extends StatelessWidget {
                         entry.value,
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           color:
                               selected
                                   ? StitchTheme.primary
@@ -509,7 +509,7 @@ class _ReportMetricCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 10,
                     color: StitchTheme.textSubtle,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -518,7 +518,7 @@ class _ReportMetricCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
           ),
           if (subLabel != null) ...<Widget>[
             const SizedBox(height: 6),
@@ -532,7 +532,7 @@ class _ReportMetricCard extends StatelessWidget {
                 subLabel!,
                 style: TextStyle(
                   fontSize: 10,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                   color: StitchTheme.primary,
                 ),
               ),
@@ -600,7 +600,7 @@ class _StatRow extends StatelessWidget {
               children: <Widget>[
                 Text(
                   title,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -616,7 +616,7 @@ class _StatRow extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: <Widget>[
-              Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -628,7 +628,7 @@ class _StatRow extends StatelessWidget {
                   trailing,
                   style: TextStyle(
                     fontSize: 10,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     color: StitchTheme.primary,
                   ),
                 ),
@@ -671,7 +671,7 @@ class _RecentLinkTile extends StatelessWidget {
             child: Center(
               child: Text(
                 initials,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: const TextStyle(fontWeight: FontWeight.w500),
               ),
             ),
           ),
@@ -682,7 +682,7 @@ class _RecentLinkTile extends StatelessWidget {
               children: <Widget>[
                 Text(
                   domain,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 4),
                 Text(

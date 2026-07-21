@@ -130,7 +130,9 @@ class _ServicesScreenState extends State<ServicesScreen> {
     if (s.contains('pending') || s.contains('open') || s.contains('cho')) {
       return const Color(0xFFD97706);
     }
-    if (s.contains('overdue') || s.contains('cancel') || s.contains('that_bai')) {
+    if (s.contains('overdue') ||
+        s.contains('cancel') ||
+        s.contains('that_bai')) {
       return const Color(0xFFDC2626);
     }
     return StitchTheme.primary;
@@ -242,16 +244,23 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
   Future<void> _loadMeta() async {
     final Map<String, dynamic> meta = await widget.apiService.getMeta();
-    final List<dynamic> services = (meta['service_types'] ?? <dynamic>[]) as List<dynamic>;
+    final List<dynamic> services =
+        (meta['service_types'] ?? <dynamic>[]) as List<dynamic>;
     if (services.isEmpty) return;
-    final List<_ServiceOption> mapped = services.map((dynamic e) {
-      final String value = e.toString();
-      return _ServiceOption(value, _serviceLabel(value), _serviceIcon(value));
-    }).toList();
+    final List<_ServiceOption> mapped =
+        services.map((dynamic e) {
+          final String value = e.toString();
+          return _ServiceOption(
+            value,
+            _serviceLabel(value),
+            _serviceIcon(value),
+          );
+        }).toList();
     if (!mounted) return;
     setState(() {
       serviceOptions = mapped;
-      if (mapped.isNotEmpty && !mapped.any((option) => option.value == selectedType)) {
+      if (mapped.isNotEmpty &&
+          !mapped.any((option) => option.value == selectedType)) {
         selectedType = mapped.first.value;
       }
     });
@@ -259,10 +268,8 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
   Future<void> _fetch() async {
     setState(() => loading = true);
-    final List<Map<String, dynamic>> data = await widget.apiService.getServiceItems(
-      widget.token,
-      selectedType,
-    );
+    final List<Map<String, dynamic>> data = await widget.apiService
+        .getServiceItems(widget.token, selectedType);
     if (!mounted) return;
     setState(() {
       loading = false;
@@ -276,9 +283,10 @@ class _ServicesScreenState extends State<ServicesScreen> {
       setState(() => message = 'Mã dự án là bắt buộc và phải là số.');
       return null;
     }
-    final int? taskId = taskIdCtrl.text.trim().isEmpty
-        ? null
-        : int.tryParse(taskIdCtrl.text.trim());
+    final int? taskId =
+        taskIdCtrl.text.trim().isEmpty
+            ? null
+            : int.tryParse(taskIdCtrl.text.trim());
     if (taskIdCtrl.text.trim().isNotEmpty && taskId == null) {
       setState(() => message = 'Mã công việc phải là số.');
       return null;
@@ -304,33 +312,59 @@ class _ServicesScreenState extends State<ServicesScreen> {
       case 'content':
         payload.addAll(<String, dynamic>{
           'main_keyword': f1Ctrl.text.trim(),
-          'secondary_keywords': f2Ctrl.text.trim().isEmpty ? null : f2Ctrl.text.trim(),
-          'outline_status': f3Ctrl.text.trim().isEmpty ? 'pending' : f3Ctrl.text.trim(),
-          'required_words': f4Ctrl.text.trim().isEmpty ? null : int.tryParse(f4Ctrl.text.trim()),
-          'seo_score': f5Ctrl.text.trim().isEmpty ? null : int.tryParse(f5Ctrl.text.trim()),
-          'approval_status': f6Ctrl.text.trim().isEmpty ? 'pending' : f6Ctrl.text.trim(),
-          'actual_words': f7Ctrl.text.trim().isEmpty ? null : int.tryParse(f7Ctrl.text.trim()),
-          'duplicate_percent': f8Ctrl.text.trim().isEmpty ? null : int.tryParse(f8Ctrl.text.trim()),
+          'secondary_keywords':
+              f2Ctrl.text.trim().isEmpty ? null : f2Ctrl.text.trim(),
+          'outline_status':
+              f3Ctrl.text.trim().isEmpty ? 'pending' : f3Ctrl.text.trim(),
+          'required_words':
+              f4Ctrl.text.trim().isEmpty
+                  ? null
+                  : int.tryParse(f4Ctrl.text.trim()),
+          'seo_score':
+              f5Ctrl.text.trim().isEmpty
+                  ? null
+                  : int.tryParse(f5Ctrl.text.trim()),
+          'approval_status':
+              f6Ctrl.text.trim().isEmpty ? 'pending' : f6Ctrl.text.trim(),
+          'actual_words':
+              f7Ctrl.text.trim().isEmpty
+                  ? null
+                  : int.tryParse(f7Ctrl.text.trim()),
+          'duplicate_percent':
+              f8Ctrl.text.trim().isEmpty
+                  ? null
+                  : int.tryParse(f8Ctrl.text.trim()),
         });
         break;
       case 'audit':
         payload.addAll(<String, dynamic>{
           'url': f1Ctrl.text.trim(),
           'issue_type': f2Ctrl.text.trim().isEmpty ? null : f2Ctrl.text.trim(),
-          'issue_description': f3Ctrl.text.trim().isEmpty ? null : f3Ctrl.text.trim(),
+          'issue_description':
+              f3Ctrl.text.trim().isEmpty ? null : f3Ctrl.text.trim(),
           'suggestion': f4Ctrl.text.trim().isEmpty ? null : f4Ctrl.text.trim(),
-          'priority': f5Ctrl.text.trim().isEmpty ? 'medium' : f5Ctrl.text.trim(),
+          'priority':
+              f5Ctrl.text.trim().isEmpty ? 'medium' : f5Ctrl.text.trim(),
           'status': f6Ctrl.text.trim().isEmpty ? 'open' : f6Ctrl.text.trim(),
         });
         break;
       case 'website-care':
         payload.addAll(<String, dynamic>{
           'check_date': f1Ctrl.text.trim().isEmpty ? null : f1Ctrl.text.trim(),
-          'technical_issue': f2Ctrl.text.trim().isEmpty ? null : f2Ctrl.text.trim(),
-          'index_status': f3Ctrl.text.trim().isEmpty ? null : f3Ctrl.text.trim(),
-          'traffic': f4Ctrl.text.trim().isEmpty ? null : int.tryParse(f4Ctrl.text.trim()),
-          'ranking_delta': f5Ctrl.text.trim().isEmpty ? null : int.tryParse(f5Ctrl.text.trim()),
-          'monthly_report': f6Ctrl.text.trim().isEmpty ? null : f6Ctrl.text.trim(),
+          'technical_issue':
+              f2Ctrl.text.trim().isEmpty ? null : f2Ctrl.text.trim(),
+          'index_status':
+              f3Ctrl.text.trim().isEmpty ? null : f3Ctrl.text.trim(),
+          'traffic':
+              f4Ctrl.text.trim().isEmpty
+                  ? null
+                  : int.tryParse(f4Ctrl.text.trim()),
+          'ranking_delta':
+              f5Ctrl.text.trim().isEmpty
+                  ? null
+                  : int.tryParse(f5Ctrl.text.trim()),
+          'monthly_report':
+              f6Ctrl.text.trim().isEmpty ? null : f6Ctrl.text.trim(),
         });
         break;
       default:
@@ -346,21 +380,27 @@ class _ServicesScreenState extends State<ServicesScreen> {
     }
     final Map<String, dynamic>? payload = _buildPayload();
     if (payload == null) return false;
-    final bool ok = editingId == null
-        ? await widget.apiService.createServiceItem(widget.token, selectedType, payload)
-        : await widget.apiService.updateServiceItem(
-            widget.token,
-            selectedType,
-            editingId!,
-            payload,
-          );
+    final bool ok =
+        editingId == null
+            ? await widget.apiService.createServiceItem(
+              widget.token,
+              selectedType,
+              payload,
+            )
+            : await widget.apiService.updateServiceItem(
+              widget.token,
+              selectedType,
+              editingId!,
+              payload,
+            );
     if (!mounted) return false;
     setState(() {
-      message = ok
-          ? (editingId == null
-              ? 'Tạo bản ghi thành công.'
-              : 'Cập nhật bản ghi thành công.')
-          : 'Lưu thất bại.';
+      message =
+          ok
+              ? (editingId == null
+                  ? 'Tạo bản ghi thành công.'
+                  : 'Cập nhật bản ghi thành công.')
+              : 'Lưu thất bại.';
       if (ok) _clearForm();
     });
     if (ok) await _fetch();
@@ -459,20 +499,22 @@ class _ServicesScreenState extends State<ServicesScreen> {
                   children: <Widget>[
                     Text(
                       editingId == null ? 'Tạo bản ghi' : 'Cập nhật bản ghi',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: projectIdCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Mã dự án *'),
+                      decoration: const InputDecoration(
+                        labelText: 'Mã dự án *',
+                      ),
                       keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: taskIdCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Mã công việc (tuỳ chọn)'),
+                      decoration: const InputDecoration(
+                        labelText: 'Mã công việc (tuỳ chọn)',
+                      ),
                       keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 8),
@@ -480,13 +522,15 @@ class _ServicesScreenState extends State<ServicesScreen> {
                       controller: f1Ctrl,
                       decoration: InputDecoration(
                         labelText: labels[0],
-                        suffixIcon: _isDateField(0)
-                            ? IconButton(
-                                onPressed: () => _pickDate(f1Ctrl),
-                                icon:
-                                    const Icon(Icons.calendar_month_outlined),
-                              )
-                            : null,
+                        suffixIcon:
+                            _isDateField(0)
+                                ? IconButton(
+                                  onPressed: () => _pickDate(f1Ctrl),
+                                  icon: const Icon(
+                                    Icons.calendar_month_outlined,
+                                  ),
+                                )
+                                : null,
                       ),
                       readOnly: _isDateField(0),
                       onTap: _isDateField(0) ? () => _pickDate(f1Ctrl) : null,
@@ -511,13 +555,15 @@ class _ServicesScreenState extends State<ServicesScreen> {
                       controller: f5Ctrl,
                       decoration: InputDecoration(
                         labelText: labels[4],
-                        suffixIcon: _isDateField(4)
-                            ? IconButton(
-                                onPressed: () => _pickDate(f5Ctrl),
-                                icon:
-                                    const Icon(Icons.calendar_month_outlined),
-                              )
-                            : null,
+                        suffixIcon:
+                            _isDateField(4)
+                                ? IconButton(
+                                  onPressed: () => _pickDate(f5Ctrl),
+                                  icon: const Icon(
+                                    Icons.calendar_month_outlined,
+                                  ),
+                                )
+                                : null,
                       ),
                       readOnly: _isDateField(4),
                       onTap: _isDateField(4) ? () => _pickDate(f5Ctrl) : null,
@@ -531,15 +577,17 @@ class _ServicesScreenState extends State<ServicesScreen> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: f7Ctrl,
-                        decoration:
-                            const InputDecoration(labelText: 'Actual words'),
+                        decoration: const InputDecoration(
+                          labelText: 'Actual words',
+                        ),
                         keyboardType: TextInputType.number,
                       ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: f8Ctrl,
-                        decoration:
-                            const InputDecoration(labelText: 'Duplicate (%)'),
+                        decoration: const InputDecoration(
+                          labelText: 'Duplicate (%)',
+                        ),
                         keyboardType: TextInputType.number,
                       ),
                     ],
@@ -559,17 +607,18 @@ class _ServicesScreenState extends State<ServicesScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: widget.canManage
-                                ? () async {
-                                    final bool ok = await _save();
-                                    if (!mounted) return;
-                                    if (ok) {
-                                      Navigator.of(context).pop();
-                                    } else {
-                                      setSheetState(() {});
+                            onPressed:
+                                widget.canManage
+                                    ? () async {
+                                      final bool ok = await _save();
+                                      if (!mounted) return;
+                                      if (ok) {
+                                        Navigator.of(context).pop();
+                                      } else {
+                                        setSheetState(() {});
+                                      }
                                     }
-                                  }
-                                : null,
+                                    : null,
                             child: Text(
                               editingId == null ? 'Tạo bản ghi' : 'Cập nhật',
                             ),
@@ -656,14 +705,15 @@ class _ServicesScreenState extends State<ServicesScreen> {
             DropdownButtonFormField<String>(
               value: selectedType,
               decoration: const InputDecoration(labelText: 'Loại dịch vụ'),
-              items: serviceOptions
-                  .map(
-                    (_ServiceOption e) => DropdownMenuItem<String>(
-                      value: e.value,
-                      child: Text(e.label),
-                    ),
-                  )
-                  .toList(),
+              items:
+                  serviceOptions
+                      .map(
+                        (_ServiceOption e) => DropdownMenuItem<String>(
+                          value: e.value,
+                          child: Text(e.label),
+                        ),
+                      )
+                      .toList(),
               onChanged: (String? value) {
                 if (value == null) return;
                 setState(() {
@@ -681,7 +731,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 Expanded(
                   child: Text(
                     'Danh sách bản ghi ${_serviceLabel(selectedType)}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
                 if (widget.canManage)
@@ -709,14 +759,16 @@ class _ServicesScreenState extends State<ServicesScreen> {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: _statusColor(_itemStatus(item)).withValues(alpha: 0.12),
+                          color: _statusColor(
+                            _itemStatus(item),
+                          ).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           _itemStatus(item),
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                             color: _statusColor(_itemStatus(item)),
                           ),
                         ),
@@ -733,7 +785,10 @@ class _ServicesScreenState extends State<ServicesScreen> {
                         ),
                       if (widget.canDelete)
                         IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
                           onPressed: () => _delete((item['id'] ?? 0) as int),
                         ),
                     ],

@@ -229,7 +229,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                 children: <Widget>[
                   const Text(
                     'Chọn thành viên họp',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 8),
                   ConstrainedBox(
@@ -461,7 +461,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                       editingMeetingId == null
                           ? 'Tạo lịch họp'
                           : 'Sửa lịch họp',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -542,7 +542,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                                       style: TextStyle(
                                         color: StitchTheme.primary,
                                         fontSize: 12,
-                                        fontWeight: FontWeight.w600,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ),
@@ -645,7 +645,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                 (meeting['title'] ?? 'Lịch họp').toString(),
                 style: const TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 8),
@@ -661,7 +661,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
               const SizedBox(height: 10),
               const Text(
                 'Thành viên tham gia',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 6),
               if (attendees.isEmpty)
@@ -847,7 +847,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                     Expanded(
                       child: Text(
                         'Sự kiện ngày ${_fmtDate(selectedDate)}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                     ),
                     if (widget.canManage)

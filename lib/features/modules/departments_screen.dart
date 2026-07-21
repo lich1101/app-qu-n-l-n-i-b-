@@ -138,7 +138,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                   children: <Widget>[
                     Text(
                       editingId == null ? 'Tạo phòng ban' : 'Sửa phòng ban',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 10),
                     TextField(
@@ -235,7 +235,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                   const Expanded(
                     child: Text(
                       'Danh sách phòng ban',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   if (widget.canManage)

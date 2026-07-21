@@ -2,9 +2,12 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../core/widgets/stitch_form_sheet.dart';
 import '../../core/widgets/stitch_widgets.dart';
@@ -17,6 +20,7 @@ class CrmScreen extends StatefulWidget {
     required this.token,
     required this.apiService,
     required this.canManageClients,
+    required this.canExportClients,
     required this.canManagePayments,
     required this.canDelete,
     required this.currentUserRole,
@@ -27,6 +31,9 @@ class CrmScreen extends StatefulWidget {
 
   /// POST/PUT /crm/clients — api: admin, quan_ly, nhan_vien
   final bool canManageClients;
+
+  /// POST /exports/clients — chỉ admin, administrator
+  final bool canExportClients;
 
   /// POST/PUT /crm/payments — api: admin, ke_toan
   final bool canManagePayments;
@@ -145,7 +152,6 @@ class _CrmScreenState extends State<CrmScreen> {
       'administrator',
       'quan_ly',
     ].contains(normalizedRole);
-
     // Metadata can be fetched in parallel if needed, but let's keep it simple
     final List<Map<String, dynamic>> types = await widget.apiService
         .getLeadTypes(widget.token);
@@ -173,6 +179,8 @@ class _CrmScreenState extends State<CrmScreen> {
               clientListStaffFilterIds.isEmpty
                   ? null
                   : clientListStaffFilterIds,
+          sortBy: 'updated_at',
+          sortDir: 'desc',
         );
     final Map<String, dynamic> paymentPayload = await widget.apiService
         .getPayments(widget.token, page: 1, perPage: 10);
@@ -216,6 +224,8 @@ class _CrmScreenState extends State<CrmScreen> {
         search: searchCtrl.text.trim(),
         assignedStaffIds:
             clientListStaffFilterIds.isEmpty ? null : clientListStaffFilterIds,
+        sortBy: 'updated_at',
+        sortDir: 'desc',
       );
       if (mounted) {
         final List<dynamic> newList = (payload['data'] ?? []) as List<dynamic>;
@@ -262,44 +272,107 @@ class _CrmScreenState extends State<CrmScreen> {
     }
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: <String>['xls', 'xlsx', 'csv'],
+      allowedExtensions: <String>['xls', 'xlsx', 'xlsm', 'csv', 'tsv', 'ods'],
     );
     if (result == null || result.files.single.path == null) return;
     final File file = File(result.files.single.path!);
-    final Map<String, dynamic> report = await widget.apiService.importClients(
+    final Map<String, dynamic> first = await widget.apiService.importClients(
       widget.token,
       file,
     );
     if (!mounted) return;
-    final List<dynamic> errors =
-        (report['errors'] as List<dynamic>?) ?? <dynamic>[];
-    final List<dynamic> warnings =
-        (report['warnings'] as List<dynamic>?) ?? <dynamic>[];
-
-    final StringBuffer summary = StringBuffer();
-    if (report['error'] != null) {
-      summary.write('Import thất bại.');
-    } else {
-      summary.write(
-        'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới, ${(report['updated'] ?? 0)} cập nhật, ${(report['skipped'] ?? 0)} bỏ qua.',
-      );
+    if (first['ok'] != true) {
+      setState(() {
+        message =
+            'Import thất bại: ${(first['error'] ?? first['message'] ?? 'Lỗi không xác định').toString()}';
+      });
+      return;
     }
-    if (errors.isNotEmpty) {
-      final dynamic first = errors.first;
-      summary.write(
-        '\nLỗi: dòng ${first is Map<String, dynamic> ? (first['row'] ?? '-') : '-'} - ${first is Map<String, dynamic> ? (first['message'] ?? 'Không xác định') : first.toString()}',
-      );
+    final dynamic jobRaw = first['job'];
+    if (jobRaw is! Map<String, dynamic>) {
+      setState(() => message = 'Phản hồi import không hợp lệ (thiếu job).');
+      return;
     }
-    if (warnings.isNotEmpty) {
-      final dynamic first = warnings.first;
-      summary.write(
-        '\nCảnh báo: dòng ${first is Map<String, dynamic> ? (first['row'] ?? '-') : '-'} - ${first is Map<String, dynamic> ? (first['message'] ?? 'Không xác định') : first.toString()}',
-      );
+    final int? jobId = int.tryParse('${jobRaw['id']}');
+    if (jobId == null) {
+      setState(() => message = 'Không xác định được job import.');
+      return;
     }
-    setState(() {
-      message = summary.toString();
-    });
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (BuildContext ctx) => _CrmTransferJobDialog(
+            api: widget.apiService,
+            token: widget.token,
+            jobId: jobId,
+            title: 'Đang import khách hàng',
+            mode: _CrmTransferMode.import,
+            onMessage: (String m) {
+              if (mounted) {
+                setState(() => message = m);
+              }
+            },
+          ),
+    );
+    if (!mounted) return;
     await _fetch();
+  }
+
+  Future<void> _exportClients() async {
+    if (!widget.canExportClients) {
+      setState(
+        () =>
+            message =
+                'Chỉ quản trị viên (admin) mới được xuất danh sách khách hàng đầy đủ.',
+      );
+      return;
+    }
+    final Map<String, dynamic> queued = await widget.apiService
+        .queueClientExport(
+          widget.token,
+          search: searchCtrl.text.trim(),
+          assignedStaffIds:
+              clientListStaffFilterIds.isEmpty
+                  ? null
+                  : clientListStaffFilterIds,
+        );
+    if (!mounted) return;
+    if (queued['ok'] != true) {
+      setState(() {
+        message =
+            (queued['message'] ?? 'Không tạo được job xuất dữ liệu.')
+                .toString();
+      });
+      return;
+    }
+    final dynamic jobRaw = queued['job'];
+    if (jobRaw is! Map<String, dynamic>) {
+      setState(() => message = 'Phản hồi xuất không hợp lệ (thiếu job).');
+      return;
+    }
+    final int? jobId = int.tryParse('${jobRaw['id']}');
+    if (jobId == null) {
+      setState(() => message = 'Không xác định được job xuất.');
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (BuildContext ctx) => _CrmTransferJobDialog(
+            api: widget.apiService,
+            token: widget.token,
+            jobId: jobId,
+            title: 'Đang xuất danh sách khách hàng',
+            mode: _CrmTransferMode.export,
+            onMessage: (String m) {
+              if (mounted) {
+                setState(() => message = m);
+              }
+            },
+          ),
+    );
   }
 
   Future<bool> _saveClient() async {
@@ -321,6 +394,10 @@ class _CrmScreenState extends State<CrmScreen> {
       'administrator',
       'quan_ly',
     }.contains(roleLower);
+    if (canAssignClientOwner && assignedStaffId == null) {
+      setState(() => message = 'Vui lòng chọn nhân sự phụ trách trực tiếp.');
+      return false;
+    }
     final Map<String, dynamic> result =
         editingClientId == null
             ? await widget.apiService.createClientWithMeta(
@@ -519,6 +596,18 @@ class _CrmScreenState extends State<CrmScreen> {
     assignedDepartmentId = null;
     assignedStaffId = null;
     careStaffIds = <int>[];
+  }
+
+  bool _canManageClientRow(Map<String, dynamic>? client) {
+    if (!widget.canManageClients) return false;
+    if (client == null) return widget.canManageClients;
+
+    final dynamic apiFlag = client['can_manage'];
+    if (apiFlag is bool) return apiFlag;
+    if (apiFlag is num) return apiFlag != 0;
+
+    final String roleLower = widget.currentUserRole.toLowerCase();
+    return <String>{'admin', 'administrator', 'quan_ly'}.contains(roleLower);
   }
 
   void _resetPaymentForm() {
@@ -1222,11 +1311,19 @@ class _CrmScreenState extends State<CrmScreen> {
       appBar: AppBar(
         title: const Text('Khách hàng'),
         actions: <Widget>[
-          if (widget.canManageClients)
+          if (widget.canManageClients) ...<Widget>[
+            if (widget.canExportClients)
+              IconButton(
+                icon: const Icon(Icons.download_outlined),
+                tooltip: 'Xuất Excel (XLSX) — admin',
+                onPressed: _exportClients,
+              ),
             IconButton(
               icon: const Icon(Icons.file_upload_outlined),
+              tooltip: 'Import Excel',
               onPressed: _importClients,
             ),
+          ],
         ],
       ),
       body: RefreshIndicator(
@@ -1348,7 +1445,7 @@ class _CrmScreenState extends State<CrmScreen> {
                 const Expanded(
                   child: Text(
                     'Khách hàng',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
                 if (widget.canManageClients)
@@ -1367,6 +1464,12 @@ class _CrmScreenState extends State<CrmScreen> {
               final Map<String, dynamic>? staff =
                   client['assigned_staff'] as Map<String, dynamic>? ??
                   client['sales_owner'] as Map<String, dynamic>?;
+              final DateTime? assignedStaffAt = VietnamTime.parse(
+                client['assigned_staff_at']?.toString(),
+              );
+              final DateTime? updatedAt = VietnamTime.parse(
+                client['updated_at']?.toString(),
+              );
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -1392,6 +1495,7 @@ class _CrmScreenState extends State<CrmScreen> {
                               token: widget.token,
                               apiService: widget.apiService,
                               clientId: clientId,
+                              currentUserRole: widget.currentUserRole,
                             ),
                       ),
                     );
@@ -1439,7 +1543,7 @@ class _CrmScreenState extends State<CrmScreen> {
                                             : 'K',
                                         style: TextStyle(
                                           color: StitchTheme.primary,
-                                          fontWeight: FontWeight.bold,
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
                                     ),
@@ -1455,7 +1559,7 @@ class _CrmScreenState extends State<CrmScreen> {
                                                     'Khách hàng'))
                                                 .toString(),
                                             style: const TextStyle(
-                                              fontWeight: FontWeight.w800,
+                                              fontWeight: FontWeight.w500,
                                               fontSize: 16,
                                               height: 1.2,
                                             ),
@@ -1486,7 +1590,8 @@ class _CrmScreenState extends State<CrmScreen> {
                                         ],
                                       ),
                                     ),
-                                    if (widget.canManageClients)
+                                    if (_canManageClientRow(client) ||
+                                        widget.canDelete)
                                       PopupMenuButton<String>(
                                         icon: const Icon(
                                           Icons.more_vert,
@@ -1504,19 +1609,20 @@ class _CrmScreenState extends State<CrmScreen> {
                                         },
                                         itemBuilder:
                                             (context) => [
-                                              const PopupMenuItem(
-                                                value: 'edit',
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.edit_outlined,
-                                                      size: 20,
-                                                    ),
-                                                    SizedBox(width: 8),
-                                                    Text('Sửa'),
-                                                  ],
+                                              if (_canManageClientRow(client))
+                                                const PopupMenuItem(
+                                                  value: 'edit',
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(
+                                                        Icons.edit_outlined,
+                                                        size: 20,
+                                                      ),
+                                                      SizedBox(width: 8),
+                                                      Text('Sửa'),
+                                                    ],
+                                                  ),
                                                 ),
-                                              ),
                                               if (widget.canDelete)
                                                 const PopupMenuItem(
                                                   value: 'delete',
@@ -1556,6 +1662,16 @@ class _CrmScreenState extends State<CrmScreen> {
                                         'Phụ trách: ${staff['name']}',
                                         StitchTheme.success,
                                       ),
+                                    if (assignedStaffAt != null)
+                                      _buildBadge(
+                                        'Nhận phụ trách: ${VietnamTime.formatDate(assignedStaffAt)}',
+                                        StitchTheme.primary,
+                                      ),
+                                    if (updatedAt != null)
+                                      _buildBadge(
+                                        'Cập nhật: ${VietnamTime.formatDateTime(updatedAt)}',
+                                        StitchTheme.textMuted,
+                                      ),
                                   ],
                                 ),
                               ],
@@ -1574,7 +1690,7 @@ class _CrmScreenState extends State<CrmScreen> {
                 const Expanded(
                   child: Text(
                     'Thanh toán',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
                 if (widget.canManagePayments)
@@ -1627,7 +1743,7 @@ class _CrmScreenState extends State<CrmScreen> {
                                     'Khách hàng')
                                 .toString(),
                             style: const TextStyle(
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               fontSize: 15,
                               height: 1.2,
                             ),
@@ -1736,9 +1852,166 @@ class _CrmScreenState extends State<CrmScreen> {
         text,
         style: TextStyle(
           fontSize: 11,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w500,
           color: color,
         ),
+      ),
+    );
+  }
+}
+
+enum _CrmTransferMode { import, export }
+
+class _CrmTransferJobDialog extends StatefulWidget {
+  const _CrmTransferJobDialog({
+    required this.api,
+    required this.token,
+    required this.jobId,
+    required this.title,
+    required this.mode,
+    required this.onMessage,
+  });
+
+  final MobileApiService api;
+  final String token;
+  final int jobId;
+  final String title;
+  final _CrmTransferMode mode;
+  final void Function(String message) onMessage;
+
+  @override
+  State<_CrmTransferJobDialog> createState() => _CrmTransferJobDialogState();
+}
+
+class _CrmTransferJobDialogState extends State<_CrmTransferJobDialog> {
+  bool _finished = false;
+  Map<String, dynamic> _last = <String, dynamic>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _loop();
+  }
+
+  Future<void> _loop() async {
+    while (mounted && !_finished) {
+      final Map<String, dynamic> res = await widget.api.getImportJob(
+        widget.token,
+        widget.jobId,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (res['ok'] != true) {
+        widget.onMessage(
+          (res['message'] ?? 'Không đọc được tiến trình').toString(),
+        );
+        _finished = true;
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+      setState(() => _last = res);
+      final String st = (res['status'] ?? '').toString();
+      if (st == 'completed') {
+        _finished = true;
+        if (widget.mode == _CrmTransferMode.export) {
+          try {
+            final bytes = await widget.api.downloadClientExport(
+              widget.token,
+              widget.jobId,
+            );
+            final Directory dir = await getTemporaryDirectory();
+            final String path =
+                '${dir.path}/khach-hang-export-${DateTime.now().millisecondsSinceEpoch}.xlsx';
+            await File(path).writeAsBytes(bytes);
+            await Share.shareXFiles(<XFile>[
+              XFile(path),
+            ], subject: 'Danh sách khách hàng');
+            final int n =
+                int.tryParse(
+                  '${res['successful_rows'] ?? res['processed_rows'] ?? 0}',
+                ) ??
+                0;
+            widget.onMessage(
+              n > 0
+                  ? 'Đã xuất $n dòng. Mở hộp chia sẻ để lưu hoặc gửi file XLSX.'
+                  : 'Đã tạo file (danh sách rỗng).',
+            );
+          } catch (e) {
+            widget.onMessage('Xuất hoàn tất nhưng tải file lỗi: $e');
+          }
+        } else {
+          final Map<String, dynamic> report =
+              res['report'] is Map<String, dynamic>
+                  ? Map<String, dynamic>.from(
+                    res['report'] as Map<String, dynamic>,
+                  )
+                  : <String, dynamic>{};
+          final List<dynamic> errors =
+              (report['errors'] as List<dynamic>?) ?? <dynamic>[];
+          final List<dynamic> warnings =
+              (report['warnings'] as List<dynamic>?) ?? <dynamic>[];
+          final StringBuffer summary = StringBuffer();
+          summary.write(
+            'Import hoàn tất: ${(report['created'] ?? 0)} tạo mới, ${(report['updated'] ?? 0)} cập nhật, ${(report['skipped'] ?? 0)} bỏ qua.',
+          );
+          if (errors.isNotEmpty) {
+            final dynamic first = errors.first;
+            summary.write(
+              '\nLỗi: dòng ${first is Map<String, dynamic> ? (first['row'] ?? '-') : '-'} - ${first is Map<String, dynamic> ? (first['message'] ?? 'Không xác định') : first.toString()}',
+            );
+          }
+          if (warnings.isNotEmpty) {
+            final dynamic first = warnings.first;
+            summary.write(
+              '\nCảnh báo: dòng ${first is Map<String, dynamic> ? (first['row'] ?? '-') : '-'} - ${first is Map<String, dynamic> ? (first['message'] ?? 'Không xác định') : first.toString()}',
+            );
+          }
+          widget.onMessage(summary.toString());
+        }
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+      if (st == 'failed') {
+        _finished = true;
+        widget.onMessage(
+          (res['error_message'] ?? 'Tiến trình thất bại').toString(),
+        );
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int pct = int.tryParse('${_last['progress_percent'] ?? 0}') ?? 0;
+    final int total = int.tryParse('${_last['total_rows'] ?? 0}') ?? 0;
+    final int proc = int.tryParse('${_last['processed_rows'] ?? 0}') ?? 0;
+    final double? indicatorValue =
+        total > 0 ? (proc / total).clamp(0.0, 1.0) : null;
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (total > 0)
+            Text('$proc / $total dòng', style: const TextStyle(fontSize: 13))
+          else
+            const Text('Đang khởi tạo...', style: TextStyle(fontSize: 13)),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(value: indicatorValue),
+          const SizedBox(height: 8),
+          Text('$pct%', textAlign: TextAlign.center),
+        ],
       ),
     );
   }

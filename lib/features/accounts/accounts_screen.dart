@@ -227,7 +227,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                     const SizedBox(height: 12),
                     const Text(
                       'Token thiết bị (cục bộ)',
-                      style: TextStyle(fontWeight: FontWeight.w600),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 6),
                     SelectableText(
@@ -262,7 +262,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
         children: <Widget>[
           const Text(
             'Tài khoản',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 6),
           Text(
@@ -297,7 +297,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                                 _initials(displayName),
                                 style: const TextStyle(
                                   fontSize: 18,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                   color: Colors.white,
                                 ),
                               )
@@ -328,7 +328,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   displayName,
                   style: const TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     color: StitchTheme.textMain,
                   ),
                 ),
@@ -337,7 +337,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   displayRole.isEmpty ? '—' : displayRole,
                   style: TextStyle(
                     color: StitchTheme.primary,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 if (email.isNotEmpty) ...<Widget>[
@@ -355,7 +355,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
             'TÀI KHOẢN',
             style: TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: StitchTheme.textSubtle,
             ),
           ),
@@ -429,7 +429,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
             'HỖ TRỢ',
             style: TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
               color: StitchTheme.textSubtle,
             ),
           ),
@@ -508,7 +508,7 @@ class _MenuItem extends StatelessWidget {
         ),
         child: Icon(icon, color: Colors.white),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
       trailing: trailing ?? const Icon(Icons.chevron_right),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
@@ -537,7 +537,7 @@ class _StatusRow extends StatelessWidget {
           Text(label, style: const TextStyle(color: StitchTheme.textMuted)),
           Text(
             value,
-            style: TextStyle(fontWeight: FontWeight.w600, color: color),
+            style: TextStyle(fontWeight: FontWeight.w500, color: color),
           ),
         ],
       ),

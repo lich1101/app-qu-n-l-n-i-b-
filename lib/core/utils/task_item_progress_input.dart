@@ -17,7 +17,9 @@ class TaskItemProgressInput {
       return null;
     }
     if (n < 0 || n > 100) {
-      onInvalid?.call('Tiến độ không được vượt quá 100% (và không nhỏ hơn 0%).');
+      onInvalid?.call(
+        'Tiến độ không được vượt quá 100% (và không nhỏ hơn 0%).',
+      );
       return null;
     }
     return n;

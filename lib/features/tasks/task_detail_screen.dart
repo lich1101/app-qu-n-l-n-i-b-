@@ -141,7 +141,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final Map<String, dynamic>? project =
         rawProject is Map<String, dynamic> ? rawProject : null;
     final int projectOwnerId = _toInt(project?['owner_id']);
-    if (_currentUserRole == 'admin') return true;
+    if (_isAdminRole) return true;
     if (_currentUserId == null) return false;
     return projectOwnerId > 0 && projectOwnerId == _currentUserId;
   }
@@ -440,7 +440,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           'Đầu việc trong công việc',
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                             color: StitchTheme.textMain,
                             letterSpacing: -0.2,
                           ),
@@ -552,7 +552,7 @@ class _TaskSummaryHeader extends StatelessWidget {
           title,
           style: const TextStyle(
             fontSize: 20,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
             height: 1.25,
             color: StitchTheme.textMain,
             letterSpacing: -0.3,
@@ -663,7 +663,7 @@ class _AssigneeHeaderRow extends StatelessWidget {
               letter,
               style: TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
                 color: StitchTheme.primaryStrong,
               ),
             ),
@@ -677,7 +677,7 @@ class _AssigneeHeaderRow extends StatelessWidget {
                   assignee.isEmpty ? 'Chưa phân công' : assignee,
                   style: const TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                     color: StitchTheme.textMain,
                   ),
                 ),

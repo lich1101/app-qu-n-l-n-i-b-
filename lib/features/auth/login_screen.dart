@@ -96,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       appSettingsStore.settings.brandName,
                       style: const TextStyle(
                         fontSize: 22,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: StitchTheme.textMain,
                       ),
                     );
@@ -138,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Text(
                           'Tài khoản đã lưu (${widget.savedAccounts.length})',
                           style: TextStyle(
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                             color: StitchTheme.primary,
                           ),
                         ),
@@ -173,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       child: Text(
                                         email,
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w500,
                                           color: StitchTheme.textMain,
                                         ),
                                       ),
@@ -198,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Text(
                     'Tài khoản',
                     style: TextStyle(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       color: StitchTheme.textMuted,
                     ),
                   ),
@@ -216,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Text(
                     'Mật khẩu',
                     style: TextStyle(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       color: StitchTheme.textMuted,
                     ),
                   ),

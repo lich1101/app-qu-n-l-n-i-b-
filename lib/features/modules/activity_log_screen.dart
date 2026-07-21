@@ -123,7 +123,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                         Expanded(
                           child: Text(
                             action.replaceAll('_', ' '),
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                         ),
                         Text(

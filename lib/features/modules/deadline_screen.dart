@@ -176,7 +176,7 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
                     'Thời gian gửi nhắc',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                       color: StitchTheme.textMuted,
                     ),
                   ),
@@ -265,7 +265,7 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
               ),
               Container(
@@ -279,7 +279,7 @@ class _DeadlineRemindersScreenState extends State<DeadlineRemindersScreen> {
                   style: TextStyle(
                     color: tagColor,
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),

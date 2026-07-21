@@ -44,10 +44,35 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
   int? projectId;
   int? departmentId;
   int? assigneeId;
+  List<Map<String, dynamic>> assignmentUsers = <Map<String, dynamic>>[];
   late String priority;
   late String status;
   bool submitting = false;
   String localMessage = '';
+
+  int _toId(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse('${value ?? ''}') ?? 0;
+  }
+
+  List<Map<String, dynamic>> _uniqueStaffOptions(
+    Iterable<Map<String, dynamic>> rows,
+  ) {
+    final Map<int, Map<String, dynamic>> unique = <int, Map<String, dynamic>>{};
+    for (final Map<String, dynamic> row in rows) {
+      final int id = _toId(row['id']);
+      if (id <= 0 || unique.containsKey(id)) continue;
+      unique[id] = row;
+    }
+    return unique.values.toList();
+  }
+
+  Future<void> _loadAssignmentUsers() async {
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getUsersLookup(widget.token, purpose: 'task_assignment_staff');
+    if (!mounted) return;
+    setState(() => assignmentUsers = rows);
+  }
 
   String _statusLabel(String status) {
     if (status.trim().isEmpty) return 'Tất cả';
@@ -82,6 +107,7 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
     weightCtrl = TextEditingController(text: '100');
     priority = 'medium';
     status = widget.statuses.isNotEmpty ? widget.statuses.first : 'todo';
+    _loadAssignmentUsers();
   }
 
   @override
@@ -215,7 +241,9 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
     final DateTime? projectCap = _deadlineCapForSelectedProject();
     if (!VietnamTime.ymdNotAfterCap(startCtrl.text.trim(), projectCap)) {
       setState(
-        () => localMessage = 'Ngày bắt đầu không được sau ngày kết thúc dự án.',
+        () =>
+            localMessage =
+                'Ngày bắt đầu không được sau mốc kết thúc hợp đồng/dự án.',
       );
       return;
     }
@@ -223,7 +251,7 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
       setState(
         () =>
             localMessage =
-                'Deadline công việc không được sau ngày kết thúc dự án.',
+                'Deadline công việc không được sau mốc kết thúc hợp đồng/dự án.',
       );
       return;
     }
@@ -275,17 +303,17 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
     final int projectedWeightTotal = siblingWeightTotal + currentWeight;
     final int remainingWeight = math.max(0, 100 - siblingWeightTotal);
 
-    List<Map<String, dynamic>> staffOptions = <Map<String, dynamic>>[];
-    if (departmentId != null) {
-      final Map<String, dynamic>? dept = widget.departments.firstWhere(
-        (Map<String, dynamic> d) => d['id'] == departmentId,
-        orElse: () => <String, dynamic>{},
-      );
-      final List<dynamic> staff =
-          (dept?['staff'] ?? <dynamic>[]) as List<dynamic>;
-      staffOptions =
-          staff.map((dynamic e) => e as Map<String, dynamic>).toList();
-    }
+    final List<Map<String, dynamic>> staffOptions =
+        assignmentUsers.isNotEmpty
+            ? _uniqueStaffOptions(assignmentUsers)
+            : _uniqueStaffOptions(
+              widget.departments
+                  .expand(
+                    (Map<String, dynamic> d) =>
+                        (d['staff'] ?? <dynamic>[]) as List<dynamic>,
+                  )
+                  .map((dynamic e) => e as Map<String, dynamic>),
+            );
 
     return Scaffold(
       backgroundColor: StitchTheme.formPageBackground,
@@ -526,8 +554,8 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
                                 : StitchTheme.labelEmphasis,
                         fontWeight:
                             projectedWeightTotal > 100
-                                ? FontWeight.bold
-                                : FontWeight.w600,
+                                ? FontWeight.w500
+                                : FontWeight.w500,
                       ),
                     ).applyDefaults(Theme.of(context).inputDecorationTheme),
                   ),
@@ -539,7 +567,7 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
                         style: TextStyle(
                           color: StitchTheme.danger,
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
@@ -573,7 +601,6 @@ class _TaskListCreateTaskScreenState extends State<TaskListCreateTaskScreen> {
                     onChanged: (int? v) {
                       setState(() {
                         departmentId = v;
-                        assigneeId = null;
                       });
                     },
                     decoration: stitchTaskDropdownDecoration(

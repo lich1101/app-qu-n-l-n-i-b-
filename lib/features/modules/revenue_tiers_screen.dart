@@ -147,7 +147,7 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
                   children: <Widget>[
                     Text(
                       editingId == null ? 'Tạo hạng' : 'Sửa hạng',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 10),
                     TextField(
@@ -232,9 +232,7 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Hạng doanh thu'),
-      ),
+      appBar: AppBar(title: const Text('Hạng doanh thu')),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _fetch,
@@ -247,7 +245,7 @@ class _RevenueTiersScreenState extends State<RevenueTiersScreen> {
                   const Expanded(
                     child: Text(
                       'Danh sách hạng doanh thu',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   ElevatedButton.icon(

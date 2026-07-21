@@ -926,7 +926,7 @@ class _ServiceOption extends StatelessWidget {
               label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
                 fontSize: 12,
                 color: selected ? Colors.white : StitchTheme.textMain,
               ),

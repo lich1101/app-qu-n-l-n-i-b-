@@ -105,11 +105,13 @@ class _StitchSearchableSelectSheetBodyState<T>
     final MediaQueryData mq = MediaQuery.of(context);
     final double h = mq.size.height * 1;
     final String qFolded = foldVietnameseForSearch(_q.text);
-    final List<StitchSelectOption<T>> filtered = widget.options
-        .where((StitchSelectOption<T> o) => _matchesFoldedQuery(o, qFolded))
-        .toList();
+    final List<StitchSelectOption<T>> filtered =
+        widget.options
+            .where((StitchSelectOption<T> o) => _matchesFoldedQuery(o, qFolded))
+            .toList();
     final int count =
-        filtered.length + (widget.allowNull && _matchesNullRow(qFolded) ? 1 : 0);
+        filtered.length +
+        (widget.allowNull && _matchesNullRow(qFolded) ? 1 : 0);
 
     return Padding(
       padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
@@ -117,9 +119,7 @@ class _StitchSearchableSelectSheetBodyState<T>
         alignment: Alignment.bottomCenter,
         child: Material(
           color: StitchTheme.surface,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(28),
-          ),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           clipBehavior: Clip.antiAlias,
           child: SizedBox(
             height: h,
@@ -137,7 +137,7 @@ class _StitchSearchableSelectSheetBodyState<T>
                           widget.title,
                           style: const TextStyle(
                             fontSize: 17,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             color: StitchTheme.textMain,
                             height: 1.25,
                           ),
@@ -203,42 +203,46 @@ class _StitchSearchableSelectSheetBodyState<T>
                   ),
                 ),
                 Expanded(
-                  child: filtered.isEmpty &&
-                          !(widget.allowNull && _matchesNullRow(qFolded))
-                      ? const Center(
-                          child: Text(
-                            'Không có kết quả phù hợp.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: StitchTheme.textMuted,
+                  child:
+                      filtered.isEmpty &&
+                              !(widget.allowNull && _matchesNullRow(qFolded))
+                          ? const Center(
+                            child: Text(
+                              'Không có kết quả phù hợp.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: StitchTheme.textMuted,
+                              ),
                             ),
+                          )
+                          : ListView(
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
+                            children: <Widget>[
+                              if (widget.allowNull && _matchesNullRow(qFolded))
+                                _tile(
+                                  selected: widget.selectedValue == null,
+                                  onTap: () {
+                                    Navigator.of(
+                                      context,
+                                    ).pop(_stitchSelectClearedSentinel);
+                                  },
+                                  leadingIcon: Icons.remove_circle_outline,
+                                  title: widget.nullLabel,
+                                  subtitle: null,
+                                ),
+                              for (final StitchSelectOption<T> o in filtered)
+                                _tile(
+                                  selected: o.value == widget.selectedValue,
+                                  onTap: () {
+                                    Navigator.of(context).pop(o.value);
+                                  },
+                                  leadingIcon:
+                                      o.leadingIcon ?? Icons.circle_outlined,
+                                  title: o.label,
+                                  subtitle: o.subtitle,
+                                ),
+                            ],
                           ),
-                        )
-                      : ListView(
-                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
-                          children: <Widget>[
-                            if (widget.allowNull && _matchesNullRow(qFolded))
-                              _tile(
-                                selected: widget.selectedValue == null,
-                                onTap: () {
-                                  Navigator.of(context).pop(_stitchSelectClearedSentinel);
-                                },
-                                leadingIcon: Icons.remove_circle_outline,
-                                title: widget.nullLabel,
-                                subtitle: null,
-                              ),
-                            for (final StitchSelectOption<T> o in filtered)
-                              _tile(
-                                selected: o.value == widget.selectedValue,
-                                onTap: () {
-                                  Navigator.of(context).pop(o.value);
-                                },
-                                leadingIcon: o.leadingIcon ?? Icons.circle_outlined,
-                                title: o.label,
-                                subtitle: o.subtitle,
-                              ),
-                          ],
-                        ),
                 ),
               ],
             ),
@@ -278,9 +282,7 @@ class _StitchSearchableSelectSheetBodyState<T>
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color:
-                selected
-                    ? StitchTheme.formSelectionBorder
-                    : StitchTheme.border,
+                selected ? StitchTheme.formSelectionBorder : StitchTheme.border,
           ),
         ),
         child: Material(
@@ -293,63 +295,62 @@ class _StitchSearchableSelectSheetBodyState<T>
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: StitchTheme.formSelectionIconBg,
-                    borderRadius: BorderRadius.circular(12),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: StitchTheme.formSelectionIconBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      leadingIcon,
+                      size: 22,
+                      color: StitchTheme.primaryStrong,
+                    ),
                   ),
-                  child: Icon(
-                    leadingIcon,
-                    size: 22,
-                    color: StitchTheme.primaryStrong,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight:
-                              selected
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
-                          height: 1.35,
-                          color: StitchTheme.textMain,
-                        ),
-                      ),
-                      if (subtitle != null && subtitle.trim().isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 4),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
                         Text(
-                          subtitle.trim(),
+                          title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                            height: 1.3,
-                            color: StitchTheme.textMuted,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight:
+                                selected ? FontWeight.w500 : FontWeight.w500,
+                            height: 1.35,
+                            color: StitchTheme.textMain,
                           ),
                         ),
+                        if (subtitle != null &&
+                            subtitle.trim().isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle.trim(),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              height: 1.3,
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 22,
-                  color: StitchTheme.textSubtle,
-                ),
-              ],
-            ),
+                  const SizedBox(width: 6),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 22,
+                    color: StitchTheme.textSubtle,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -398,6 +399,7 @@ class StitchSearchableSelectField<T> extends StatelessWidget {
   final bool nullable;
   final String nullLabel;
   final InputDecoration? decoration;
+
   /// Nếu không null, dùng làm text hiển thị thay vì tra từ [options].
   final String? displayString;
   final bool enabled;
@@ -415,8 +417,7 @@ class StitchSearchableSelectField<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final InputDecoration dec =
-        decoration ??
-        stitchTaskDropdownDecoration(context, label);
+        decoration ?? stitchTaskDropdownDecoration(context, label);
     return InputDecorator(
       decoration: dec,
       child: InkWell(
@@ -453,19 +454,14 @@ class StitchSearchableSelectField<T> extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: StitchTheme.dropdownFieldValueStyle.copyWith(
                     color:
-                        enabled
-                            ? StitchTheme.textMain
-                            : StitchTheme.textMuted,
+                        enabled ? StitchTheme.textMain : StitchTheme.textMuted,
                   ),
                 ),
               ),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: 22,
-                color:
-                    enabled
-                        ? StitchTheme.textMuted
-                        : StitchTheme.textSubtle,
+                color: enabled ? StitchTheme.textMuted : StitchTheme.textSubtle,
               ),
             ],
           ),

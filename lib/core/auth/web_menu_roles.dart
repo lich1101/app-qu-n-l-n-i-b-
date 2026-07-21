@@ -16,6 +16,14 @@ const List<String> kWebMenuCrmClients = <String>[
   'ke_toan',
 ];
 
+/// CRM — "Kho số"
+const List<String> kWebMenuClientPool = <String>[
+  'admin',
+  'administrator',
+  'quan_ly',
+  'nhan_vien',
+];
+
 /// CRM — "Cơ hội"
 const List<String> kWebMenuOpportunities = <String>[
   'admin',
@@ -39,7 +47,15 @@ const List<String> kWebMenuProducts = <String>[
   'ke_toan',
 ];
 
-/// Operations — "Dự án" / "Công việc" / "Đầu việc" (cùng roles)
+/// Operations — "Dự án" (quản lý dự án)
+const List<String> kWebMenuOperationsProjects = <String>[
+  'admin',
+  'quan_ly',
+  'nhan_vien',
+  'ke_toan',
+];
+
+/// Operations — "Công việc" / "Đầu việc"
 const List<String> kWebMenuOperationsProjectsTasks = <String>[
   'admin',
   'quan_ly',

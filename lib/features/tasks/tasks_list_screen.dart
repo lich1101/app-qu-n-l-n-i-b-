@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/utils/project_handover_visibility.dart';
 import '../../core/utils/vietnam_time.dart';
 import '../../core/widgets/staff_multi_filter_row.dart';
 import '../../data/services/mobile_api_service.dart';
@@ -13,10 +14,12 @@ class TasksListScreen extends StatefulWidget {
     super.key,
     required this.token,
     required this.apiService,
+    this.currentUserRole,
   });
 
   final String token;
   final MobileApiService apiService;
+  final String? currentUserRole;
 
   @override
   State<TasksListScreen> createState() => _TasksListScreenState();
@@ -57,7 +60,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
 
   Future<void> _loadAssignees() async {
     final List<Map<String, dynamic>> rows = await widget.apiService
-        .getUsersLookup(widget.token, purpose: 'operational_assignee');
+        .getUsersLookup(widget.token, purpose: 'task_assignment_staff');
     if (!mounted) return;
     setState(() => _assigneeUsers = rows);
   }
@@ -83,11 +86,16 @@ class _TasksListScreenState extends State<TasksListScreen> {
         assigneeIds: _assigneeFilterIds.isEmpty ? null : _assigneeFilterIds,
       );
       if (!mounted) return;
+      final List<Map<String, dynamic>> visibleRows = filterTasksForEmployee(
+        rows,
+        widget.currentUserRole,
+      );
       setState(() {
-        _tasks = rows;
+        _tasks = visibleRows;
         _loading = false;
         _listRefreshing = false;
-        _message = rows.isEmpty ? 'Không có công việc phù hợp bộ lọc.' : '';
+        _message =
+            visibleRows.isEmpty ? 'Không có công việc phù hợp bộ lọc.' : '';
       });
     } catch (_) {
       if (mounted) {
@@ -174,7 +182,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
                         const Text(
                           'Bộ lọc',
                           style: TextStyle(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             fontSize: 15,
                           ),
                         ),
@@ -293,7 +301,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
                                       child: Text(
                                         title,
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.w500,
                                           fontSize: 15,
                                         ),
                                       ),
@@ -313,7 +321,7 @@ class _TasksListScreenState extends State<TasksListScreen> {
                                         _statusLabel(st),
                                         style: TextStyle(
                                           fontSize: 11,
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.w500,
                                           color: _statusColor(st),
                                         ),
                                       ),

@@ -21,7 +21,7 @@ Widget stitchTaskFormSheetHeader(
           t,
           style: const TextStyle(
             fontSize: 17,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             color: StitchTheme.textMain,
             height: 1.25,
           ),

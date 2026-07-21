@@ -58,35 +58,38 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     final List<dynamic> responses =
         await Future.wait<dynamic>(<Future<dynamic>>[
           widget.apiService.getProject(widget.token, widget.projectId),
-          widget.apiService.getTasks(
-            widget.token,
-            projectId: widget.projectId,
-            perPage: 200,
-          ),
           widget.apiService.me(widget.token),
         ]);
 
     final Map<String, dynamic>? proj = responses[0] as Map<String, dynamic>?;
-    final List<Map<String, dynamic>> rows =
-        responses[1] as List<Map<String, dynamic>>;
-    final Map<String, dynamic> mePayload = responses[2] as Map<String, dynamic>;
+    final Map<String, dynamic> mePayload = responses[1] as Map<String, dynamic>;
     final Map<String, dynamic> meBody =
         (mePayload['body'] as Map<String, dynamic>?) ?? <String, dynamic>{};
     final dynamic meRawId = meBody['id'];
+    final String role = (meBody['role'] ?? '').toString();
+    final bool isAccountantViewer = role == 'ke_toan';
 
+    List<Map<String, dynamic>> rows = <Map<String, dynamic>>[];
     Map<String, dynamic>? gscPayload;
     String gscError = '';
-    final String websiteUrl = (proj?['website_url'] ?? '').toString().trim();
-    if (proj != null && websiteUrl.isNotEmpty) {
-      final Map<String, dynamic> gscRes = await widget.apiService
-          .getProjectSearchConsole(widget.token, widget.projectId);
-      if (gscRes['error'] == true) {
-        gscError = (gscRes['message'] ?? '').toString();
-        gscPayload = _appendSyncError(null, gscError);
-      } else {
-        gscPayload =
-            ((gscRes['body'] ?? <String, dynamic>{}) as Map<String, dynamic>)
-                .cast<String, dynamic>();
+    if (!isAccountantViewer) {
+      rows = await widget.apiService.getTasks(
+        widget.token,
+        projectId: widget.projectId,
+        perPage: 200,
+      );
+      final String websiteUrl = (proj?['website_url'] ?? '').toString().trim();
+      if (proj != null && websiteUrl.isNotEmpty) {
+        final Map<String, dynamic> gscRes = await widget.apiService
+            .getProjectSearchConsole(widget.token, widget.projectId);
+        if (gscRes['error'] == true) {
+          gscError = (gscRes['message'] ?? '').toString();
+          gscPayload = _appendSyncError(null, gscError);
+        } else {
+          gscPayload =
+              ((gscRes['body'] ?? <String, dynamic>{}) as Map<String, dynamic>)
+                  .cast<String, dynamic>();
+        }
       }
     }
     if (!mounted) return;
@@ -97,7 +100,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       gscMessage = gscError;
       currentUserId =
           meRawId is int ? meRawId : int.tryParse('${meRawId ?? ''}');
-      currentUserRole = (meBody['role'] ?? '').toString();
+      currentUserRole = role;
       loading = false;
       message = proj == null ? 'Không tìm thấy dự án.' : '';
     });
@@ -110,6 +113,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
   bool get _isAdminRole =>
       currentUserRole == 'admin' || currentUserRole == 'administrator';
+
+  bool get _isAccountantViewer => currentUserRole == 'ke_toan';
 
   bool get _canManageProjectTasks {
     if (_isAdminRole) return true;
@@ -303,7 +308,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           child: Text(
                             'Phiếu duyệt trong dự án',
                             style: TextStyle(
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                               fontSize: 17,
                             ),
                           ),
@@ -748,7 +753,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       appBar: AppBar(
         title: const Text('Chi tiết dự án'),
         actions: <Widget>[
-          if (project != null)
+          if (project != null && !_isAccountantViewer)
             Padding(
               padding: const EdgeInsets.only(right: 4),
               child: Stack(
@@ -786,7 +791,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 10,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w500,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -832,7 +837,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                               Text(
                                 (project?['name'] ?? 'Dự án').toString(),
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
                                   fontSize: 18,
                                 ),
                               ),
@@ -939,7 +944,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                 const Text(
                                   'Phê duyệt bàn giao',
                                   style: TextStyle(
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w500,
                                     fontSize: 13,
                                   ),
                                 ),
@@ -981,409 +986,435 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: StitchTheme.border),
+                        if (_isAccountantViewer) ...<Widget>[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0F2FE),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFF7DD3FC),
+                              ),
+                            ),
+                            child: const Text(
+                              'Tài khoản kế toán chỉ được xem thông tin dự án. Không truy cập công việc, đầu việc, luồng hay kho tài liệu.',
+                              style: TextStyle(
+                                color: Color(0xFF0C4A6E),
+                                fontSize: 13,
+                              ),
+                            ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Row(
-                                children: <Widget>[
-                                  const Expanded(
-                                    child: Text(
-                                      'Google Search Console',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    gscNotifyEnabled ? 'Đang bật' : 'Đang tắt',
-                                    style: TextStyle(
-                                      color:
-                                          gscNotifyEnabled
-                                              ? StitchTheme.success
-                                              : StitchTheme.textMuted,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Switch(
-                                    value: gscNotifyEnabled,
-                                    onChanged:
-                                        (gscNotifySaving ||
-                                                gscLoading ||
-                                                !gscCanToggleNotification)
-                                            ? null
-                                            : _toggleGscNotification,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Tự cập nhật theo ngày theo giờ admin cấu hình (${(gscStatus['sync_time'] ?? '11:17').toString()}).',
-                                style: TextStyle(
-                                  color: StitchTheme.textMuted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              if (gscTrackingStartedAt.isNotEmpty) ...<Widget>[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Biểu đồ tính từ ngày thêm website: ${_formatDate(gscTrackingStartedAt)}'
-                                  '${gscLastSyncedAt.isNotEmpty ? ' • Đồng bộ gần nhất: ${_formatDate(gscLastSyncedAt)}' : ''}',
-                                  style: const TextStyle(
-                                    color: StitchTheme.textMuted,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                              if (websiteUrl.isEmpty) ...<Widget>[
-                                const SizedBox(height: 10),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: StitchTheme.warning.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: const Text(
-                                    'Dự án chưa có website_url. Hãy cập nhật URL website để bật thống kê Search Console.',
-                                    style: TextStyle(
-                                      color: StitchTheme.textMuted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              if (gscEnableBlockReason.isNotEmpty &&
-                                  !gscNotifyEnabled) ...<Widget>[
-                                const SizedBox(height: 10),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: StitchTheme.warning.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Text(
-                                    gscEnableBlockReason,
-                                    style: const TextStyle(
-                                      color: StitchTheme.textMuted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              if (websiteUrl.isNotEmpty &&
-                                  gscStatus['can_sync'] == false) ...<Widget>[
-                                const SizedBox(height: 10),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: StitchTheme.warning.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: const Text(
-                                    'Chưa thể đồng bộ Search Console. Kiểm tra cấu hình GSC trong Cài đặt hệ thống.',
-                                    style: TextStyle(
-                                      color: StitchTheme.textMuted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              if (websiteUrl.isNotEmpty &&
-                                  syncError.isNotEmpty) ...<Widget>[
-                                const SizedBox(height: 10),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: StitchTheme.danger.withValues(
-                                      alpha: 0.1,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Text(
-                                    'Lỗi đồng bộ gần nhất: $syncError',
-                                    style: const TextStyle(
-                                      color: StitchTheme.textMain,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              if (websiteUrl.isNotEmpty &&
-                                  gscLoading) ...<Widget>[
-                                const SizedBox(height: 12),
-                                const LinearProgressIndicator(minHeight: 4),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Đang tải dữ liệu Search Console...',
-                                  style: TextStyle(
-                                    color: StitchTheme.textMuted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                              if (websiteUrl.isNotEmpty &&
-                                  !gscLoading &&
-                                  gscLatest != null) ...<Widget>[
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
+                        ],
+                        if (!_isAccountantViewer) ...<Widget>[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: StitchTheme.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Row(
                                   children: <Widget>[
-                                    _GscMetricCard(
-                                      label: 'Ngày thống kê',
-                                      value: _formatDate(
-                                        (gscLatest['metric_date'] ?? '')
-                                            .toString(),
+                                    const Expanded(
+                                      child: Text(
+                                        'Google Search Console',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 16,
+                                        ),
                                       ),
-                                      subLabel:
-                                          'So với ${_formatDate((gscLatest['prior_date'] ?? '').toString())}',
                                     ),
-                                    _GscMetricCard(
-                                      label: 'Clicks',
-                                      value: _formatNumber(
-                                        gscLatest['last_clicks'],
+                                    Text(
+                                      gscNotifyEnabled
+                                          ? 'Đang bật'
+                                          : 'Đang tắt',
+                                      style: TextStyle(
+                                        color:
+                                            gscNotifyEnabled
+                                                ? StitchTheme.success
+                                                : StitchTheme.textMuted,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
                                       ),
-                                      subLabel:
-                                          '${_formatSigned(gscLatest['delta_clicks'])} (${_formatPercent(gscLatest['delta_clicks_percent'])})',
-                                      positive:
-                                          _toInt(gscLatest['delta_clicks']) >=
-                                          0,
                                     ),
-                                    _GscMetricCard(
-                                      label: 'Impressions',
-                                      value: _formatNumber(
-                                        gscLatest['last_impressions'],
-                                      ),
-                                      subLabel: _formatSigned(
-                                        gscLatest['delta_impressions'],
-                                      ),
-                                      positive:
-                                          _toInt(
-                                            gscLatest['delta_impressions'],
-                                          ) >=
-                                          0,
-                                    ),
-                                    _GscMetricCard(
-                                      label: 'Alerts',
-                                      value: _formatNumber(
-                                        gscLatest['alerts_total'],
-                                      ),
-                                      subLabel:
-                                          'Brand ${_toInt(gscLatest['alerts_brand'])} • Recipes ${_toInt(gscLatest['alerts_recipes'])}',
+                                    const SizedBox(width: 8),
+                                    Switch(
+                                      value: gscNotifyEnabled,
+                                      onChanged:
+                                          (gscNotifySaving ||
+                                                  gscLoading ||
+                                                  !gscCanToggleNotification)
+                                              ? null
+                                              : _toggleGscNotification,
                                     ),
                                   ],
                                 ),
-                                if (gscTrendChart.isNotEmpty) ...<Widget>[
-                                  const SizedBox(height: 14),
-                                  Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        child: Text(
-                                          'Biểu đồ tăng trưởng clicks (${_toInt(gscSummary?['days'] ?? gscTrendChart.length)} mốc)',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ),
-                                      Text(
-                                        'TB/ngày: ${_formatNumber(gscSummary?['avg_clicks_per_day'] ?? 0)}',
-                                        style: const TextStyle(
-                                          color: StitchTheme.textMuted,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children:
-                                          gscTrendChart.map((
-                                            Map<String, dynamic> item,
-                                          ) {
-                                            final int clicks = _toInt(
-                                              item['clicks'],
-                                            );
-                                            final int delta = _toInt(
-                                              item['delta_clicks'],
-                                            );
-                                            final double ratio =
-                                                gscMaxClicks <= 0
-                                                    ? 0
-                                                    : clicks / gscMaxClicks;
-                                            final double normalized = math.max(
-                                              0.04,
-                                              ratio,
-                                            );
-                                            final double barHeight =
-                                                clicks <= 0
-                                                    ? 6
-                                                    : 18 + (normalized * 110);
-                                            return Container(
-                                              width: 44,
-                                              margin: const EdgeInsets.only(
-                                                right: 8,
-                                              ),
-                                              child: Column(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.end,
-                                                children: <Widget>[
-                                                  SizedBox(
-                                                    height: 148,
-                                                    child: Align(
-                                                      alignment:
-                                                          Alignment
-                                                              .bottomCenter,
-                                                      child: Container(
-                                                        width: 24,
-                                                        height: barHeight,
-                                                        decoration: BoxDecoration(
-                                                          color: (delta >= 0
-                                                                  ? StitchTheme
-                                                                      .success
-                                                                  : StitchTheme
-                                                                      .danger)
-                                                              .withValues(
-                                                                alpha: 0.85,
-                                                              ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                6,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 6),
-                                                  Text(
-                                                    _formatShortDate(
-                                                      (item['date'] ?? '')
-                                                          .toString(),
-                                                    ),
-                                                    style: const TextStyle(
-                                                      color:
-                                                          StitchTheme.textMuted,
-                                                      fontSize: 10,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    _formatNumber(clicks),
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      fontSize: 10,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                          }).toList(),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                              if (websiteUrl.isNotEmpty &&
-                                  !gscLoading &&
-                                  gscLatest == null) ...<Widget>[
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Chưa có dữ liệu Search Console cho dự án này.',
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Tự cập nhật theo ngày theo giờ admin cấu hình (${(gscStatus['sync_time'] ?? '11:17').toString()}).',
                                   style: TextStyle(
                                     color: StitchTheme.textMuted,
                                     fontSize: 12,
                                   ),
                                 ),
+                                if (gscTrackingStartedAt
+                                    .isNotEmpty) ...<Widget>[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Biểu đồ tính từ ngày thêm website: ${_formatDate(gscTrackingStartedAt)}'
+                                    '${gscLastSyncedAt.isNotEmpty ? ' • Đồng bộ gần nhất: ${_formatDate(gscLastSyncedAt)}' : ''}',
+                                    style: const TextStyle(
+                                      color: StitchTheme.textMuted,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                                if (websiteUrl.isEmpty) ...<Widget>[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: StitchTheme.warning.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: const Text(
+                                      'Dự án chưa có website_url. Hãy cập nhật URL website để bật thống kê Search Console.',
+                                      style: TextStyle(
+                                        color: StitchTheme.textMuted,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                if (gscEnableBlockReason.isNotEmpty &&
+                                    !gscNotifyEnabled) ...<Widget>[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: StitchTheme.warning.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Text(
+                                      gscEnableBlockReason,
+                                      style: const TextStyle(
+                                        color: StitchTheme.textMuted,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                if (websiteUrl.isNotEmpty &&
+                                    gscStatus['can_sync'] == false) ...<Widget>[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: StitchTheme.warning.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: const Text(
+                                      'Chưa thể đồng bộ Search Console. Kiểm tra cấu hình GSC trong Cài đặt hệ thống.',
+                                      style: TextStyle(
+                                        color: StitchTheme.textMuted,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                if (websiteUrl.isNotEmpty &&
+                                    syncError.isNotEmpty) ...<Widget>[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: StitchTheme.danger.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Text(
+                                      'Lỗi đồng bộ gần nhất: $syncError',
+                                      style: const TextStyle(
+                                        color: StitchTheme.textMain,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                if (websiteUrl.isNotEmpty &&
+                                    gscLoading) ...<Widget>[
+                                  const SizedBox(height: 12),
+                                  const LinearProgressIndicator(minHeight: 4),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Đang tải dữ liệu Search Console...',
+                                    style: TextStyle(
+                                      color: StitchTheme.textMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                                if (websiteUrl.isNotEmpty &&
+                                    !gscLoading &&
+                                    gscLatest != null) ...<Widget>[
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: <Widget>[
+                                      _GscMetricCard(
+                                        label: 'Ngày thống kê',
+                                        value: _formatDate(
+                                          (gscLatest['metric_date'] ?? '')
+                                              .toString(),
+                                        ),
+                                        subLabel:
+                                            'So với ${_formatDate((gscLatest['prior_date'] ?? '').toString())}',
+                                      ),
+                                      _GscMetricCard(
+                                        label: 'Clicks',
+                                        value: _formatNumber(
+                                          gscLatest['last_clicks'],
+                                        ),
+                                        subLabel:
+                                            '${_formatSigned(gscLatest['delta_clicks'])} (${_formatPercent(gscLatest['delta_clicks_percent'])})',
+                                        positive:
+                                            _toInt(gscLatest['delta_clicks']) >=
+                                            0,
+                                      ),
+                                      _GscMetricCard(
+                                        label: 'Impressions',
+                                        value: _formatNumber(
+                                          gscLatest['last_impressions'],
+                                        ),
+                                        subLabel: _formatSigned(
+                                          gscLatest['delta_impressions'],
+                                        ),
+                                        positive:
+                                            _toInt(
+                                              gscLatest['delta_impressions'],
+                                            ) >=
+                                            0,
+                                      ),
+                                      _GscMetricCard(
+                                        label: 'Alerts',
+                                        value: _formatNumber(
+                                          gscLatest['alerts_total'],
+                                        ),
+                                        subLabel:
+                                            'Brand ${_toInt(gscLatest['alerts_brand'])} • Recipes ${_toInt(gscLatest['alerts_recipes'])}',
+                                      ),
+                                    ],
+                                  ),
+                                  if (gscTrendChart.isNotEmpty) ...<Widget>[
+                                    const SizedBox(height: 14),
+                                    Row(
+                                      children: <Widget>[
+                                        Expanded(
+                                          child: Text(
+                                            'Biểu đồ tăng trưởng clicks (${_toInt(gscSummary?['days'] ?? gscTrendChart.length)} mốc)',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          'TB/ngày: ${_formatNumber(gscSummary?['avg_clicks_per_day'] ?? 0)}',
+                                          style: const TextStyle(
+                                            color: StitchTheme.textMuted,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children:
+                                            gscTrendChart.map((
+                                              Map<String, dynamic> item,
+                                            ) {
+                                              final int clicks = _toInt(
+                                                item['clicks'],
+                                              );
+                                              final int delta = _toInt(
+                                                item['delta_clicks'],
+                                              );
+                                              final double ratio =
+                                                  gscMaxClicks <= 0
+                                                      ? 0
+                                                      : clicks / gscMaxClicks;
+                                              final double normalized = math
+                                                  .max(0.04, ratio);
+                                              final double barHeight =
+                                                  clicks <= 0
+                                                      ? 6
+                                                      : 18 + (normalized * 110);
+                                              return Container(
+                                                width: 44,
+                                                margin: const EdgeInsets.only(
+                                                  right: 8,
+                                                ),
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.end,
+                                                  children: <Widget>[
+                                                    SizedBox(
+                                                      height: 148,
+                                                      child: Align(
+                                                        alignment:
+                                                            Alignment
+                                                                .bottomCenter,
+                                                        child: Container(
+                                                          width: 24,
+                                                          height: barHeight,
+                                                          decoration: BoxDecoration(
+                                                            color: (delta >= 0
+                                                                    ? StitchTheme
+                                                                        .success
+                                                                    : StitchTheme
+                                                                        .danger)
+                                                                .withValues(
+                                                                  alpha: 0.85,
+                                                                ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  6,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Text(
+                                                      _formatShortDate(
+                                                        (item['date'] ?? '')
+                                                            .toString(),
+                                                      ),
+                                                      style: const TextStyle(
+                                                        color:
+                                                            StitchTheme
+                                                                .textMuted,
+                                                        fontSize: 10,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      _formatNumber(clicks),
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                        fontSize: 10,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList(),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                                if (websiteUrl.isNotEmpty &&
+                                    !gscLoading &&
+                                    gscLatest == null) ...<Widget>[
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Chưa có dữ liệu Search Console cho dự án này.',
+                                    style: TextStyle(
+                                      color: StitchTheme.textMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: <Widget>[
-                            const Expanded(
-                              child: Text(
-                                'Công việc trong dự án',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
+                          const SizedBox(height: 16),
+                          Row(
+                            children: <Widget>[
+                              const Expanded(
+                                child: Text(
+                                  'Công việc trong dự án',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 16,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (_canManageProjectTasks)
-                              FilledButton.icon(
-                                onPressed:
-                                    taskActionLoading
-                                        ? null
-                                        : () => _openTaskSheet(),
-                                icon: const Icon(Icons.add, size: 18),
-                                label: const Text('Thêm công việc'),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        ...tasks.map((Map<String, dynamic> task) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
-                            child: _ProjectTaskListTile(
-                              task: task,
-                              projectLabel:
-                                  (project?['name'] ?? 'Dự án').toString(),
-                              statusLabel: _statusLabel,
-                              formatDate: _formatDate,
-                              canManage: _canManageProjectTasks,
-                              onOpen: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<Widget>(
-                                    builder:
-                                        (_) => TaskDetailScreen(
-                                          token: widget.token,
-                                          apiService: widget.apiService,
-                                          taskId: (task['id'] ?? 0) as int,
-                                        ),
-                                  ),
-                                );
-                              },
-                              onEdit:
-                                  _canManageProjectTasks
-                                      ? () => _openTaskSheet(editingTask: task)
-                                      : null,
-                              onDelete:
-                                  _canManageProjectTasks
-                                      ? () => _deleteTask(task)
-                                      : null,
-                            ),
-                          );
-                        }),
-                        if (tasks.isEmpty)
-                          const Text(
-                            'Chưa có công việc nào.',
-                            style: TextStyle(color: StitchTheme.textMuted),
+                              if (_canManageProjectTasks)
+                                FilledButton.icon(
+                                  onPressed:
+                                      taskActionLoading
+                                          ? null
+                                          : () => _openTaskSheet(),
+                                  icon: const Icon(Icons.add, size: 18),
+                                  label: const Text('Thêm công việc'),
+                                ),
+                            ],
                           ),
+                          const SizedBox(height: 10),
+                          ...tasks.map((Map<String, dynamic> task) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 14),
+                              child: _ProjectTaskListTile(
+                                task: task,
+                                projectLabel:
+                                    (project?['name'] ?? 'Dự án').toString(),
+                                statusLabel: _statusLabel,
+                                formatDate: _formatDate,
+                                canManage: _canManageProjectTasks,
+                                onOpen: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute<Widget>(
+                                      builder:
+                                          (_) => TaskDetailScreen(
+                                            token: widget.token,
+                                            apiService: widget.apiService,
+                                            taskId: (task['id'] ?? 0) as int,
+                                          ),
+                                    ),
+                                  );
+                                },
+                                onEdit:
+                                    _canManageProjectTasks
+                                        ? () =>
+                                            _openTaskSheet(editingTask: task)
+                                        : null,
+                                onDelete:
+                                    _canManageProjectTasks
+                                        ? () => _deleteTask(task)
+                                        : null,
+                              ),
+                            );
+                          }),
+                          if (tasks.isEmpty)
+                            const Text(
+                              'Chưa có công việc nào.',
+                              style: TextStyle(color: StitchTheme.textMuted),
+                            ),
+                        ],
                       ],
                     ],
                   ),
@@ -1599,7 +1630,7 @@ class _ProjectApprovalQueueBodyState extends State<_ProjectApprovalQueueBody> {
                         child: Text(
                           taskTitle,
                           style: const TextStyle(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             fontSize: 15,
                           ),
                         ),
@@ -1620,7 +1651,7 @@ class _ProjectApprovalQueueBodyState extends State<_ProjectApprovalQueueBody> {
                     'Báo cáo cấp công việc',
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       color: StitchTheme.textMuted,
                     ),
                   ),
@@ -1729,7 +1760,7 @@ class _ProjectApprovalQueueBodyState extends State<_ProjectApprovalQueueBody> {
                                 child: Text(
                                   itemTitle,
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w500,
                                     fontSize: 14,
                                   ),
                                 ),
@@ -1986,7 +2017,7 @@ class _ProjectTaskListTile extends StatelessWidget {
                       title,
                       style: const TextStyle(
                         fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -2006,7 +2037,7 @@ class _ProjectTaskListTile extends StatelessWidget {
                           : _projectTaskShortDeadline(deadlineRaw),
                       style: const TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: StitchTheme.textMuted,
                       ),
                     ),
@@ -2111,7 +2142,7 @@ class _ProjectTaskListTile extends StatelessWidget {
                     '$progress%',
                     style: const TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -2204,7 +2235,7 @@ class _GscMetricCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
           ),
           if ((subLabel ?? '').trim().isNotEmpty) ...<Widget>[
             const SizedBox(height: 4),

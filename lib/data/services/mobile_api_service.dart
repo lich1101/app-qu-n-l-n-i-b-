@@ -591,6 +591,21 @@ class MobileApiService {
     return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
   }
 
+  Future<List<Map<String, dynamic>>> getStaffFilterOptions(
+    String token, {
+    required String context,
+  }) async {
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/staff-filter-options',
+    ).replace(queryParameters: <String, String>{'context': context});
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <Map<String, dynamic>>[];
+    final Map<String, dynamic> body =
+        jsonDecode(res.body) as Map<String, dynamic>;
+    final List<dynamic> rows = (body['data'] ?? <dynamic>[]) as List<dynamic>;
+    return rows.map((dynamic e) => e as Map<String, dynamic>).toList();
+  }
+
   Future<List<Map<String, dynamic>>> getWorkflowTopics(
     String token, {
     int perPage = 200,
@@ -1012,9 +1027,78 @@ class MobileApiService {
     final http.StreamedResponse streamed = await request.send();
     final String body = await streamed.stream.bytesToString();
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
-      return <String, dynamic>{'error': body};
+      return <String, dynamic>{'error': body, 'ok': false};
     }
-    return jsonDecode(body) as Map<String, dynamic>;
+    final Map<String, dynamic> decoded = _decodeResponseBody(body);
+    return <String, dynamic>{
+      ...decoded,
+      'ok': true,
+      'queued': streamed.statusCode == 202,
+      'statusCode': streamed.statusCode,
+    };
+  }
+
+  Future<Map<String, dynamic>> queueClientExport(
+    String token, {
+    String search = '',
+    List<int>? assignedStaffIds,
+    bool assignedOnly = false,
+    int? leadTypeId,
+    bool leadOnly = false,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/exports/clients'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        if (search.trim().isNotEmpty) 'search': search.trim(),
+        if (assignedStaffIds != null && assignedStaffIds.isNotEmpty)
+          'assigned_staff_ids': assignedStaffIds,
+        if (assignedOnly) 'assigned_only': true,
+        if (leadTypeId != null) 'lead_type_id': leadTypeId,
+        if (leadOnly) 'lead_only': true,
+      }),
+    );
+    final Map<String, dynamic> decoded = _decodeResponseBody(res.body);
+    return <String, dynamic>{
+      ...decoded,
+      'ok': res.statusCode >= 200 && res.statusCode < 300,
+      'statusCode': res.statusCode,
+      'queued': res.statusCode == 202,
+    };
+  }
+
+  Future<Uint8List> downloadClientExport(String token, int jobId) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/exports/clients/jobs/$jobId/download'),
+      headers: _authHeaders(token),
+    );
+    if (res.statusCode != 200) {
+      throw Exception('Không tải được file xuất (mã ${res.statusCode}).');
+    }
+    return res.bodyBytes;
+  }
+
+  Future<Map<String, dynamic>> importRotationPoolClients(
+    String token,
+    File file,
+  ) async {
+    final http.MultipartRequest request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${AppEnv.apiBaseUrl}/imports/client-pool'),
+    );
+    request.headers.addAll(_authHeaders(token));
+    request.files.add(await http.MultipartFile.fromPath('file', file.path));
+    final http.StreamedResponse streamed = await request.send();
+    final String body = await streamed.stream.bytesToString();
+    final Map<String, dynamic> payload = _decodeResponseBody(body);
+    return <String, dynamic>{
+      ...payload,
+      'ok': streamed.statusCode >= 200 && streamed.statusCode < 300,
+      'statusCode': streamed.statusCode,
+      'message':
+          (payload['message'] ?? payload['error'] ?? 'Co loi xay ra')
+              .toString(),
+    };
   }
 
   Future<Map<String, dynamic>> importContracts(String token, File file) async {
@@ -2520,6 +2604,8 @@ class MobileApiService {
     bool leadOnly = false,
     bool assignedOnly = false,
     List<int>? assignedStaffIds,
+    String? sortBy,
+    String? sortDir,
   }) async {
     final Map<String, String> params = <String, String>{
       'per_page': '$perPage',
@@ -2537,6 +2623,12 @@ class MobileApiService {
     if (assignedOnly) {
       params['assigned_only'] = '1';
     }
+    if ((sortBy ?? '').trim().isNotEmpty) {
+      params['sort_by'] = sortBy!.trim();
+    }
+    if ((sortDir ?? '').trim().isNotEmpty) {
+      params['sort_dir'] = sortDir!.trim();
+    }
     _appendIdList(params, 'assigned_staff_ids', assignedStaffIds);
     final Uri uri = Uri.parse(
       '${AppEnv.apiBaseUrl}/crm/clients',
@@ -2544,6 +2636,81 @@ class MobileApiService {
     final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
     if (res.statusCode != 200) return <String, dynamic>{};
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getRotationPoolClients(
+    String token, {
+    int perPage = 12,
+    int page = 1,
+    String search = '',
+  }) async {
+    final Map<String, String> params = <String, String>{
+      'per_page': '$perPage',
+      'page': '$page',
+    };
+    if (search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    final Uri uri = Uri.parse(
+      '${AppEnv.apiBaseUrl}/crm/client-pool',
+    ).replace(queryParameters: params);
+    final http.Response res = await http.get(uri, headers: _jsonHeaders(token));
+    if (res.statusCode != 200) return <String, dynamic>{};
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> claimRotationPoolClient(
+    String token,
+    int clientId,
+  ) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/crm/client-pool/$clientId/claim'),
+      headers: _jsonHeaders(token),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> createRotationPoolClientWithMeta(
+    String token, {
+    required String name,
+    String? externalCode,
+    String? company,
+    String? email,
+    String? phone,
+    String? notes,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/crm/client-pool'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{
+        'name': name,
+        if (externalCode != null) 'external_code': externalCode,
+        if (company != null) 'company': company,
+        if (email != null) 'email': email,
+        if (phone != null) 'phone': phone,
+        if (notes != null) 'notes': notes,
+      }),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Map<String, dynamic>> getImportJob(String token, int jobId) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/imports/jobs/$jobId'),
+      headers: _jsonHeaders(token),
+    );
+    return _withMeta(res);
+  }
+
+  Future<Uint8List> downloadRotationPoolTemplate(String token) async {
+    final http.Response res = await http.get(
+      Uri.parse('${AppEnv.apiBaseUrl}/imports/client-pool/template'),
+      headers: _authHeaders(token),
+    );
+    if (res.statusCode != 200) {
+      throw Exception('Không tải được file mẫu kho số.');
+    }
+    return res.bodyBytes;
   }
 
   Future<bool> createClient(
@@ -3303,10 +3470,12 @@ class MobileApiService {
   Future<Map<String, dynamic>> submitAttendanceRequest(
     String token, {
     required String requestType,
-    required String requestDate,
     required String title,
+    String? requestDate,
     String? requestEndDate,
     String? expectedCheckInTime,
+    String? shiftWorkTypeId,
+    List<Map<String, String>>? correctionEntries,
     String? content,
   }) async {
     final http.Response res = await http.post(
@@ -3314,13 +3483,18 @@ class MobileApiService {
       headers: _jsonHeaders(token),
       body: jsonEncode(<String, dynamic>{
         'request_type': requestType,
-        'request_date': requestDate,
         'title': title,
+        if (requestDate != null && requestDate.trim().isNotEmpty)
+          'request_date': requestDate.trim(),
         if (requestEndDate != null && requestEndDate.trim().isNotEmpty)
           'request_end_date': requestEndDate.trim(),
         if (expectedCheckInTime != null &&
             expectedCheckInTime.trim().isNotEmpty)
           'expected_check_in_time': expectedCheckInTime.trim(),
+        if (shiftWorkTypeId != null && shiftWorkTypeId.trim().isNotEmpty)
+          'shift_work_type_id': shiftWorkTypeId.trim(),
+        if (correctionEntries != null && correctionEntries.isNotEmpty)
+          'correction_entries': correctionEntries,
         if (content != null && content.trim().isNotEmpty)
           'content': content.trim(),
       }),
@@ -3441,6 +3615,7 @@ class MobileApiService {
     required String workStartTime,
     required String workEndTime,
     required String afternoonStartTime,
+    required String earliestCheckinTime,
     required int lateGraceMinutes,
     required bool reminderEnabled,
     required int reminderMinutesBefore,
@@ -3453,6 +3628,7 @@ class MobileApiService {
         'attendance_work_start_time': workStartTime,
         'attendance_work_end_time': workEndTime,
         'attendance_afternoon_start_time': afternoonStartTime,
+        'attendance_earliest_checkin_time': earliestCheckinTime,
         'attendance_late_grace_minutes': lateGraceMinutes,
         'attendance_reminder_enabled': reminderEnabled,
         'attendance_reminder_minutes_before': reminderMinutesBefore,
@@ -4275,6 +4451,34 @@ class MobileApiService {
       body: jsonEncode(<String, dynamic>{'title': title, 'detail': detail}),
     );
     return res.statusCode == 201;
+  }
+
+  Future<bool> storeClientComment(
+    String token,
+    int clientId, {
+    required String title,
+    required String detail,
+  }) async {
+    final http.Response res = await http.post(
+      Uri.parse('${AppEnv.apiBaseUrl}/crm/clients/$clientId/comments'),
+      headers: _jsonHeaders(token),
+      body: jsonEncode(<String, dynamic>{'title': title, 'detail': detail}),
+    );
+    return res.statusCode == 201;
+  }
+
+  Future<bool> deleteClientComment(
+    String token,
+    int clientId,
+    String commentId,
+  ) async {
+    final http.Response res = await http.delete(
+      Uri.parse(
+        '${AppEnv.apiBaseUrl}/crm/clients/$clientId/comments/$commentId',
+      ),
+      headers: _jsonHeaders(token),
+    );
+    return res.statusCode == 200;
   }
 
   // ─── Lead Form Duplicate ──────────────────────────────────────────────

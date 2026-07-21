@@ -134,7 +134,7 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
                   children: <Widget>[
                     Text(
                       editingId == null ? 'Tạo trạng thái' : 'Sửa trạng thái',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 10),
                     TextField(
@@ -204,9 +204,7 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Trạng thái khách hàng tiềm năng'),
-      ),
+      appBar: AppBar(title: const Text('Trạng thái khách hàng tiềm năng')),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _fetch,
@@ -219,7 +217,7 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
                   const Expanded(
                     child: Text(
                       'Danh sách trạng thái',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                   ElevatedButton.icon(
