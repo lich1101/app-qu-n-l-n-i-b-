@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_list_pagination.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class ClientPoolScreen extends StatefulWidget {
@@ -34,13 +35,13 @@ class _ClientPoolScreenState extends State<ClientPoolScreen> {
   final ScrollController scrollController = ScrollController();
 
   bool loading = false;
-  bool loadingMore = false;
   bool importing = false;
   String message = '';
   List<Map<String, dynamic>> clients = <Map<String, dynamic>>[];
   int currentPage = 1;
   int lastPage = 1;
   int total = 0;
+  int pageSize = 20;
   int? claimingClientId;
   Timer? importPollTimer;
   StreamSubscription<DatabaseEvent>? rotationPoolRealtimeSub;
@@ -63,7 +64,6 @@ class _ClientPoolScreenState extends State<ClientPoolScreen> {
   @override
   void initState() {
     super.initState();
-    scrollController.addListener(_onScroll);
     _bindRealtime();
     _fetch();
   }
@@ -77,14 +77,9 @@ class _ClientPoolScreenState extends State<ClientPoolScreen> {
     super.dispose();
   }
 
-  void _onScroll() {
-    if (loading || loadingMore || currentPage >= lastPage) {
-      return;
-    }
-    if (scrollController.position.pixels >=
-        scrollController.position.maxScrollExtent - 160) {
-      _fetchMore();
-    }
+  int _toInt(dynamic value, [int fallback = 0]) {
+    if (value is int) return value;
+    return int.tryParse('${value ?? ''}') ?? fallback;
   }
 
   Future<void> _bindRealtime() async {
@@ -133,63 +128,112 @@ class _ClientPoolScreenState extends State<ClientPoolScreen> {
     } catch (_) {}
   }
 
-  Future<void> _fetch({int page = 1, String? search}) async {
-    setState(() {
-      loading = true;
-      if (page == 1) {
-        currentPage = 1;
-      }
-    });
+  Future<Map<String, dynamic>> _loadPoolPayload({
+    required int page,
+    required String search,
+  }) async {
+    if (pageSize > 0) {
+      return widget.apiService.getRotationPoolClients(
+        widget.token,
+        page: page,
+        perPage: pageSize,
+        search: search,
+      );
+    }
 
-    final Map<String, dynamic> payload = await widget.apiService
+    // Chế độ "Tất cả": đọc nhiều trang nhỏ để không phụ thuộc giới hạn
+    // per_page phía API và tránh một request quá lớn.
+    const int chunkSize = 100;
+    final Map<String, dynamic> first = await widget.apiService
         .getRotationPoolClients(
           widget.token,
-          page: page,
-          perPage: 12,
-          search: (search ?? searchCtrl.text).trim(),
+          page: 1,
+          perPage: chunkSize,
+          search: search,
         );
+    final List<Map<String, dynamic>> allRows =
+        ((first['data'] ?? <dynamic>[]) as List<dynamic>)
+            .whereType<Map<String, dynamic>>()
+            .map((Map<String, dynamic> row) => Map<String, dynamic>.from(row))
+            .toList();
+    final int remoteLastPage = _toInt(first['last_page'], 1);
+
+    for (int remotePage = 2; remotePage <= remoteLastPage; remotePage++) {
+      final Map<String, dynamic> next = await widget.apiService
+          .getRotationPoolClients(
+            widget.token,
+            page: remotePage,
+            perPage: chunkSize,
+            search: search,
+          );
+      final List<dynamic> rows =
+          (next['data'] ?? <dynamic>[]) as List<dynamic>;
+      allRows.addAll(
+        rows
+            .whereType<Map<String, dynamic>>()
+            .map((Map<String, dynamic> row) => Map<String, dynamic>.from(row)),
+      );
+    }
+
+    return <String, dynamic>{
+      ...first,
+      'data': allRows,
+      'current_page': 1,
+      'last_page': 1,
+      'total': _toInt(first['total'], allRows.length),
+    };
+  }
+
+  Future<void> _fetch({int page = 1, String? search}) async {
+    setState(() => loading = true);
+
+    final String normalizedSearch = (search ?? searchCtrl.text).trim();
+    final int requestedPage = pageSize == 0 ? 1 : page;
+    final Map<String, dynamic> payload = await _loadPoolPayload(
+      page: requestedPage,
+      search: normalizedSearch,
+    );
 
     if (!mounted) return;
 
     final List<dynamic> rows =
         (payload['data'] ?? <dynamic>[]) as List<dynamic>;
+    final int rawLastPage = _toInt(payload['last_page'], 1);
+    final int safeLastPage = rawLastPage < 1 ? 1 : rawLastPage;
+    final int rawCurrentPage = _toInt(payload['current_page'], requestedPage);
+    final int safeCurrentPage =
+        rawCurrentPage < 1
+            ? 1
+            : (rawCurrentPage > safeLastPage
+                ? safeLastPage
+                : rawCurrentPage);
+    final List<Map<String, dynamic>> normalizedRows =
+        rows
+            .whereType<Map<String, dynamic>>()
+            .map((Map<String, dynamic> row) => Map<String, dynamic>.from(row))
+            .toList();
+
     setState(() {
-      clients = rows.map((dynamic e) => e as Map<String, dynamic>).toList();
-      currentPage = (payload['current_page'] ?? page) as int;
-      lastPage = (payload['last_page'] ?? 1) as int;
-      total = (payload['total'] ?? 0) as int;
+      clients = normalizedRows;
+      currentPage = safeCurrentPage;
+      lastPage = safeLastPage;
+      total = _toInt(payload['total'], normalizedRows.length);
       loading = false;
     });
   }
 
-  Future<void> _fetchMore() async {
-    if (loading || loadingMore || currentPage >= lastPage) {
-      return;
-    }
+  Future<void> _changePage(int page) async {
+    if (loading || pageSize == 0 || page < 1 || page > lastPage) return;
+    await _fetch(page: page);
+  }
 
-    setState(() => loadingMore = true);
-    final int nextPage = currentPage + 1;
-    final Map<String, dynamic> payload = await widget.apiService
-        .getRotationPoolClients(
-          widget.token,
-          page: nextPage,
-          perPage: 12,
-          search: searchCtrl.text.trim(),
-        );
-
-    if (!mounted) return;
-
-    final List<dynamic> rows =
-        (payload['data'] ?? <dynamic>[]) as List<dynamic>;
+  Future<void> _changePageSize(int value) async {
+    if (loading || value == pageSize) return;
     setState(() {
-      clients.addAll(
-        rows.map((dynamic e) => e as Map<String, dynamic>).toList(),
-      );
-      currentPage = (payload['current_page'] ?? nextPage) as int;
-      lastPage = (payload['last_page'] ?? lastPage) as int;
-      total = (payload['total'] ?? total) as int;
-      loadingMore = false;
+      pageSize = value;
+      currentPage = 1;
     });
+    await _fetch(page: 1);
   }
 
   Future<void> _claimClient(Map<String, dynamic> client) async {
@@ -237,7 +281,7 @@ class _ClientPoolScreenState extends State<ClientPoolScreen> {
         duration: const Duration(seconds: 4),
       );
       setState(() => message = 'Đã nhận khách hàng từ kho số.');
-      await _fetch();
+      await _fetch(page: currentPage);
     } else {
       final String errorMessage =
           (result['message'] ?? 'Không thể nhận khách từ kho số.').toString();
@@ -585,7 +629,7 @@ class _ClientPoolScreenState extends State<ClientPoolScreen> {
       appBar: AppBar(title: const Text('Kho số')),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () => _fetch(),
+          onRefresh: () => _fetch(page: currentPage),
           child: ListView(
             controller: scrollController,
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -869,11 +913,18 @@ class _ClientPoolScreenState extends State<ClientPoolScreen> {
                     ),
                   );
                 }),
-              if (loadingMore)
-                const Padding(
-                  padding: EdgeInsets.only(top: 6),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
+              const SizedBox(height: 8),
+              StitchListPagination(
+                currentPage: currentPage,
+                lastPage: lastPage,
+                total: total,
+                visibleCount: clients.length,
+                pageSize: pageSize,
+                loading: loading,
+                itemLabel: 'khách hàng',
+                onPageChanged: _changePage,
+                onPageSizeChanged: _changePageSize,
+              ),
             ],
           ),
         ),

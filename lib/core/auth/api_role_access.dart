@@ -14,8 +14,14 @@ const List<String> kApiCrmClientWrite = <String>[
   'nhan_vien',
 ];
 
-/// POST /exports/clients — xuất toàn bộ khách (gồm kho số), chỉ admin / administrator.
-const List<String> kApiCrmClientExport = <String>['admin', 'administrator'];
+/// POST /exports/clients — admin/quản lý xuất theo bộ lọc; nhân viên được xuất
+/// dữ liệu thuộc phạm vi được giao thông qua `assigned_only`.
+const List<String> kApiCrmClientExport = <String>[
+  'admin',
+  'administrator',
+  'quan_ly',
+  'nhan_vien',
+];
 
 /// DELETE /crm/clients/{client}
 const List<String> kApiCrmClientDelete = <String>['admin'];
