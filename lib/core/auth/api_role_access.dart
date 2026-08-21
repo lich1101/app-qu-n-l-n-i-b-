@@ -14,8 +14,8 @@ const List<String> kApiCrmClientWrite = <String>[
   'nhan_vien',
 ];
 
-/// POST /exports/clients — admin/quản lý xuất theo bộ lọc; nhân viên được xuất
-/// dữ liệu thuộc phạm vi được giao thông qua `assigned_only`.
+/// Quyền hiển thị thao tác xuất XLSX trong app CRM.
+/// Backend vẫn là nguồn quyết định cuối cùng về phạm vi dữ liệu được phép xuất.
 const List<String> kApiCrmClientExport = <String>[
   'admin',
   'administrator',
