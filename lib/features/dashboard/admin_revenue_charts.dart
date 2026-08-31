@@ -176,6 +176,17 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
     return (v < 0 ? '-' : '') + parts.join('.');
   }
 
+  int _contractCountFor(Map<String, dynamic> item) {
+    return int.tryParse(
+          (item['contracts_count'] ?? item['contract_count'] ?? 0).toString(),
+        ) ??
+        0;
+  }
+
+  String _contractCountSuffix(int count) {
+    return count > 0 ? ' · $count HĐ' : '';
+  }
+
   bool _hasMeaningfulStaffMetrics(Map<String, dynamic> row) {
     return ((row['revenue'] as num?) ?? 0).toDouble() > 0 ||
         ((row['cashflow'] as num?) ?? 0).toDouble() > 0 ||
@@ -190,6 +201,13 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
       0,
       (double sum, Map<String, dynamic> e) =>
           sum + (e['value'] as num? ?? 0).toDouble(),
+    );
+  }
+
+  int _staffContractsTotal() {
+    return _staffSales.fold<int>(
+      0,
+      (int sum, Map<String, dynamic> item) => sum + _contractCountFor(item),
     );
   }
 
@@ -603,6 +621,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                           (item['value'] as num? ?? 0).toDouble();
                       final double total = _pieCenterTotal();
                       final double pct = total > 0 ? (value / total) * 100 : 0;
+                      final int contractsCount = _contractCountFor(item);
                       final Color color = _palette[index % _palette.length];
                       return Material(
                         color: Colors.transparent,
@@ -665,7 +684,8 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                                       ),
                                     ),
                                     Text(
-                                      '${pct.toStringAsFixed(1)}%',
+                                      '${pct.toStringAsFixed(1)}%'
+                                      '${_contractCountSuffix(contractsCount)}',
                                       style: const TextStyle(
                                         fontSize: 11,
                                         color: StitchTheme.textMuted,
@@ -692,6 +712,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
     final Map<String, dynamic> item = _serviceBreakdown[index];
     final String label = (item['label'] ?? 'Khác').toString();
     final double value = (item['value'] as num? ?? 0).toDouble();
+    final int contractsCount = _contractCountFor(item);
     final double total = _serviceBreakdown.fold<double>(
       0,
       (double sum, Map<String, dynamic> e) =>
@@ -727,7 +748,8 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
             ),
           ),
           Text(
-            '${_fmtCurrency(value)} (${percent.toStringAsFixed(1)}%)',
+            '${_fmtCurrency(value)} (${percent.toStringAsFixed(1)}%)'
+            '${_contractCountSuffix(contractsCount)}',
             style: TextStyle(
               fontWeight: FontWeight.w500,
               fontSize: 13,
@@ -820,21 +842,36 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
             ],
           ),
           const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
             children: <Widget>[
-              _ChartInfoPill(
-                icon: Icons.trending_up_rounded,
-                label: 'Doanh thu',
-                value: _fmtCurrency(_totalRevenue),
-                accent: const Color(0xFF3B82F6),
+              Expanded(
+                child: _ChartInfoPill(
+                  icon: Icons.trending_up_rounded,
+                  label: 'Doanh thu',
+                  value: _fmtCurrency(_totalRevenue),
+                  accent: const Color(0xFF3B82F6),
+                  dense: true,
+                ),
               ),
-              _ChartInfoPill(
-                icon: Icons.account_balance_wallet_rounded,
-                label: 'Dòng tiền',
-                value: _fmtCurrency(_totalCashflow),
-                accent: const Color(0xFF10B981),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ChartInfoPill(
+                  icon: Icons.account_balance_wallet_rounded,
+                  label: 'Dòng tiền',
+                  value: _fmtCurrency(_totalCashflow),
+                  accent: const Color(0xFF10B981),
+                  dense: true,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ChartInfoPill(
+                  icon: Icons.description_rounded,
+                  label: 'Hợp đồng',
+                  value: '${_staffContractsTotal()} HĐ',
+                  accent: const Color(0xFFF59E0B),
+                  dense: true,
+                ),
               ),
             ],
           ),
@@ -863,6 +900,7 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
     final String name = (staff['staff_name'] ?? 'Nhân sự').toString();
     final double revenue = (staff['revenue'] as num? ?? 0).toDouble();
     final double cashflow = (staff['cashflow'] as num? ?? 0).toDouble();
+    final int contractsCount = _contractCountFor(staff);
     final double maxRevenue =
         _staffSales.isEmpty
             ? 1
@@ -881,8 +919,16 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
                       (s['cashflow'] as num? ?? 0).toDouble(),
                 )
                 .reduce(math.max);
+    final int maxContracts =
+        _staffSales.isEmpty
+            ? 1
+            : _staffSales
+                .map((Map<String, dynamic> s) => _contractCountFor(s))
+                .reduce(math.max);
     final double revenueRatio = maxRevenue > 0 ? revenue / maxRevenue : 0;
     final double cashflowRatio = maxCashflow > 0 ? cashflow / maxCashflow : 0;
+    final double contractsRatio =
+        maxContracts > 0 ? contractsCount / maxContracts : 0;
 
     final List<Color> barColors = <Color>[
       const Color(0xFF3B82F6),
@@ -953,6 +999,13 @@ class _AdminRevenueChartsState extends State<AdminRevenueCharts>
               valueLabel: _fmtCurrency(cashflow),
               ratio: cashflowRatio,
               barColor: const Color(0xFF10B981),
+            ),
+            const SizedBox(height: 6),
+            _MetricProgressLine(
+              label: 'Hợp đồng',
+              valueLabel: '$contractsCount HĐ',
+              ratio: contractsRatio,
+              barColor: const Color(0xFFF59E0B),
             ),
           ],
         ),
@@ -1035,57 +1088,65 @@ class _ChartInfoPill extends StatelessWidget {
     required this.label,
     required this.value,
     required this.accent,
+    this.dense = false,
   });
 
   final IconData icon;
   final String label;
   final String value;
   final Color accent;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
+    final Widget textColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: dense ? 10 : 10.5,
+            fontWeight: FontWeight.w500,
+            color: StitchTheme.textMuted,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: dense ? 12 : 12.5,
+            fontWeight: FontWeight.w500,
+            color: StitchTheme.textMain,
+          ),
+        ),
+      ],
+    );
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: EdgeInsets.symmetric(horizontal: dense ? 8 : 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: accent.withValues(alpha: 0.15)),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: dense ? MainAxisSize.max : MainAxisSize.min,
         children: <Widget>[
           Container(
-            width: 30,
-            height: 30,
+            width: dense ? 28 : 30,
+            height: dense ? 28 : 30,
             decoration: BoxDecoration(
               color: accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 16, color: accent),
+            child: Icon(icon, size: dense ? 15 : 16, color: accent),
           ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w500,
-                  color: StitchTheme.textMuted,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                  color: StitchTheme.textMain,
-                ),
-              ),
-            ],
-          ),
+          SizedBox(width: dense ? 6 : 8),
+          dense ? Expanded(child: textColumn) : textColumn,
         ],
       ),
     );

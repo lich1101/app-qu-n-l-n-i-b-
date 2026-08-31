@@ -56,6 +56,37 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return int.tryParse(value.toString());
   }
 
+  bool _messageIsError() {
+    final String lower = message.toLowerCase();
+    return lower.contains('thất bại') ||
+        lower.contains('vui lòng') ||
+        lower.contains('không có quyền');
+  }
+
+  Color _activeColor(dynamic value) {
+    return value == false ? StitchTheme.textMuted : StitchTheme.successStrong;
+  }
+
+  String _activeLabel(dynamic value) {
+    return value == false ? 'Ngưng' : 'Đang hoạt động';
+  }
+
+  String _formatMoney(dynamic raw) {
+    final String text = (raw ?? '').toString().trim();
+    if (text.isEmpty || text == 'null') return 'Chưa nhập giá';
+    final double? value = double.tryParse(text.replaceAll(',', ''));
+    if (value == null) return text;
+    final String digits = value.round().toString();
+    final StringBuffer buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) {
+        buffer.write('.');
+      }
+      buffer.write(digits[i]);
+    }
+    return '${buffer.toString()} đ';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -675,6 +706,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: <Widget>[
+              StitchAdminHeader(
+                title: 'Sản phẩm & danh mục',
+                subtitle:
+                    'Quản lý danh mục, mã sản phẩm, đơn vị tính và đơn giá trong cùng một màn hình.',
+                icon: Icons.shopping_bag_outlined,
+                actionLabel: widget.canManage ? 'Thêm sản phẩm' : null,
+                onAction: widget.canManage ? () => _openForm() : null,
+              ),
+              const SizedBox(height: 14),
               StitchFilterCard(
                 title: 'Bộ lọc sản phẩm',
                 subtitle:
@@ -763,89 +803,86 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: <Widget>[
-                  const Expanded(
-                    child: Text(
-                      'Danh mục sản phẩm',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                  if (widget.canManage)
-                    ElevatedButton.icon(
-                      onPressed: () => _openCategoryForm(),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Thêm danh mục'),
-                    ),
-                ],
+              const SizedBox(height: 16),
+              StitchSectionHeader(
+                title: 'Danh mục sản phẩm',
+                actionLabel: widget.canManage ? 'Thêm danh mục' : null,
+                onAction: widget.canManage ? () => _openCategoryForm() : null,
               ),
               const SizedBox(height: 8),
               if (categories.isEmpty)
-                const Text(
-                  'Chưa có danh mục.',
-                  style: TextStyle(color: StitchTheme.textMuted),
+                const StitchEmptyState(
+                  title: 'Chưa có danh mục',
+                  subtitle:
+                      'Tạo danh mục trước để nhóm sản phẩm và tự sinh mã dễ kiểm soát.',
+                  icon: Icons.folder_open_outlined,
                 )
               else
                 ...categories.map((Map<String, dynamic> category) {
                   final int categoryId = _parseId(category['id']) ?? 0;
-                  return Card(
-                    child: ListTile(
-                      title: Text((category['name'] ?? '').toString()),
-                      subtitle: Text(
-                        '${category['code'] ?? ''} • ${category['description'] ?? ''}',
-                      ),
-                      trailing: Wrap(
-                        spacing: 8,
-                        children: <Widget>[
-                          if (widget.canManage)
-                            IconButton(
-                              icon: const Icon(Icons.edit, size: 18),
-                              onPressed:
-                                  () => _openCategoryForm(category: category),
-                            ),
-                          if (widget.canDelete)
-                            IconButton(
-                              icon: const Icon(Icons.delete, size: 18),
-                              onPressed: () => _deleteCategory(categoryId),
-                            ),
+                  final bool active = category['is_active'] != false;
+                  return StitchAdminListItem(
+                    title: (category['name'] ?? 'Danh mục').toString(),
+                    subtitle: (category['description'] ?? '').toString(),
+                    meta: <String>[
+                      'Mã: ${(category['code'] ?? '—').toString()}',
+                    ],
+                    icon: Icons.folder_outlined,
+                    accent:
+                        active
+                            ? StitchTheme.primaryStrong
+                            : StitchTheme.textMuted,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        StitchStatusPill(
+                          label: _activeLabel(active),
+                          color: _activeColor(active),
+                        ),
+                        if (widget.canManage) ...<Widget>[
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            tooltip: 'Sửa danh mục',
+                            onPressed:
+                                () => _openCategoryForm(category: category),
+                          ),
                         ],
-                      ),
+                        if (widget.canDelete)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            tooltip: 'Xóa danh mục',
+                            onPressed: () => _deleteCategory(categoryId),
+                          ),
+                      ],
                     ),
                   );
                 }),
-              const SizedBox(height: 14),
-              Row(
-                children: <Widget>[
-                  const Expanded(
-                    child: Text(
-                      'Danh sách sản phẩm',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                  if (widget.canManage)
-                    ElevatedButton.icon(
-                      onPressed: () => _openForm(),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Thêm mới'),
-                    ),
-                ],
+              const SizedBox(height: 16),
+              StitchSectionHeader(
+                title: 'Danh sách sản phẩm',
+                actionLabel: widget.canManage ? 'Thêm mới' : null,
+                onAction: widget.canManage ? () => _openForm() : null,
               ),
               if (message.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    message,
-                    style: const TextStyle(color: StitchTheme.textMuted),
+                  padding: const EdgeInsets.only(top: 10),
+                  child: StitchFeedbackBanner(
+                    message: message,
+                    isError: _messageIsError(),
                   ),
                 ),
               const SizedBox(height: 12),
               if (loading)
-                const Center(child: CircularProgressIndicator())
+                const StitchLoadingState(
+                  label: 'Đang tải danh sách sản phẩm...',
+                )
               else if (products.isEmpty)
-                const Text(
-                  'Chưa có sản phẩm phù hợp bộ lọc.',
-                  style: TextStyle(color: StitchTheme.textMuted),
+                const StitchEmptyState(
+                  title: 'Chưa có sản phẩm phù hợp',
+                  subtitle:
+                      'Thử bỏ bớt bộ lọc hoặc tạo sản phẩm mới nếu bạn có quyền quản lý.',
+                  icon: Icons.inventory_2_outlined,
                 )
               else
                 ...products.map((Map<String, dynamic> product) {
@@ -853,26 +890,42 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   final String categoryName =
                       (product['category']?['name'] ?? 'Không có danh mục')
                           .toString();
-                  return Card(
-                    child: ListTile(
-                      title: Text((product['name'] ?? '').toString()),
-                      subtitle: Text(
-                        '${product['code'] ?? ''} • $categoryName • ${(product['unit_price'] ?? '').toString()}',
-                      ),
-                      trailing: Wrap(
-                        spacing: 8,
-                        children: <Widget>[
+                  final bool active = product['is_active'] != false;
+                  return StitchAdminListItem(
+                    title: (product['name'] ?? 'Sản phẩm').toString(),
+                    subtitle: (product['description'] ?? '').toString(),
+                    meta: <String>[
+                      'Mã: ${(product['code'] ?? '—').toString()}',
+                      'Danh mục: $categoryName',
+                      'Giá: ${_formatMoney(product['unit_price'])}',
+                    ],
+                    icon: Icons.inventory_2_outlined,
+                    accent:
+                        active
+                            ? StitchTheme.primaryStrong
+                            : StitchTheme.textMuted,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        StitchStatusPill(
+                          label: _activeLabel(active),
+                          color: _activeColor(active),
+                        ),
+                        if (widget.canManage) ...<Widget>[
+                          const SizedBox(width: 4),
                           IconButton(
-                            icon: const Icon(Icons.edit, size: 18),
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            tooltip: 'Sửa sản phẩm',
                             onPressed: () => _openForm(product: product),
                           ),
-                          if (widget.canDelete)
-                            IconButton(
-                              icon: const Icon(Icons.delete, size: 18),
-                              onPressed: () => _delete(productId),
-                            ),
                         ],
-                      ),
+                        if (widget.canDelete)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            tooltip: 'Xóa sản phẩm',
+                            onPressed: () => _delete(productId),
+                          ),
+                      ],
                     ),
                   );
                 }),

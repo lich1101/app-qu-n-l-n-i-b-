@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class LeadTypesScreen extends StatefulWidget {
@@ -97,6 +99,19 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
     if (ok) await _fetch();
   }
 
+  bool get _messageIsError =>
+      message.contains('thất bại') ||
+      message.startsWith('Vui lòng') ||
+      message.contains('không');
+
+  Color _hexColor(dynamic value) {
+    final String raw =
+        (value ?? '').toString().trim().replaceFirst('#', '').toUpperCase();
+    if (raw.length != 6) return StitchTheme.primaryStrong;
+    final int? parsed = int.tryParse('FF$raw', radix: 16);
+    return parsed == null ? StitchTheme.primaryStrong : Color(parsed);
+  }
+
   Future<void> _openForm({Map<String, dynamic>? item}) async {
     setState(() {
       message = '';
@@ -118,76 +133,69 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.bg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
+              decoration: stitchFormSheetSurfaceDecoration(),
               child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      editingId == null ? 'Tạo trạng thái' : 'Sửa trạng thái',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    StitchFormSheetTitleBar(
+                      title:
+                          editingId == null
+                              ? 'Tạo trạng thái'
+                              : 'Sửa trạng thái',
+                      subtitle:
+                          'Dùng để phân loại khách hàng tiềm năng trên CRM.',
+                      icon: Icons.flag_rounded,
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Tên trạng thái',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: colorCtrl,
-                      decoration: const InputDecoration(labelText: 'Màu (hex)'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: orderCtrl,
-                      decoration: const InputDecoration(labelText: 'Thứ tự'),
-                      keyboardType: TextInputType.number,
-                    ),
-                    if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        message,
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final bool ok = await _save();
-                              if (!mounted) return;
-                              if (ok) {
-                                Navigator.of(context).pop();
-                              } else {
-                                setSheetState(() {});
-                              }
-                            },
-                            child: Text(
-                              editingId == null ? 'Tạo mới' : 'Cập nhật',
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                      child: Column(
+                        children: <Widget>[
+                          TextField(
+                            controller: nameCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Tên trạng thái',
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: colorCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Màu (hex)',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: orderCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Thứ tự',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                          if (message.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 12),
+                            StitchFeedbackBanner(
+                              message: message,
+                              isError: _messageIsError,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    StitchFormSheetActions(
+                      primaryLabel: editingId == null ? 'Tạo mới' : 'Cập nhật',
+                      onPrimary: () async {
+                        final bool ok = await _save();
+                        if (!context.mounted) return;
+                        if (ok) {
+                          Navigator.of(context).pop();
+                        } else {
+                          setSheetState(() {});
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -212,53 +220,56 @@ class _LeadTypesScreenState extends State<LeadTypesScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  const Expanded(
-                    child: Text(
-                      'Danh sách trạng thái',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () => _openForm(),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Thêm mới'),
-                  ),
-                ],
+              StitchAdminHeader(
+                title: 'Danh sách trạng thái',
+                subtitle:
+                    'Quản lý các nhãn phân loại khách hàng tiềm năng, màu sắc và thứ tự hiển thị.',
+                icon: Icons.flag_rounded,
+                actionLabel: 'Thêm mới',
+                onAction: () => _openForm(),
               ),
               if (message.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    message,
-                    style: const TextStyle(color: StitchTheme.textMuted),
+                  padding: const EdgeInsets.only(top: 12),
+                  child: StitchFeedbackBanner(
+                    message: message,
+                    isError: _messageIsError,
                   ),
                 ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               if (loading)
-                const Center(child: CircularProgressIndicator())
+                const StitchLoadingState(label: 'Đang tải trạng thái...')
+              else if (leadTypes.isEmpty)
+                const StitchEmptyState(
+                  title: 'Chưa có trạng thái',
+                  subtitle: 'Tạo trạng thái đầu tiên để CRM dễ phân loại lead.',
+                  icon: Icons.flag_outlined,
+                )
               else
                 ...leadTypes.map((item) {
-                  return Card(
-                    child: ListTile(
-                      title: Text((item['name'] ?? '').toString()),
-                      subtitle: Text(
-                        'Màu: ${(item['color_hex'] ?? '').toString()}',
-                      ),
-                      trailing: Wrap(
-                        spacing: 8,
-                        children: <Widget>[
-                          IconButton(
-                            icon: const Icon(Icons.edit, size: 18),
-                            onPressed: () => _openForm(item: item),
+                  return StitchAdminListItem(
+                    title: (item['name'] ?? '').toString(),
+                    subtitle: 'Màu ${(item['color_hex'] ?? '').toString()}',
+                    meta: <String>['Thứ tự ${item['sort_order'] ?? '—'}'],
+                    icon: Icons.flag_rounded,
+                    accent: _hexColor(item['color_hex']),
+                    trailing: Wrap(
+                      spacing: 2,
+                      children: <Widget>[
+                        IconButton(
+                          tooltip: 'Sửa',
+                          icon: const Icon(Icons.edit_rounded, size: 18),
+                          onPressed: () => _openForm(item: item),
+                        ),
+                        IconButton(
+                          tooltip: 'Xóa',
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, size: 18),
-                            onPressed: () => _delete(item['id'] as int),
-                          ),
-                        ],
-                      ),
+                          onPressed: () => _delete(item['id'] as int),
+                        ),
+                      ],
                     ),
                   );
                 }),

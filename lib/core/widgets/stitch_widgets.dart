@@ -445,6 +445,392 @@ class StitchFilterField extends StatelessWidget {
   }
 }
 
+class StitchAdminHeader extends StatelessWidget {
+  const StitchAdminHeader({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        gradient: LinearGradient(
+          colors: <Color>[
+            Colors.white,
+            StitchTheme.surface,
+            StitchTheme.primary.withValues(alpha: 0.06),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: StitchTheme.primarySoft,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: StitchTheme.primary.withValues(alpha: 0.18),
+              ),
+            ),
+            child: Icon(icon, color: StitchTheme.primaryStrong, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                    color: StitchTheme.textMain,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: StitchTheme.textMuted,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                if (actionLabel != null && onAction != null) ...<Widget>[
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    onPressed: onAction,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: Text(actionLabel!),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class StitchAdminListItem extends StatelessWidget {
+  const StitchAdminListItem({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.meta = const <String>[],
+    required this.icon,
+    this.accent,
+    this.trailing,
+    this.onTap,
+  });
+
+  final String title;
+  final String? subtitle;
+  final List<String> meta;
+  final IconData icon;
+  final Color? accent;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color resolvedAccent = accent ?? StitchTheme.primaryStrong;
+    Widget leadingIcon() {
+      return Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: resolvedAccent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(icon, color: resolvedAccent, size: 22),
+      );
+    }
+
+    Widget textContent() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: StitchTheme.textMain,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              height: 1.28,
+            ),
+          ),
+          if (subtitle != null && subtitle!.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 5),
+            Text(
+              subtitle!.trim(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: StitchTheme.textMuted,
+                fontSize: 12.5,
+                height: 1.35,
+              ),
+            ),
+          ],
+          if (meta.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children:
+                  meta
+                      .where((String item) => item.trim().isNotEmpty)
+                      .map(
+                        (String item) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: StitchTheme.surfaceAlt.withValues(
+                              alpha: 0.7,
+                            ),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: StitchTheme.border.withValues(alpha: 0.72),
+                            ),
+                          ),
+                          child: Text(
+                            item,
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+            ),
+          ],
+        ],
+      );
+    }
+
+    Widget mainRow({required bool includeTrailing}) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          leadingIcon(),
+          const SizedBox(width: 12),
+          Expanded(child: textContent()),
+          if (trailing != null && includeTrailing) ...<Widget>[
+            const SizedBox(width: 8),
+            trailing!,
+          ],
+        ],
+      );
+    }
+
+    final Widget content = Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: StitchTheme.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x0D0F172A),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final bool stackTrailing =
+              trailing != null && constraints.maxWidth < 360;
+          if (!stackTrailing) {
+            return mainRow(includeTrailing: true);
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              mainRow(includeTrailing: false),
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerRight, child: trailing!),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (onTap == null) {
+      return content;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: content,
+      ),
+    );
+  }
+}
+
+class StitchEmptyState extends StatelessWidget {
+  const StitchEmptyState({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    this.icon = Icons.inbox_outlined,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: StitchTheme.border),
+      ),
+      child: Column(
+        children: <Widget>[
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: StitchTheme.surfaceAlt,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: StitchTheme.textMuted, size: 24),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontWeight: FontWeight.w500,
+              color: StitchTheme.textMain,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: StitchTheme.textMuted,
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class StitchLoadingState extends StatelessWidget {
+  const StitchLoadingState({super.key, this.label = 'Đang tải dữ liệu...'});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 30),
+      child: Center(
+        child: Column(
+          children: <Widget>[
+            const CircularProgressIndicator(),
+            const SizedBox(height: 12),
+            Text(label, style: const TextStyle(color: StitchTheme.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class StitchStatusPill extends StatelessWidget {
+  const StitchStatusPill({
+    super.key,
+    required this.label,
+    required this.color,
+    this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (icon != null) ...<Widget>[
+            Icon(icon, color: color, size: 14),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class StitchTimelineItem extends StatelessWidget {
   const StitchTimelineItem({
     super.key,

@@ -1121,6 +1121,17 @@ class _ProductPieCardState extends State<_ProductPieCard> {
     Color(0xFF14B8A6),
   ];
 
+  int _contractCountFor(Map<String, dynamic> row) {
+    return int.tryParse(
+          (row['contracts_count'] ?? row['contract_count'] ?? 0).toString(),
+        ) ??
+        0;
+  }
+
+  String _contractCountSuffix(int count) {
+    return count > 0 ? ' · $count HĐ' : '';
+  }
+
   void _selectSegment(Offset localPosition, Size size, List<_PieItem> items) {
     final double total = items.fold<double>(
       0,
@@ -1163,6 +1174,7 @@ class _ProductPieCardState extends State<_ProductPieCard> {
             label: (entry.value['label'] ?? 'Sản phẩm').toString(),
             value: double.tryParse((entry.value['value'] ?? 0).toString()) ?? 0,
             color: _palette[entry.key % _palette.length],
+            contractsCount: _contractCountFor(entry.value),
           );
         }).toList();
 
@@ -1260,7 +1272,9 @@ class _ProductPieCardState extends State<_ProductPieCard> {
                       style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     Text(
-                      '${selectedPercent.toStringAsFixed(1)}% trong tổng doanh thu. Chạm vào mảng màu để xem sản phẩm khác.',
+                      '${selectedPercent.toStringAsFixed(1)}% trong tổng doanh thu'
+                      '${_contractCountSuffix(selectedItem.contractsCount)}. '
+                      'Chạm vào mảng màu để xem sản phẩm khác.',
                       style: const TextStyle(
                         fontSize: 12,
                         color: StitchTheme.textMuted,
@@ -1311,7 +1325,8 @@ class _ProductPieCardState extends State<_ProductPieCard> {
                     ),
                   ),
                   Text(
-                    '${percent.toStringAsFixed(1)}%',
+                    '${percent.toStringAsFixed(1)}%'
+                    '${_contractCountSuffix(item.contractsCount)}',
                     style: const TextStyle(color: StitchTheme.textMuted),
                   ),
                   const SizedBox(width: 8),
@@ -1664,11 +1679,13 @@ class _PieItem {
     required this.label,
     required this.value,
     required this.color,
+    required this.contractsCount,
   });
 
   final String label;
   final double value;
   final Color color;
+  final int contractsCount;
 }
 
 class _PieChartPainter extends CustomPainter {

@@ -4,9 +4,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../config/app_env.dart';
 import '../../core/messaging/app_tag_message.dart';
 import '../../core/services/attendance_wifi_service.dart';
 import '../../core/theme/stitch_theme.dart';
@@ -76,6 +78,10 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
   bool get _canManage => _managerRoles.contains(widget.currentUserRole);
   bool get _canReviewRequests =>
       _canManage || widget.currentUserRole == 'quan_ly';
+  bool _canReviewRequestItem(Map<String, dynamic> _) {
+    return _canReviewRequests;
+  }
+
   bool get _canViewReport =>
       _canManage ||
       widget.currentUserRole == 'quan_ly' ||
@@ -262,6 +268,23 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         : '${_formatDateLabel(startDate)} - ${_formatDateLabel(endDate)}';
   }
 
+  static String _outsideTimeLabel(Map<String, dynamic> item) {
+    final String explicit = (item['outside_time_label'] ?? '').toString();
+    if (explicit.trim().isNotEmpty) return explicit.trim();
+    final String start = (item['outside_start_time'] ?? '').toString().trim();
+    final String end = (item['outside_end_time'] ?? '').toString().trim();
+    if (start.isEmpty || end.isEmpty) return '';
+    return '$start - $end';
+  }
+
+  static int _timeToMinutes(String value) {
+    final List<String> parts = value.split(':');
+    if (parts.length != 2) return 0;
+    final int hour = int.tryParse(parts[0]) ?? 0;
+    final int minute = int.tryParse(parts[1]) ?? 0;
+    return hour * 60 + minute;
+  }
+
   static List<Map<String, String>> _correctionEntries(
     Map<String, dynamic> item,
   ) {
@@ -281,6 +304,11 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
               entry['check_in_time']!.trim().isNotEmpty,
         )
         .toList();
+  }
+
+  static int _intValue(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse((value ?? '').toString()) ?? 0;
   }
 
   static String _workTypeLabel(Map<String, dynamic> item) {
@@ -306,6 +334,199 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     );
   }
 
+  List<Map<String, dynamic>> _requestAttachments(Map<String, dynamic> item) {
+    final dynamic raw = item['attachments'];
+    if (raw is! List) return <Map<String, dynamic>>[];
+
+    return raw
+        .whereType<Map>()
+        .map(
+          (Map entry) => <String, dynamic>{
+            'id': (entry['id'] ?? entry['path'] ?? '').toString().trim(),
+            'path': (entry['path'] ?? '').toString().trim(),
+            'url': AppEnv.resolveMediaUrl(
+              (entry['url'] ?? entry['path'] ?? '').toString(),
+            ),
+            'name':
+                (entry['name'] ?? entry['original_name'] ?? '')
+                    .toString()
+                    .trim(),
+            'mime': (entry['mime'] ?? '').toString().trim(),
+            'size': _intValue(entry['size']),
+            'uploaded_at': (entry['uploaded_at'] ?? '').toString().trim(),
+          },
+        )
+        .where(
+          (Map<String, dynamic> attachment) =>
+              (attachment['path'] ?? '').toString().trim().isNotEmpty ||
+              (attachment['url'] ?? '').toString().trim().isNotEmpty,
+        )
+        .toList();
+  }
+
+  String _requestReviewerLabel(Map<String, dynamic> item) {
+    final dynamic rawDecider = item['decider'];
+    final Map<String, dynamic>? decider =
+        rawDecider is Map
+            ? rawDecider.map(
+              (Object? key, Object? value) => MapEntry(key.toString(), value),
+            )
+            : null;
+    final String deciderName =
+        (decider?['name'] ?? item['decider_name'] ?? '').toString().trim();
+    final String decidedAt = (item['decided_at'] ?? '').toString().trim();
+    if (deciderName.isEmpty && decidedAt.isEmpty) return '';
+    if (deciderName.isEmpty) {
+      return decidedAt.isNotEmpty
+          ? 'Đã duyệt ${_formatDateTimeLabel(decidedAt)}'
+          : '';
+    }
+    return decidedAt.isNotEmpty
+        ? '$deciderName • ${_formatDateTimeLabel(decidedAt)}'
+        : deciderName;
+  }
+
+  Future<void> _showAttachmentPreview(Map<String, dynamic> attachment) async {
+    final String url = (attachment['url'] ?? '').toString().trim();
+    if (url.isEmpty) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                AspectRatio(
+                  aspectRatio: 1,
+                  child: InteractiveViewer(
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      errorBuilder:
+                          (
+                            BuildContext context,
+                            Object error,
+                            StackTrace? stackTrace,
+                          ) => const Center(
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              size: 42,
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        (attachment['name'] ?? 'Ảnh đính kèm').toString(),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      if ((attachment['uploaded_at'] ?? '')
+                          .toString()
+                          .trim()
+                          .isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            _formatDateTimeLabel(
+                              (attachment['uploaded_at'] ?? '').toString(),
+                            ),
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Đóng'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildRequestAttachmentThumb(Map<String, dynamic> attachment) {
+    final String url = (attachment['url'] ?? '').toString().trim();
+    final String name =
+        (attachment['name'] ?? '').toString().trim().isEmpty
+            ? 'Ảnh đính kèm'
+            : (attachment['name'] ?? '').toString().trim();
+
+    return InkWell(
+      onTap: url.isEmpty ? null : () => _showAttachmentPreview(attachment),
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: 104,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                width: 104,
+                height: 104,
+                child:
+                    url.isEmpty
+                        ? const ColoredBox(
+                          color: StitchTheme.surfaceAlt,
+                          child: Center(
+                            child: Icon(
+                              Icons.image_outlined,
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
+                        )
+                        : Image.network(
+                          url,
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (
+                                BuildContext context,
+                                Object error,
+                                StackTrace? stackTrace,
+                              ) => const ColoredBox(
+                                color: StitchTheme.surfaceAlt,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: StitchTheme.textMuted,
+                                  ),
+                                ),
+                              ),
+                        ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _bootstrap() async {
     await _refreshWifiSnapshot(silent: true, requestPermissions: false);
     await _refreshAll(showLoader: true);
@@ -318,18 +539,35 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     if (!silent && mounted) {
       setState(() => _submitting = true);
     }
-    if (requestPermissions) {
-      await AttendanceWifiService.requestPermission();
-    }
-    final AttendanceWifiSnapshot snapshot =
-        await AttendanceWifiService.readCurrentWifi(requestPermissions: false);
-    if (!mounted) return;
-    setState(() {
-      _wifiSnapshot = snapshot;
-      if (!silent) {
-        _submitting = false;
+    try {
+      final AttendanceWifiSnapshot snapshot =
+          await AttendanceWifiService.readCurrentWifi(
+            requestPermissions: requestPermissions,
+          );
+      if (!mounted) return;
+      setState(() {
+        _wifiSnapshot = snapshot;
+        if (!silent) {
+          _submitting = false;
+        }
+      });
+      if (!silent && !snapshot.hasWifi && snapshot.error != null) {
+        AppTagMessage.show(snapshot.error!, isError: true);
       }
-    });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (!silent) {
+          _submitting = false;
+        }
+      });
+      if (!silent) {
+        AppTagMessage.show(
+          'Không đọc được Wi‑Fi hiện tại: $error',
+          isError: true,
+        );
+      }
+    }
   }
 
   Future<void> _refreshAll({bool showLoader = false}) async {
@@ -502,6 +740,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         return 'Nghỉ duyệt không công';
       case 'approved_partial':
         return 'Duyệt công';
+      case 'online_work':
+        return 'Làm việc online';
       case 'holiday_auto':
         return 'Ngày lễ tự động';
       case 'pending':
@@ -530,6 +770,10 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     switch (type) {
       case 'leave_request':
         return 'Nghỉ phép';
+      case 'out_of_office':
+        return 'Ra ngoài trong giờ';
+      case 'online_work':
+        return 'Làm việc online';
       case 'attendance_correction':
         return 'Sửa chấm công';
       case 'shift_change':
@@ -563,6 +807,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       case 'approved_full':
       case 'holiday_auto':
         return StitchTheme.successStrong;
+      case 'online_work':
+        return Colors.blue.shade700;
       case 'approved_no_count':
         return Colors.blue.shade700;
       case 'late_pending':
@@ -838,11 +1084,14 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
     final TextEditingController timeCtrl = TextEditingController();
     String requestDate = _todayIso();
     String requestEndDate = '';
+    String outsideStartTime = '';
+    String outsideEndTime = '';
     final List<Map<String, dynamic>> shiftWorkTypes = _requestShiftWorkTypes;
     String shiftWorkTypeId =
         shiftWorkTypes.isNotEmpty
             ? (shiftWorkTypes.first['id'] ?? '').toString()
             : '';
+    final List<File> requestAttachments = <File>[];
     List<Map<String, String>> correctionEntries = <Map<String, String>>[
       <String, String>{
         'request_date': _todayIso(),
@@ -857,6 +1106,46 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
+            Future<void> pickRequestAttachments() async {
+              final FilePickerResult? result = await FilePicker.platform
+                  .pickFiles(
+                    type: FileType.image,
+                    allowMultiple: true,
+                    withData: false,
+                  );
+              if (result == null || result.files.isEmpty) {
+                return;
+              }
+
+              final List<File> selected =
+                  result.files
+                      .map((PlatformFile file) => file.path)
+                      .whereType<String>()
+                      .where((String path) => path.trim().isNotEmpty)
+                      .map(File.new)
+                      .toList();
+              if (selected.isEmpty) {
+                _showSnack('Không đọc được ảnh đã chọn.');
+                return;
+              }
+
+              final List<File> merged = <File>[
+                ...requestAttachments,
+                ...selected,
+              ];
+              final List<File> nextAttachments = merged
+                  .take(5)
+                  .toList(growable: false);
+              setSheetState(() {
+                requestAttachments
+                  ..clear()
+                  ..addAll(nextAttachments);
+              });
+              if (merged.length > 5) {
+                _showSnack('Mỗi đơn chỉ nhận tối đa 5 ảnh.');
+              }
+            }
+
             return _SheetScaffold(
               title: 'Gửi đơn xin phép',
               child: Column(
@@ -879,6 +1168,20 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                         selected: requestType == 'leave_request',
                         onTap: () {
                           setSheetState(() => requestType = 'leave_request');
+                        },
+                      ),
+                      _buildChoice(
+                        label: 'Ra ngoài trong giờ',
+                        selected: requestType == 'out_of_office',
+                        onTap: () {
+                          setSheetState(() => requestType = 'out_of_office');
+                        },
+                      ),
+                      _buildChoice(
+                        label: 'Làm việc online',
+                        selected: requestType == 'online_work',
+                        onTap: () {
+                          setSheetState(() => requestType = 'online_work');
                         },
                       ),
                       _buildChoice(
@@ -988,6 +1291,58 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                           },
                         );
                       },
+                    ),
+                  ],
+                  if (requestType == 'out_of_office') ...<Widget>[
+                    const SizedBox(height: 12),
+                    _FieldLabel(label: 'Giờ ra ngoài *'),
+                    _PickerField(
+                      value:
+                          outsideStartTime.isEmpty
+                              ? 'Chọn giờ ra ngoài'
+                              : outsideStartTime,
+                      icon: Icons.logout_rounded,
+                      onTap: () async {
+                        await _pickTime(
+                          currentValue:
+                              outsideStartTime.isEmpty
+                                  ? _workStartTime
+                                  : outsideStartTime,
+                          onChanged: (String value) {
+                            setSheetState(() => outsideStartTime = value);
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _FieldLabel(label: 'Giờ quay lại dự kiến *'),
+                    _PickerField(
+                      value:
+                          outsideEndTime.isEmpty
+                              ? 'Chọn giờ quay lại'
+                              : outsideEndTime,
+                      icon: Icons.login_rounded,
+                      onTap: () async {
+                        await _pickTime(
+                          currentValue:
+                              outsideEndTime.isEmpty
+                                  ? (outsideStartTime.isEmpty
+                                      ? _workEndTime
+                                      : outsideStartTime)
+                                  : outsideEndTime,
+                          onChanged: (String value) {
+                            setSheetState(() => outsideEndTime = value);
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Đơn này chỉ ghi nhận phê duyệt ra ngoài trong giờ làm việc, không tự thay đổi công.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: StitchTheme.textMuted,
+                      ),
                     ),
                   ],
                   if (requestType == 'shift_change') ...<Widget>[
@@ -1155,6 +1510,76 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                       alignLabelWithHint: true,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  _FieldLabel(label: 'Ảnh đính kèm'),
+                  const SizedBox(height: 6),
+                  OutlinedButton.icon(
+                    onPressed: pickRequestAttachments,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Chọn ảnh'),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Tối đa 5 ảnh. Ảnh lưu quá 45 ngày sẽ tự xóa.',
+                    style: TextStyle(
+                      color: StitchTheme.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (requestAttachments.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children:
+                          requestAttachments.asMap().entries.map((
+                            MapEntry<int, File> entry,
+                          ) {
+                            final int index = entry.key;
+                            final File file = entry.value;
+                            return SizedBox(
+                              width: 104,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: SizedBox(
+                                      width: 104,
+                                      height: 104,
+                                      child: Image.file(
+                                        file,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    file.path
+                                        .split(Platform.pathSeparator)
+                                        .last,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      setSheetState(() {
+                                        requestAttachments.removeAt(index);
+                                      });
+                                    },
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Xóa'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
@@ -1168,6 +1593,22 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                             timeCtrl.text.trim().isEmpty) {
                           _showSnack('Đơn đi muộn cần có giờ dự kiến vào làm.');
                           return;
+                        }
+                        if (requestType == 'out_of_office') {
+                          if (outsideStartTime.trim().isEmpty ||
+                              outsideEndTime.trim().isEmpty) {
+                            _showSnack(
+                              'Đơn ra ngoài trong giờ cần chọn giờ ra ngoài và giờ quay lại dự kiến.',
+                            );
+                            return;
+                          }
+                          if (_timeToMinutes(outsideEndTime) <=
+                              _timeToMinutes(outsideStartTime)) {
+                            _showSnack(
+                              'Giờ quay lại dự kiến phải sau giờ ra ngoài.',
+                            );
+                            return;
+                          }
                         }
                         final List<Map<String, String>> normalizedEntries =
                             correctionEntries
@@ -1223,6 +1664,14 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                                   requestType == 'late_arrival'
                                       ? timeCtrl.text.trim()
                                       : null,
+                              outsideStartTime:
+                                  requestType == 'out_of_office'
+                                      ? outsideStartTime.trim()
+                                      : null,
+                              outsideEndTime:
+                                  requestType == 'out_of_office'
+                                      ? outsideEndTime.trim()
+                                      : null,
                               shiftWorkTypeId:
                                   requestType == 'shift_change'
                                       ? shiftWorkTypeId.trim()
@@ -1231,6 +1680,11 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                                   requestType == 'attendance_correction'
                                       ? normalizedEntries
                                       : null,
+                              attachmentPaths:
+                                  requestAttachments
+                                      .map((File file) => file.path)
+                                      .where((String path) => path.isNotEmpty)
+                                      .toList(),
                               content: contentCtrl.text.trim(),
                             );
                         if (!mounted) return;
@@ -1257,6 +1711,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
             ? 'apply_requested_time'
             : (item['request_type'] ?? '').toString() == 'shift_change'
             ? 'apply_requested_shift'
+            : (item['request_type'] ?? '').toString() == 'out_of_office'
+            ? 'no_change'
             : 'full_work';
     final TextEditingController noteCtrl = TextEditingController();
 
@@ -1348,6 +1804,32 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                                       () =>
                                           approvalMode =
                                               'apply_requested_shift',
+                                    );
+                                  },
+                                ),
+                              ]
+                              : (item['request_type'] ?? '').toString() ==
+                                  'online_work'
+                              ? <Widget>[
+                                _buildChoice(
+                                  label: 'Tính đủ công theo phân ca',
+                                  selected: approvalMode == 'full_work',
+                                  onTap: () {
+                                    setSheetState(
+                                      () => approvalMode = 'full_work',
+                                    );
+                                  },
+                                ),
+                              ]
+                              : (item['request_type'] ?? '').toString() ==
+                                  'out_of_office'
+                              ? <Widget>[
+                                _buildChoice(
+                                  label: 'Ghi nhận, không đổi công',
+                                  selected: approvalMode == 'no_change',
+                                  onTap: () {
+                                    setSheetState(
+                                      () => approvalMode = 'no_change',
                                     );
                                   },
                                 ),
@@ -2491,8 +2973,10 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
         title: 'Đơn xin phép',
         subtitle:
             _canManage
-                ? 'Nhân viên có thể gửi đơn đi muộn, nghỉ phép hoặc sửa chấm công. Admin, quản trị hệ thống và kế toán sẽ duyệt và áp dụng theo ca thực tế.'
-                : 'Bạn có thể gửi đơn đi muộn, nghỉ phép hoặc sửa chấm công. Sau khi duyệt, hệ thống sẽ tính công theo ca thực tế của từng ngày.',
+                ? 'Nhân viên có thể gửi đơn đi muộn, nghỉ phép, ra ngoài trong giờ, làm việc online, sửa chấm công hoặc đổi ca. Admin, quản trị hệ thống và kế toán duyệt toàn hệ thống.'
+                : _canReviewRequests
+                ? 'Quản lý phòng ban được duyệt đơn của nhân sự thuộc phòng mình; nhân viên vẫn có thể tạo đơn cá nhân.'
+                : 'Bạn có thể gửi đơn đi muộn, nghỉ phép, ra ngoài trong giờ, làm việc online, sửa chấm công hoặc đổi ca.',
         action:
             _canTrack
                 ? OutlinedButton.icon(
@@ -2556,6 +3040,10 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
               ...rows.map((Map<String, dynamic> item) {
                 final Map<String, dynamic>? user =
                     item['user'] as Map<String, dynamic>?;
+                final List<Map<String, dynamic>> attachments =
+                    _requestAttachments(item);
+                final String reviewerLabel = _requestReviewerLabel(item);
+                final String outsideTimeLabel = _outsideTimeLabel(item);
                 return _ListCard(
                   title: (item['title'] ?? 'Đơn chấm công').toString(),
                   subtitle:
@@ -2565,7 +3053,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                     color: _statusColor((item['status'] ?? '').toString()),
                   ),
                   actions:
-                      _canReviewRequests && (item['status'] ?? '') == 'pending'
+                      _canReviewRequestItem(item) &&
+                              (item['status'] ?? '') == 'pending'
                           ? <Widget>[
                             FilledButton(
                               onPressed:
@@ -2606,6 +3095,23 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                         label: 'Ca áp dụng',
                         value: _requestShiftWorkTypeLabel(item),
                       ),
+                    if (outsideTimeLabel.isNotEmpty)
+                      _MiniLine(
+                        label: 'Thời gian ra ngoài',
+                        value: outsideTimeLabel,
+                      ),
+                    if (attachments.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children:
+                              attachments
+                                  .map(_buildRequestAttachmentThumb)
+                                  .toList(),
+                        ),
+                      ),
                     if ((item['content'] ?? '').toString().trim().isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -2614,6 +3120,8 @@ class _AttendanceWifiScreenState extends State<AttendanceWifiScreen> {
                           style: const TextStyle(height: 1.4),
                         ),
                       ),
+                    if (reviewerLabel.isNotEmpty)
+                      _MiniLine(label: 'Người duyệt', value: reviewerLabel),
                     if ((item['decision_note'] ?? '')
                         .toString()
                         .trim()
@@ -3855,6 +4363,8 @@ String _attendanceDetailStatusLabel(String? status, int minutesLate) {
       return 'Nghỉ duyệt không công';
     case 'approved_partial':
       return 'Duyệt công thủ công';
+    case 'online_work':
+      return 'Làm việc online';
     case 'holiday_auto':
       return 'Ngày lễ tự động';
     default:

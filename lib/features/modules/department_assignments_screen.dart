@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class DepartmentAssignmentsScreen extends StatefulWidget {
@@ -127,6 +129,22 @@ class _DepartmentAssignmentsScreenState
     valueCtrl.clear();
   }
 
+  bool get _messageIsError =>
+      message.contains('thất bại') ||
+      message.startsWith('Vui lòng') ||
+      message.contains('không');
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'in_progress':
+        return 'Đang triển khai';
+      case 'done':
+        return 'Hoàn tất';
+      default:
+        return 'Mới';
+    }
+  }
+
   Future<void> _openForm() async {
     setState(() {
       message = '';
@@ -141,135 +159,131 @@ class _DepartmentAssignmentsScreenState
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.bg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
+              decoration: stitchFormSheetSurfaceDecoration(),
               child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text(
-                      'Tạo điều phối',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                    const StitchFormSheetTitleBar(
+                      title: 'Tạo điều phối',
+                      subtitle:
+                          'Chọn khách hàng, phòng ban và yêu cầu để phân phối công việc nội bộ.',
+                      icon: Icons.account_tree_rounded,
                     ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<int>(
-                      value: formClientId,
-                      decoration: const InputDecoration(
-                        labelText: 'Khách hàng',
-                      ),
-                      items:
-                          clients
-                              .map(
-                                (client) => DropdownMenuItem<int>(
-                                  value: client['id'] as int,
-                                  child: Text(
-                                    (client['name'] ?? '').toString(),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                      onChanged:
-                          (value) => setSheetState(() => formClientId = value),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int>(
-                      value: formContractId,
-                      decoration: const InputDecoration(labelText: 'Hợp đồng'),
-                      items:
-                          contracts
-                              .map(
-                                (contract) => DropdownMenuItem<int>(
-                                  value: contract['id'] as int,
-                                  child: Text(
-                                    (contract['title'] ?? '').toString(),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                      onChanged:
-                          (value) =>
-                              setSheetState(() => formContractId = value),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int>(
-                      value: formDepartmentId,
-                      decoration: const InputDecoration(labelText: 'Phòng ban'),
-                      items:
-                          departments
-                              .map(
-                                (dept) => DropdownMenuItem<int>(
-                                  value: dept['id'] as int,
-                                  child: Text((dept['name'] ?? '').toString()),
-                                ),
-                              )
-                              .toList(),
-                      onChanged:
-                          (value) =>
-                              setSheetState(() => formDepartmentId = value),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: deadlineCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Hạn chót (YYYY-MM-DD)',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: valueCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Giá trị phân bổ',
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: requirementCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Yêu cầu chi tiết',
-                      ),
-                      maxLines: 2,
-                    ),
-                    if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        message,
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                      child: Column(
+                        children: <Widget>[
+                          DropdownButtonFormField<int>(
+                            value: formClientId,
+                            decoration: const InputDecoration(
+                              labelText: 'Khách hàng',
+                            ),
+                            items:
+                                clients
+                                    .map(
+                                      (client) => DropdownMenuItem<int>(
+                                        value: client['id'] as int,
+                                        child: Text(
+                                          (client['name'] ?? '').toString(),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) =>
+                                    setSheetState(() => formClientId = value),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final bool ok = await _create();
-                              if (!mounted) return;
-                              if (ok) {
-                                Navigator.of(context).pop();
-                              } else {
-                                setSheetState(() {});
-                              }
-                            },
-                            child: const Text('Tạo điều phối'),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<int>(
+                            value: formContractId,
+                            decoration: const InputDecoration(
+                              labelText: 'Hợp đồng',
+                            ),
+                            items:
+                                contracts
+                                    .map(
+                                      (contract) => DropdownMenuItem<int>(
+                                        value: contract['id'] as int,
+                                        child: Text(
+                                          (contract['title'] ?? '').toString(),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) =>
+                                    setSheetState(() => formContractId = value),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<int>(
+                            value: formDepartmentId,
+                            decoration: const InputDecoration(
+                              labelText: 'Phòng ban',
+                            ),
+                            items:
+                                departments
+                                    .map(
+                                      (dept) => DropdownMenuItem<int>(
+                                        value: dept['id'] as int,
+                                        child: Text(
+                                          (dept['name'] ?? '').toString(),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) => setSheetState(
+                                  () => formDepartmentId = value,
+                                ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: deadlineCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Hạn chót (YYYY-MM-DD)',
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: valueCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Giá trị phân bổ',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: requirementCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Yêu cầu chi tiết',
+                            ),
+                            maxLines: 2,
+                          ),
+                          if (message.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 12),
+                            StitchFeedbackBanner(
+                              message: message,
+                              isError: _messageIsError,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    StitchFormSheetActions(
+                      primaryLabel: 'Tạo điều phối',
+                      onPrimary: () async {
+                        final bool ok = await _create();
+                        if (!context.mounted) return;
+                        if (ok) {
+                          Navigator.of(context).pop();
+                        } else {
+                          setSheetState(() {});
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -321,33 +335,32 @@ class _DepartmentAssignmentsScreenState
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  const Expanded(
-                    child: Text(
-                      'Danh sách điều phối',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                  if (widget.canCreate)
-                    ElevatedButton.icon(
-                      onPressed: _openForm,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Thêm'),
-                    ),
-                ],
+              StitchAdminHeader(
+                title: 'Danh sách điều phối',
+                subtitle:
+                    'Theo dõi việc phân bổ khách hàng, hợp đồng và tiến độ xử lý theo từng phòng ban.',
+                icon: Icons.account_tree_rounded,
+                actionLabel: widget.canCreate ? 'Thêm' : null,
+                onAction: widget.canCreate ? _openForm : null,
               ),
               if (message.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    message,
-                    style: const TextStyle(color: StitchTheme.textMuted),
+                  padding: const EdgeInsets.only(top: 12),
+                  child: StitchFeedbackBanner(
+                    message: message,
+                    isError: _messageIsError,
                   ),
                 ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               if (loading)
-                const Center(child: CircularProgressIndicator())
+                const StitchLoadingState(label: 'Đang tải điều phối...')
+              else if (assignments.isEmpty)
+                const StitchEmptyState(
+                  title: 'Chưa có điều phối',
+                  subtitle:
+                      'Tạo điều phối để các phòng ban nhìn rõ khách hàng và yêu cầu cần xử lý.',
+                  icon: Icons.account_tree_outlined,
+                )
               else
                 ...assignments.map((assignment) {
                   final Map<String, dynamic>? client =
@@ -363,90 +376,139 @@ class _DepartmentAssignmentsScreenState
                       ) ??
                       0;
                   String status = (assignment['status'] ?? 'new').toString();
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            (client?['name'] ?? 'Khách hàng').toString(),
-                            style: const TextStyle(fontWeight: FontWeight.w500),
+                  return StitchFilterCard(
+                    title: (client?['name'] ?? 'Khách hàng').toString(),
+                    subtitle: 'Phòng ban: ${(dept?['name'] ?? '—').toString()}',
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: StitchTheme.progressPercentFillColor(
+                          progress,
+                        ).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        _statusLabel(status),
+                        style: TextStyle(
+                          color: StitchTheme.progressPercentFillColor(progress),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            const Text(
+                              'Tiến độ',
+                              style: TextStyle(
+                                color: StitchTheme.textMuted,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '$progress%',
+                              style: TextStyle(
+                                color: StitchTheme.progressPercentFillColor(
+                                  progress,
+                                ),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            minHeight: 8,
+                            value: progress.clamp(0, 100) / 100,
+                            color: StitchTheme.progressPercentFillColor(
+                              progress,
+                            ),
+                            backgroundColor: StitchTheme.surfaceAlt,
                           ),
+                        ),
+                        if ((assignment['requirements'] ?? '')
+                            .toString()
+                            .trim()
+                            .isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 10),
                           Text(
-                            (dept?['name'] ?? 'Phòng ban').toString(),
+                            (assignment['requirements'] ?? '').toString(),
                             style: const TextStyle(
                               color: StitchTheme.textMuted,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                        if (widget.canUpdate) ...<Widget>[
+                          const Divider(height: 24),
+                          DropdownButtonFormField<String>(
+                            value: status,
+                            decoration: const InputDecoration(
+                              labelText: 'Trạng thái',
+                            ),
+                            items: const <DropdownMenuItem<String>>[
+                              DropdownMenuItem(
+                                value: 'new',
+                                child: Text('Mới'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'in_progress',
+                                child: Text('Đang triển khai'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'done',
+                                child: Text('Hoàn tất'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value == null) return;
+                              status = value;
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            decoration: const InputDecoration(
+                              labelText: 'Tiến độ (%)',
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (value) {
+                              progress = int.tryParse(value) ?? progress;
+                            },
+                            controller: TextEditingController(
+                              text: progress.toString(),
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            'Trạng thái: ${(assignment['status'] ?? 'new').toString()}',
-                            style: const TextStyle(
-                              color: StitchTheme.textMuted,
+                          TextField(
+                            controller: noteCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Ghi chú',
                             ),
+                            maxLines: 2,
                           ),
-                          if (widget.canUpdate) ...<Widget>[
-                            const Divider(height: 24),
-                            DropdownButtonFormField<String>(
-                              value: status,
-                              decoration: const InputDecoration(
-                                labelText: 'Trạng thái',
-                              ),
-                              items: const <DropdownMenuItem<String>>[
-                                DropdownMenuItem(
-                                  value: 'new',
-                                  child: Text('Mới'),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            onPressed:
+                                () => _updateProgress(
+                                  assignment,
+                                  status,
+                                  progress,
+                                  noteCtrl.text.trim(),
                                 ),
-                                DropdownMenuItem(
-                                  value: 'in_progress',
-                                  child: Text('Đang triển khai'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'done',
-                                  child: Text('Hoàn tất'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                if (value == null) return;
-                                status = value;
-                              },
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              decoration: const InputDecoration(
-                                labelText: 'Tiến độ (%)',
-                              ),
-                              keyboardType: TextInputType.number,
-                              onChanged: (value) {
-                                progress = int.tryParse(value) ?? progress;
-                              },
-                              controller: TextEditingController(
-                                text: progress.toString(),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: noteCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Ghi chú',
-                              ),
-                              maxLines: 2,
-                            ),
-                            const SizedBox(height: 8),
-                            ElevatedButton(
-                              onPressed:
-                                  () => _updateProgress(
-                                    assignment,
-                                    status,
-                                    progress,
-                                    noteCtrl.text.trim(),
-                                  ),
-                              child: const Text('Cập nhật'),
-                            ),
-                          ],
+                            child: const Text('Cập nhật'),
+                          ),
                         ],
-                      ),
+                      ],
                     ),
                   );
                 }),

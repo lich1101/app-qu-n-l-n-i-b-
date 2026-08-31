@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
 import '../../core/utils/vietnam_time.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -214,81 +215,66 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.bg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
+              decoration: stitchFormSheetSurfaceDecoration(),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text(
-                    'Chọn thành viên họp',
-                    style: TextStyle(fontWeight: FontWeight.w500),
+                  const StitchFormSheetTitleBar(
+                    title: 'Chọn thành viên họp',
+                    subtitle:
+                        'Chọn một hoặc nhiều người tham gia để lưu vào lịch họp.',
+                    icon: Icons.group_add_outlined,
                   ),
-                  const SizedBox(height: 8),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 360),
-                    child:
-                        users.isEmpty
-                            ? const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Text(
-                                'Không tải được danh sách thành viên.',
-                                style: TextStyle(color: StitchTheme.textMuted),
-                              ),
-                            )
-                            : ListView(
-                              shrinkWrap: true,
-                              children:
-                                  users.map((Map<String, dynamic> user) {
-                                    final int id = _parseInt(user['id']) ?? 0;
-                                    final bool checked = temp.contains(id);
-                                    return CheckboxListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      value: checked,
-                                      title: Text(
-                                        (user['name'] ?? '').toString(),
-                                      ),
-                                      subtitle: Text(
-                                        (user['role'] ?? '').toString(),
-                                      ),
-                                      onChanged: (_) {
-                                        setSheetState(() {
-                                          if (checked) {
-                                            temp.remove(id);
-                                          } else {
-                                            temp.add(id);
-                                          }
-                                        });
-                                      },
-                                    );
-                                  }).toList(),
-                            ),
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 360),
+                        child:
+                            users.isEmpty
+                                ? const StitchEmptyState(
+                                  title: 'Không tải được thành viên',
+                                  subtitle:
+                                      'Danh sách người dùng chưa sẵn sàng, hãy thử kéo để tải lại sau.',
+                                  icon: Icons.group_off_outlined,
+                                )
+                                : ListView(
+                                  shrinkWrap: true,
+                                  children:
+                                      users.map((Map<String, dynamic> user) {
+                                        final int id =
+                                            _parseInt(user['id']) ?? 0;
+                                        final bool checked = temp.contains(id);
+                                        return CheckboxListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          value: checked,
+                                          title: Text(
+                                            (user['name'] ?? '').toString(),
+                                          ),
+                                          subtitle: Text(
+                                            (user['role'] ?? '').toString(),
+                                          ),
+                                          onChanged: (_) {
+                                            setSheetState(() {
+                                              if (checked) {
+                                                temp.remove(id);
+                                              } else {
+                                                temp.add(id);
+                                              }
+                                            });
+                                          },
+                                        );
+                                      }).toList(),
+                                ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(null),
-                          child: const Text('Hủy'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed:
-                              () => Navigator.of(context).pop(temp.toList()),
-                          child: const Text('Xác nhận'),
-                        ),
-                      ),
-                    ],
+                  StitchFormSheetActions(
+                    primaryLabel: 'Xác nhận',
+                    onCancel: () => Navigator.of(context).pop(null),
+                    onPrimary: () => Navigator.of(context).pop(temp.toList()),
                   ),
                 ],
               ),
@@ -309,6 +295,13 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
         .map((Map<String, dynamic> user) => (user['name'] ?? '').toString())
         .where((String name) => name.isNotEmpty)
         .toList();
+  }
+
+  bool _messageIsError() {
+    final String lower = message.toLowerCase();
+    return lower.contains('thất bại') ||
+        lower.contains('vui lòng') ||
+        lower.contains('không có quyền');
   }
 
   Future<bool> _save() async {
@@ -444,151 +437,145 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
             final List<String> attendeeNames = _selectedAttendeeNames();
             return Container(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.bg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      editingMeetingId == null
-                          ? 'Tạo lịch họp'
-                          : 'Sửa lịch họp',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: titleCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Tiêu đề họp',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: dateCtrl,
-                      readOnly: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Thời gian (YYYY-MM-DD HH:MM:SS)',
-                      ),
-                      onTap: () => _pickDateTime(dateCtrl),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: linkCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Liên kết họp',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Ghi chú họp',
-                      ),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: minutesCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Biên bản họp',
-                      ),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final List<int>? picked = await _openAttendeePicker(
-                          selectedAttendeeIds.toList(),
-                        );
-                        if (!context.mounted || picked == null) return;
-                        setSheetState(() {
-                          selectedAttendeeIds = picked.toSet();
-                        });
-                      },
-                      icon: const Icon(Icons.group_outlined, size: 18),
-                      label: Text(
-                        'Chọn thành viên (${selectedAttendeeIds.length})',
-                      ),
-                    ),
-                    if (attendeeNames.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children:
-                            attendeeNames
-                                .map(
-                                  (String name) => Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: StitchTheme.primary.withValues(
-                                        alpha: 0.1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      name,
-                                      style: TextStyle(
-                                        color: StitchTheme.primary,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                      ),
-                    ],
-                    if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(message),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed:
-                                widget.canManage
-                                    ? () async {
-                                      final bool ok = await _save();
-                                      if (!context.mounted) return;
-                                      if (ok) {
-                                        Navigator.of(context).pop();
-                                      } else {
-                                        setSheetState(() {});
-                                      }
-                                    }
-                                    : null,
-                            child: Text(
-                              editingMeetingId == null
-                                  ? 'Tạo lịch họp'
-                                  : 'Cập nhật lịch họp',
+              decoration: stitchFormSheetSurfaceDecoration(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  StitchFormSheetTitleBar(
+                    title:
+                        editingMeetingId == null
+                            ? 'Tạo lịch họp'
+                            : 'Sửa lịch họp',
+                    subtitle:
+                        'Thiết lập thời gian, link họp, biên bản và thành viên tham gia.',
+                    icon:
+                        editingMeetingId == null
+                            ? Icons.event_available_outlined
+                            : Icons.edit_calendar_outlined,
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          TextField(
+                            controller: titleCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Tiêu đề họp',
                             ),
                           ),
-                        ),
-                      ],
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: dateCtrl,
+                            readOnly: true,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Thời gian',
+                              hint: 'YYYY-MM-DD HH:MM:SS',
+                            ).copyWith(
+                              suffixIcon: const Icon(
+                                Icons.calendar_month_outlined,
+                              ),
+                            ),
+                            onTap: () => _pickDateTime(dateCtrl),
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: linkCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Liên kết họp',
+                            ),
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: descCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Ghi chú họp',
+                            ),
+                            maxLines: 2,
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: minutesCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Biên bản họp',
+                            ),
+                            maxLines: 2,
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final List<int>? picked =
+                                    await _openAttendeePicker(
+                                      selectedAttendeeIds.toList(),
+                                    );
+                                if (!context.mounted || picked == null) return;
+                                setSheetState(() {
+                                  selectedAttendeeIds = picked.toSet();
+                                });
+                              },
+                              icon: const Icon(Icons.group_outlined, size: 18),
+                              label: Text(
+                                'Chọn thành viên (${selectedAttendeeIds.length})',
+                              ),
+                            ),
+                          ),
+                          if (attendeeNames.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children:
+                                  attendeeNames
+                                      .map(
+                                        (String name) => StitchStatusPill(
+                                          label: name,
+                                          color: StitchTheme.primaryStrong,
+                                          icon: Icons.person_outline,
+                                        ),
+                                      )
+                                      .toList(),
+                            ),
+                          ],
+                          if (message.isNotEmpty) ...<Widget>[
+                            SizedBox(height: kStitchTaskFormGap),
+                            StitchFeedbackBanner(
+                              message: message,
+                              isError: _messageIsError(),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  StitchFormSheetActions(
+                    primaryLabel:
+                        editingMeetingId == null
+                            ? 'Tạo lịch họp'
+                            : 'Cập nhật lịch họp',
+                    onPrimary:
+                        widget.canManage
+                            ? () async {
+                              final bool ok = await _save();
+                              if (!context.mounted) return;
+                              if (ok) {
+                                Navigator.of(context).pop();
+                              } else {
+                                setSheetState(() {});
+                              }
+                            }
+                            : null,
+                  ),
+                ],
               ),
             );
           },
@@ -627,70 +614,118 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
   void _showMeetingDetails(Map<String, dynamic> meeting) {
     final List<dynamic> attendees =
         (meeting['attendees'] ?? <dynamic>[]) as List<dynamic>;
+    Widget infoRow(IconData icon, String label, String value) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Icon(icon, size: 18, color: StitchTheme.textMuted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: StitchTheme.textSubtle,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    value.trim().isEmpty ? '—' : value,
+                    style: const TextStyle(
+                      color: StitchTheme.textMain,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         return Container(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          decoration: const BoxDecoration(
-            color: StitchTheme.bg,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
+          decoration: stitchFormSheetSurfaceDecoration(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                (meeting['title'] ?? 'Lịch họp').toString(),
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
+              StitchFormSheetTitleBar(
+                title: (meeting['title'] ?? 'Lịch họp').toString(),
+                subtitle: 'Thông tin chi tiết cuộc họp và thành viên tham gia.',
+                icon: Icons.event_note_outlined,
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      infoRow(
+                        Icons.schedule_outlined,
+                        'Bắt đầu',
+                        _displayDateTime(
+                          (meeting['scheduled_at'] ?? '').toString(),
+                        ),
+                      ),
+                      infoRow(
+                        Icons.link_outlined,
+                        'Liên kết',
+                        (meeting['meeting_link'] ?? '—').toString(),
+                      ),
+                      infoRow(
+                        Icons.notes_outlined,
+                        'Ghi chú',
+                        (meeting['description'] ?? '—').toString(),
+                      ),
+                      infoRow(
+                        Icons.article_outlined,
+                        'Biên bản',
+                        (meeting['minutes'] ?? '—').toString(),
+                      ),
+                      const SizedBox(height: 2),
+                      const StitchSectionHeader(title: 'Thành viên tham gia'),
+                      const SizedBox(height: 8),
+                      if (attendees.isEmpty)
+                        const StitchEmptyState(
+                          title: 'Không có thành viên',
+                          subtitle:
+                              'Cuộc họp này chưa có người tham gia được gán.',
+                          icon: Icons.group_off_outlined,
+                        )
+                      else
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children:
+                              attendees.map((dynamic attendee) {
+                                if (attendee is! Map<String, dynamic>) {
+                                  return const SizedBox.shrink();
+                                }
+                                final String name =
+                                    (attendee['user']?['name'] ??
+                                            '#${attendee['user_id']}')
+                                        .toString();
+                                return StitchStatusPill(
+                                  label: name,
+                                  color: StitchTheme.primaryStrong,
+                                  icon: Icons.person_outline,
+                                );
+                              }).toList(),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Bắt đầu: ${_displayDateTime((meeting['scheduled_at'] ?? '').toString())}',
-              ),
-              const SizedBox(height: 8),
-              Text('Liên kết: ${(meeting['meeting_link'] ?? '—').toString()}'),
-              const SizedBox(height: 8),
-              Text('Ghi chú: ${(meeting['description'] ?? '—').toString()}'),
-              const SizedBox(height: 8),
-              Text('Biên bản: ${(meeting['minutes'] ?? '—').toString()}'),
-              const SizedBox(height: 10),
-              const Text(
-                'Thành viên tham gia',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 6),
-              if (attendees.isEmpty)
-                const Text(
-                  'Không có thành viên.',
-                  style: TextStyle(color: StitchTheme.textMuted),
-                )
-              else
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children:
-                      attendees.map((dynamic attendee) {
-                        if (attendee is! Map<String, dynamic>) {
-                          return const SizedBox.shrink();
-                        }
-                        final String name =
-                            (attendee['user']?['name'] ??
-                                    '#${attendee['user_id']}')
-                                .toString();
-                        return Chip(
-                          label: Text(
-                            name,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          visualDensity: VisualDensity.compact,
-                        );
-                      }).toList(),
-                ),
             ],
           ),
         );
@@ -744,17 +779,25 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                     padding: EdgeInsets.only(bottom: 8),
                     child: LinearProgressIndicator(minHeight: 2),
                   ),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: CalendarDatePicker(
-                      initialDate: selectedDate,
-                      firstDate: DateTime(DateTime.now().year - 3),
-                      lastDate: DateTime(DateTime.now().year + 5),
-                      onDateChanged: (DateTime value) {
-                        setState(() => selectedDate = value);
-                      },
-                    ),
+                StitchAdminHeader(
+                  title: 'Lịch họp',
+                  subtitle:
+                      'Theo dõi lịch họp theo ngày, lọc theo thành viên và mở nhanh chi tiết cuộc họp.',
+                  icon: Icons.event_note_outlined,
+                  actionLabel: widget.canManage ? 'Thêm lịch' : null,
+                  onAction: widget.canManage ? () => _openForm() : null,
+                ),
+                const SizedBox(height: 14),
+                StitchFilterCard(
+                  title: 'Lịch tháng',
+                  subtitle: 'Chọn ngày để xem các cuộc họp tương ứng.',
+                  child: CalendarDatePicker(
+                    initialDate: selectedDate,
+                    firstDate: DateTime(DateTime.now().year - 3),
+                    lastDate: DateTime(DateTime.now().year + 5),
+                    onDateChanged: (DateTime value) {
+                      setState(() => selectedDate = value);
+                    },
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -841,22 +884,11 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        'Sự kiện ngày ${_fmtDate(selectedDate)}',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                    if (widget.canManage)
-                      ElevatedButton.icon(
-                        onPressed: () => _openForm(),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Thêm'),
-                      ),
-                  ],
+                const SizedBox(height: 16),
+                StitchSectionHeader(
+                  title: 'Sự kiện ngày ${_fmtDate(selectedDate)}',
+                  actionLabel: widget.canManage ? 'Thêm' : null,
+                  onAction: widget.canManage ? () => _openForm() : null,
                 ),
                 const SizedBox(height: 6),
                 const Text(
@@ -864,52 +896,67 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
                   style: TextStyle(fontSize: 12, color: StitchTheme.textMuted),
                 ),
                 if (message.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 8),
-                  Text(message),
+                  const SizedBox(height: 10),
+                  StitchFeedbackBanner(
+                    message: message,
+                    isError: _messageIsError(),
+                  ),
                 ],
                 if (loading && meetings.isEmpty) ...<Widget>[
                   const SizedBox(height: 12),
-                  const Center(child: CircularProgressIndicator()),
+                  const StitchLoadingState(label: 'Đang tải lịch họp...'),
                 ] else ...<Widget>[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   if (selectedDayMeetings.isEmpty)
-                    const Text(
-                      'Không có lịch họp trong ngày đã chọn.',
-                      style: TextStyle(color: StitchTheme.textMuted),
+                    const StitchEmptyState(
+                      title: 'Không có lịch họp trong ngày',
+                      subtitle:
+                          'Chọn ngày khác hoặc tạo lịch họp mới nếu bạn có quyền quản lý.',
+                      icon: Icons.event_busy_outlined,
                     ),
                   ...selectedDayMeetings.map((Map<String, dynamic> meeting) {
                     final int id = _parseInt(meeting['id']) ?? 0;
                     final List<dynamic> attendees =
                         (meeting['attendees'] ?? <dynamic>[]) as List<dynamic>;
-                    return Card(
-                      child: ListTile(
-                        onLongPress: () => _showMeetingDetails(meeting),
-                        title: Text(
-                          (meeting['title'] ?? 'Cuộc họp').toString(),
-                        ),
-                        subtitle: Text(
-                          '${_displayDateTime((meeting['scheduled_at'] ?? '').toString())}\n'
-                          'Thành viên: ${attendees.length}',
-                        ),
-                        isThreeLine: true,
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            if (widget.canManage)
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined),
-                                onPressed: () => _openForm(meeting: meeting),
-                              ),
-                            if (widget.canDelete)
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
-                                ),
-                                onPressed: () => _confirmDelete(id),
-                              ),
+                    return StitchAdminListItem(
+                      title: (meeting['title'] ?? 'Cuộc họp').toString(),
+                      subtitle: _displayDateTime(
+                        (meeting['scheduled_at'] ?? '').toString(),
+                      ),
+                      meta: <String>[
+                        'Thành viên: ${attendees.length}',
+                        'Giữ lâu để xem chi tiết',
+                      ],
+                      icon: Icons.event_available_outlined,
+                      accent: StitchTheme.primaryStrong,
+                      onTap: () => _showMeetingDetails(meeting),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          StitchStatusPill(
+                            label: '${attendees.length} người',
+                            color: StitchTheme.primaryStrong,
+                            icon: Icons.group_outlined,
+                          ),
+                          if (widget.canManage) ...<Widget>[
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              tooltip: 'Sửa lịch họp',
+                              onPressed: () => _openForm(meeting: meeting),
+                            ),
                           ],
-                        ),
+                          if (widget.canDelete)
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                                size: 18,
+                              ),
+                              tooltip: 'Xóa lịch họp',
+                              onPressed: () => _confirmDelete(id),
+                            ),
+                        ],
                       ),
                     );
                   }),

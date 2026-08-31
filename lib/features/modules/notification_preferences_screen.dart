@@ -8,6 +8,7 @@ import '../../core/messaging/app_tag_message.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/services/app_firebase.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class NotificationPreferencesScreen extends StatefulWidget {
@@ -168,176 +169,186 @@ class _NotificationPreferencesScreenState
 
     return Scaffold(
       appBar: AppBar(title: const Text('Quản lý thông báo')),
-      body:
-          _loading
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-                children: <Widget>[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: StitchTheme.border),
+      body: SafeArea(
+        child:
+            _loading
+                ? ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                  children: <Widget>[
+                    const StitchLoadingState(
+                      label: 'Đang tải cài đặt thông báo...',
                     ),
-                    child: Column(
-                      children: <Widget>[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: Image.asset(
-                            'icon.png',
-                            width: 64,
-                            height: 64,
-                            fit: BoxFit.cover,
-                          ),
+                  ],
+                )
+                : ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                  children: <Widget>[
+                    StitchAdminHeader(
+                      title: 'Quản lý thông báo',
+                      subtitle:
+                          'Kiểm soát quyền thiết bị, nhóm thông báo và trạng thái token nhận push.',
+                      icon: Icons.notifications_active_outlined,
+                      actionLabel:
+                          !_osPermissionEnabled ? 'Xin quyền thông báo' : null,
+                      onAction:
+                          !_osPermissionEnabled ? _requestOsPermission : null,
+                    ),
+                    const SizedBox(height: 14),
+                    StitchFilterCard(
+                      title: brand,
+                      subtitle: 'Quyền hệ điều hành: ${_authorizationLabel()}',
+                      trailing: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Image.asset(
+                          'icon.png',
+                          width: 54,
+                          height: 54,
+                          fit: BoxFit.cover,
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          brand,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Quyền hệ điều hành: ${_authorizationLabel()}',
-                          style: TextStyle(
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          StitchStatusPill(
+                            label:
+                                _osPermissionEnabled
+                                    ? 'Thiết bị đã cho phép'
+                                    : 'Thiết bị chưa cho phép',
                             color:
                                 _osPermissionEnabled
-                                    ? StitchTheme.success
-                                    : StitchTheme.warning,
+                                    ? StitchTheme.successStrong
+                                    : StitchTheme.warningStrong,
+                            icon:
+                                _osPermissionEnabled
+                                    ? Icons.check_circle_outline
+                                    : Icons.warning_amber_outlined,
                           ),
-                        ),
-                        if (!_osPermissionEnabled) ...<Widget>[
+                          if (!_osPermissionEnabled) ...<Widget>[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _requestOsPermission,
+                                icon: const Icon(
+                                  Icons.notifications_active_outlined,
+                                ),
+                                label: const Text('Xin quyền thông báo'),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    StitchFilterCard(
+                      title: 'Kênh nhận thông báo',
+                      subtitle:
+                          'Bật/tắt toàn bộ thông báo hoặc từng nhóm nghiệp vụ quan trọng.',
+                      child: Column(
+                        children: <Widget>[
+                          SwitchListTile.adaptive(
+                            value: _notificationsEnabled,
+                            title: const Text('Cho phép thông báo'),
+                            subtitle: const Text(
+                              'Tắt mục này sẽ chặn toàn bộ thông báo từ server.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            onChanged:
+                                _saving
+                                    ? null
+                                    : (bool value) async {
+                                      await _save(notificationsEnabled: value);
+                                      if (value &&
+                                          AppFirebase.isConfigured &&
+                                          !_osPermissionEnabled) {
+                                        await _requestOsPermission();
+                                      }
+                                      await _syncDeviceToken();
+                                    },
+                          ),
+                          const Divider(height: 1, thickness: 1),
+                          SwitchListTile.adaptive(
+                            value: _categorySystemEnabled,
+                            title: const Text('Thông báo hệ thống'),
+                            subtitle: const Text(
+                              'Nhắc deadline, đầu việc, lịch họp, chat công việc...',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            onChanged:
+                                (!_notificationsEnabled || _saving)
+                                    ? null
+                                    : (bool value) =>
+                                        _save(categorySystemEnabled: value),
+                          ),
+                          const Divider(height: 1, thickness: 1),
+                          SwitchListTile.adaptive(
+                            value: _categoryCrmEnabled,
+                            title: const Text('Thông báo realtime CRM'),
+                            subtitle: const Text(
+                              'Lead/hợp đồng và các thông báo realtime thuộc CRM.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            onChanged:
+                                (!_notificationsEnabled || _saving)
+                                    ? null
+                                    : (bool value) => _save(
+                                      categoryCrmRealtimeEnabled: value,
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    StitchFilterCard(
+                      title: 'Trạng thái thiết bị',
+                      subtitle:
+                          'Thông tin kỹ thuật phục vụ debug push notification.',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            'Nền tảng: ${Platform.isIOS ? 'iOS' : 'Android'}',
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          SelectableText(
+                            'API: ${AppEnv.apiBaseUrl}',
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Token: $tokenLabel',
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Cập nhật token: $updatedAt',
+                            style: const TextStyle(
+                              color: StitchTheme.textMuted,
+                            ),
+                          ),
                           const SizedBox(height: 10),
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton.icon(
-                              onPressed: _requestOsPermission,
-                              icon: const Icon(
-                                Icons.notifications_active_outlined,
-                              ),
-                              label: const Text('Xin quyền thông báo'),
+                              onPressed: _saving ? null : _syncDeviceToken,
+                              icon: const Icon(Icons.sync),
+                              label: const Text('Đồng bộ token thiết bị'),
                             ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: StitchTheme.border),
-                    ),
-                    child: Column(
-                      children: <Widget>[
-                        SwitchListTile.adaptive(
-                          value: _notificationsEnabled,
-                          title: const Text('Cho phép thông báo'),
-                          subtitle: const Text(
-                            'Tắt mục này sẽ chặn toàn bộ thông báo từ server.',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                          onChanged:
-                              _saving
-                                  ? null
-                                  : (bool value) async {
-                                    await _save(notificationsEnabled: value);
-                                    if (value &&
-                                        AppFirebase.isConfigured &&
-                                        !_osPermissionEnabled) {
-                                      await _requestOsPermission();
-                                    }
-                                    await _syncDeviceToken();
-                                  },
-                        ),
-                        const Divider(height: 1, thickness: 1),
-                        SwitchListTile.adaptive(
-                          value: _categorySystemEnabled,
-                          title: const Text('Thông báo hệ thống'),
-                          subtitle: const Text(
-                            'Nhắc deadline, đầu việc, lịch họp, chat công việc...',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                          onChanged:
-                              (!_notificationsEnabled || _saving)
-                                  ? null
-                                  : (bool value) =>
-                                      _save(categorySystemEnabled: value),
-                        ),
-                        const Divider(height: 1, thickness: 1),
-                        SwitchListTile.adaptive(
-                          value: _categoryCrmEnabled,
-                          title: const Text('Thông báo realtime CRM'),
-                          subtitle: const Text(
-                            'Lead/hợp đồng và các thông báo realtime thuộc CRM.',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                          onChanged:
-                              (!_notificationsEnabled || _saving)
-                                  ? null
-                                  : (bool value) =>
-                                      _save(categoryCrmRealtimeEnabled: value),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: StitchTheme.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Text(
-                          'Trạng thái thiết bị',
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Nền tảng: ${Platform.isIOS ? 'iOS' : 'Android'}',
-                          style: const TextStyle(color: StitchTheme.textMuted),
-                        ),
-                        const SizedBox(height: 4),
-                        SelectableText(
-                          'API: ${AppEnv.apiBaseUrl}',
-                          style: const TextStyle(
-                            color: StitchTheme.textMuted,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Token: $tokenLabel',
-                          style: const TextStyle(color: StitchTheme.textMuted),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Cập nhật token: $updatedAt',
-                          style: const TextStyle(color: StitchTheme.textMuted),
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _saving ? null : _syncDeviceToken,
-                            icon: const Icon(Icons.sync),
-                            label: const Text('Đồng bộ token thiết bị'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+      ),
     );
   }
 }

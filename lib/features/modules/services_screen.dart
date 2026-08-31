@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
 import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
@@ -200,6 +201,14 @@ class _ServicesScreenState extends State<ServicesScreen> {
       default:
         return 'Không rõ';
     }
+  }
+
+  bool _messageIsError() {
+    final String lower = message.toLowerCase();
+    return lower.contains('thất bại') ||
+        lower.contains('vui lòng') ||
+        lower.contains('khong') ||
+        lower.contains('không');
   }
 
   @override
@@ -484,150 +493,169 @@ class _ServicesScreenState extends State<ServicesScreen> {
             final List<String> labels = _labels();
             return Container(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
                 bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      editingId == null ? 'Tạo bản ghi' : 'Cập nhật bản ghi',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: projectIdCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Mã dự án *',
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: taskIdCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Mã công việc (tuỳ chọn)',
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: f1Ctrl,
-                      decoration: InputDecoration(
-                        labelText: labels[0],
-                        suffixIcon:
-                            _isDateField(0)
-                                ? IconButton(
-                                  onPressed: () => _pickDate(f1Ctrl),
-                                  icon: const Icon(
-                                    Icons.calendar_month_outlined,
-                                  ),
-                                )
-                                : null,
-                      ),
-                      readOnly: _isDateField(0),
-                      onTap: _isDateField(0) ? () => _pickDate(f1Ctrl) : null,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: f2Ctrl,
-                      decoration: InputDecoration(labelText: labels[1]),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: f3Ctrl,
-                      decoration: InputDecoration(labelText: labels[2]),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: f4Ctrl,
-                      decoration: InputDecoration(labelText: labels[3]),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: f5Ctrl,
-                      decoration: InputDecoration(
-                        labelText: labels[4],
-                        suffixIcon:
-                            _isDateField(4)
-                                ? IconButton(
-                                  onPressed: () => _pickDate(f5Ctrl),
-                                  icon: const Icon(
-                                    Icons.calendar_month_outlined,
-                                  ),
-                                )
-                                : null,
-                      ),
-                      readOnly: _isDateField(4),
-                      onTap: _isDateField(4) ? () => _pickDate(f5Ctrl) : null,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: f6Ctrl,
-                      decoration: InputDecoration(labelText: labels[5]),
-                    ),
-                    if (_normalizeType(selectedType) == 'content') ...<Widget>[
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: f7Ctrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Actual words',
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: f8Ctrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Duplicate (%)',
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ],
-                    if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(message),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
+              decoration: stitchFormSheetSurfaceDecoration(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  StitchFormSheetTitleBar(
+                    title:
+                        editingId == null ? 'Tạo bản ghi' : 'Cập nhật bản ghi',
+                    subtitle:
+                        'Loại dịch vụ hiện tại: ${_serviceLabel(selectedType)}.',
+                    icon: _serviceIcon(selectedType),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          TextField(
+                            controller: projectIdCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Mã dự án *',
+                            ),
+                            keyboardType: TextInputType.number,
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed:
-                                widget.canManage
-                                    ? () async {
-                                      final bool ok = await _save();
-                                      if (!mounted) return;
-                                      if (ok) {
-                                        Navigator.of(context).pop();
-                                      } else {
-                                        setSheetState(() {});
-                                      }
-                                    }
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: taskIdCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Mã công việc (tuỳ chọn)',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: f1Ctrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: labels[0],
+                            ).copyWith(
+                              suffixIcon:
+                                  _isDateField(0)
+                                      ? IconButton(
+                                        onPressed: () => _pickDate(f1Ctrl),
+                                        icon: const Icon(
+                                          Icons.calendar_month_outlined,
+                                        ),
+                                      )
+                                      : null,
+                            ),
+                            readOnly: _isDateField(0),
+                            onTap:
+                                _isDateField(0)
+                                    ? () => _pickDate(f1Ctrl)
                                     : null,
-                            child: Text(
-                              editingId == null ? 'Tạo bản ghi' : 'Cập nhật',
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: f2Ctrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: labels[1],
                             ),
                           ),
-                        ),
-                      ],
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: f3Ctrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: labels[2],
+                            ),
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: f4Ctrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: labels[3],
+                            ),
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: f5Ctrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: labels[4],
+                            ).copyWith(
+                              suffixIcon:
+                                  _isDateField(4)
+                                      ? IconButton(
+                                        onPressed: () => _pickDate(f5Ctrl),
+                                        icon: const Icon(
+                                          Icons.calendar_month_outlined,
+                                        ),
+                                      )
+                                      : null,
+                            ),
+                            readOnly: _isDateField(4),
+                            onTap:
+                                _isDateField(4)
+                                    ? () => _pickDate(f5Ctrl)
+                                    : null,
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: f6Ctrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: labels[5],
+                            ),
+                          ),
+                          if (_normalizeType(selectedType) ==
+                              'content') ...<Widget>[
+                            SizedBox(height: kStitchTaskFormGap),
+                            TextField(
+                              controller: f7Ctrl,
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Actual words',
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                            SizedBox(height: kStitchTaskFormGap),
+                            TextField(
+                              controller: f8Ctrl,
+                              decoration: stitchSheetInputDecoration(
+                                context,
+                                label: 'Duplicate (%)',
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ],
+                          if (message.isNotEmpty) ...<Widget>[
+                            SizedBox(height: kStitchTaskFormGap),
+                            StitchFeedbackBanner(
+                              message: message,
+                              isError: _messageIsError(),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  StitchFormSheetActions(
+                    primaryLabel:
+                        editingId == null ? 'Tạo bản ghi' : 'Cập nhật',
+                    onPrimary:
+                        widget.canManage
+                            ? () async {
+                              final bool ok = await _save();
+                              if (!context.mounted) return;
+                              if (ok) {
+                                Navigator.of(context).pop();
+                              } else {
+                                setSheetState(() {});
+                              }
+                            }
+                            : null,
+                  ),
+                ],
               ),
             );
           },
@@ -695,107 +723,108 @@ class _ServicesScreenState extends State<ServicesScreen> {
       body: RefreshIndicator(
         onRefresh: _fetch,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           children: <Widget>[
-            const StitchHeroCard(
+            StitchAdminHeader(
               title: 'Quy trình dịch vụ',
-              subtitle: 'Quản lý quy trình chi tiết theo từng loại dịch vụ.',
+              subtitle:
+                  'Quản lý chi tiết từng bản ghi theo loại dịch vụ: Backlinks, Content, Audit và Website Care.',
+              icon: Icons.design_services_outlined,
+              actionLabel: widget.canManage ? 'Thêm bản ghi' : null,
+              onAction: widget.canManage ? () => _openForm() : null,
             ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: selectedType,
-              decoration: const InputDecoration(labelText: 'Loại dịch vụ'),
-              items:
-                  serviceOptions
-                      .map(
-                        (_ServiceOption e) => DropdownMenuItem<String>(
-                          value: e.value,
-                          child: Text(e.label),
-                        ),
-                      )
-                      .toList(),
-              onChanged: (String? value) {
-                if (value == null) return;
-                setState(() {
-                  selectedType = value;
-                  _clearForm();
-                });
-                _fetch();
-              },
-            ),
-            const SizedBox(height: 10),
-            if (message.isNotEmpty) Text(message),
-            const SizedBox(height: 8),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    'Danh sách bản ghi ${_serviceLabel(selectedType)}',
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ),
-                if (widget.canManage)
-                  ElevatedButton.icon(
-                    onPressed: () => _openForm(),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Thêm'),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (loading) const Center(child: CircularProgressIndicator()),
-            ...rows.map(
-              (Map<String, dynamic> item) => Card(
-                child: ListTile(
-                  title: Text(_itemTitle(item)),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(_itemSubtitle(item)),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _statusColor(
-                            _itemStatus(item),
-                          ).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          _itemStatus(item),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: _statusColor(_itemStatus(item)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      if (widget.canManage)
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined),
-                          onPressed: () => _openForm(item: item),
-                        ),
-                      if (widget.canDelete)
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.red,
-                          ),
-                          onPressed: () => _delete((item['id'] ?? 0) as int),
-                        ),
-                    ],
-                  ),
+            const SizedBox(height: 14),
+            StitchFilterCard(
+              title: 'Bộ lọc dịch vụ',
+              subtitle: 'Chọn loại dịch vụ để xem đúng bộ dữ liệu cần xử lý.',
+              child: StitchFilterField(
+                label: 'Loại dịch vụ',
+                child: DropdownButtonFormField<String>(
+                  value: selectedType,
+                  decoration: const InputDecoration(hintText: 'Loại dịch vụ'),
+                  items:
+                      serviceOptions
+                          .map(
+                            (_ServiceOption e) => DropdownMenuItem<String>(
+                              value: e.value,
+                              child: Text(e.label),
+                            ),
+                          )
+                          .toList(),
+                  onChanged: (String? value) {
+                    if (value == null) return;
+                    setState(() {
+                      selectedType = value;
+                      _clearForm();
+                    });
+                    _fetch();
+                  },
                 ),
               ),
             ),
+            if (message.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: StitchFeedbackBanner(
+                  message: message,
+                  isError: _messageIsError(),
+                ),
+              ),
+            const SizedBox(height: 16),
+            StitchSectionHeader(
+              title: 'Danh sách ${_serviceLabel(selectedType)}',
+              actionLabel: widget.canManage ? 'Thêm' : null,
+              onAction: widget.canManage ? () => _openForm() : null,
+            ),
+            const SizedBox(height: 10),
+            if (loading)
+              const StitchLoadingState(label: 'Đang tải bản ghi dịch vụ...')
+            else if (rows.isEmpty)
+              const StitchEmptyState(
+                title: 'Chưa có bản ghi',
+                subtitle:
+                    'Khi có dữ liệu theo loại dịch vụ đã chọn, danh sách sẽ hiển thị ở đây.',
+                icon: Icons.design_services_outlined,
+              ),
+            ...rows.map((Map<String, dynamic> item) {
+              final String status = _itemStatus(item);
+              final Color statusColor = _statusColor(status);
+              return StitchAdminListItem(
+                title: _itemTitle(item),
+                subtitle: _itemSubtitle(item),
+                meta: <String>[
+                  'Dự án: ${(item['project_id'] ?? '—').toString()}',
+                  if ((item['task_id'] ?? '').toString().trim().isNotEmpty)
+                    'Công việc: ${item['task_id']}',
+                ],
+                icon: _serviceIcon(selectedType),
+                accent: statusColor,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    StitchStatusPill(label: status, color: statusColor),
+                    if (widget.canManage) ...<Widget>[
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        tooltip: 'Sửa',
+                        onPressed: () => _openForm(item: item),
+                      ),
+                    ],
+                    if (widget.canDelete)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                          size: 18,
+                        ),
+                        tooltip: 'Xóa',
+                        onPressed: () => _delete((item['id'] ?? 0) as int),
+                      ),
+                  ],
+                ),
+              );
+            }),
           ],
         ),
       ),

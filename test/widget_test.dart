@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import 'package:Teso_Internal_Task_Manager/app/internal_task_app.dart';
+import 'package:teso_internal_task_manager/app/internal_task_app.dart';
 
 void main() {
   testWidgets('app khởi tạo MaterialApp', (WidgetTester tester) async {
@@ -22,7 +22,7 @@ REQUEST_TIMEOUT_SECONDS=15
 ''',
     );
 
-    await tester.pumpWidget(const InternalTaskApp());
+    await tester.pumpWidget(const InternalTaskApp(home: SizedBox.shrink()));
 
     expect(find.byType(MaterialApp), findsOneWidget);
   });

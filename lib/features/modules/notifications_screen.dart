@@ -7,6 +7,7 @@ import '../../core/messaging/app_tag_message.dart';
 import '../../core/services/notification_router.dart';
 import '../../core/theme/stitch_theme.dart';
 import '../../core/services/app_firebase.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'chat_screen.dart';
 
@@ -350,44 +351,56 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: <Widget>[
+            StitchAdminHeader(
+              title: 'Thông báo',
+              subtitle:
+                  'Theo dõi cập nhật công việc, deadline, hợp đồng, CRM và các nhắc nhở nội bộ.',
+              icon: Icons.notifications_active_outlined,
+              actionLabel: _unreadCount > 0 ? 'Đọc tất cả' : null,
+              onAction: _unreadCount > 0 ? _markAllRead : null,
+            ),
+            const SizedBox(height: 12),
             if (notifications.isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: StitchTheme.border),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        _unreadCount > 0
-                            ? 'Bạn còn $_unreadCount thông báo chưa đọc.'
-                            : 'Tất cả thông báo đã được đọc.',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: StitchTheme.textMuted,
-                          fontWeight: FontWeight.w500,
-                        ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: StitchFilterCard(
+                  title:
+                      _unreadCount > 0
+                          ? 'Bạn còn $_unreadCount thông báo chưa đọc'
+                          : 'Tất cả thông báo đã được đọc',
+                  subtitle:
+                      _readCount > 0
+                          ? 'Có $_readCount thông báo đã đọc trong danh sách.'
+                          : 'Thông báo mới sẽ tự cập nhật khi app đang mở.',
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      StitchStatusPill(
+                        label: 'Chưa đọc: $_unreadCount',
+                        color:
+                            _unreadCount > 0
+                                ? StitchTheme.warningStrong
+                                : StitchTheme.successStrong,
+                        icon: Icons.mark_email_unread_outlined,
                       ),
-                    ),
-                  ],
+                      StitchStatusPill(
+                        label: 'Đã đọc: $_readCount',
+                        color: StitchTheme.textMuted,
+                        icon: Icons.mark_email_read_outlined,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             if (loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            if (notifications.isEmpty)
-              const Text(
-                'Chưa có thông báo mới.',
-                style: TextStyle(color: StitchTheme.textMuted),
+              const StitchLoadingState(label: 'Đang tải thông báo...')
+            else if (notifications.isEmpty)
+              const StitchEmptyState(
+                title: 'Chưa có thông báo mới',
+                subtitle:
+                    'Khi có cập nhật từ công việc, CRM, hợp đồng hoặc deadline, thông báo sẽ xuất hiện tại đây.',
+                icon: Icons.notifications_none_outlined,
               )
             else
               ...notifications.map(_buildNotificationCard),

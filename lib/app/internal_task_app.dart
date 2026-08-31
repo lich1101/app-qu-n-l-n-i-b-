@@ -9,7 +9,9 @@ import '../core/theme/stitch_theme.dart';
 import '../features/home/home_shell.dart';
 
 class InternalTaskApp extends StatelessWidget {
-  const InternalTaskApp({super.key});
+  const InternalTaskApp({super.key, this.home});
+
+  final Widget? home;
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +65,7 @@ class InternalTaskApp extends StatelessWidget {
               ),
             );
           },
-          home: const HomeShell(),
+          home: home ?? const HomeShell(),
         );
       },
     );

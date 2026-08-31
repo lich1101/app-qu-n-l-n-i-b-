@@ -509,7 +509,7 @@ class _TasksScreenState extends State<TasksScreen> {
                               _InsightMetric(
                                 label:
                                     isLate ? 'Đang chậm' : 'Đang bám tiến độ',
-                                value: '${lagPercent}%',
+                                value: '$lagPercent%',
                                 tone:
                                     isLate
                                         ? StitchTheme.danger
@@ -764,7 +764,7 @@ class _TasksScreenState extends State<TasksScreen> {
                           : noteCtrl.text.trim(),
                   attachment: attachFile,
                 );
-                if (!mounted) return;
+                if (!mounted || !ctx.mounted) return;
                 if (ok) {
                   Navigator.of(ctx).pop();
                   await refresh(setSheetState);
@@ -1273,7 +1273,7 @@ class _TasksScreenState extends State<TasksScreen> {
                             ],
                           ),
                         );
-                      }).toList(),
+                      }),
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerRight,
@@ -1330,6 +1330,7 @@ class _TasksScreenState extends State<TasksScreen> {
       );
       final List<Map<String, dynamic>> existingItems = await widget.apiService
           .getTaskItems(token, taskId, perPage: 200);
+      if (!mounted) return;
       final Map<String, dynamic>? projectMap =
           task['project'] is Map<String, dynamic>
               ? task['project'] as Map<String, dynamic>
@@ -1513,7 +1514,7 @@ class _TasksScreenState extends State<TasksScreen> {
                           : deadlineCtrl.text,
                   assigneeId: assigneeId,
                 );
-                if (!mounted) return;
+                if (!mounted || !ctx.mounted) return;
                 if (ok) {
                   Navigator.of(ctx).pop();
                   await refresh(setSheetState);
@@ -2271,7 +2272,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                             ],
                                           ),
                                         );
-                                      }).toList(),
+                                      }),
                                   ],
                                 ),
                               ),
@@ -2605,15 +2606,19 @@ class _TasksScreenState extends State<TasksScreen> {
                                                     initialDate: now,
                                                   );
                                               if (date == null ||
-                                                  !context.mounted)
+                                                  !context.mounted) {
                                                 return;
+                                              }
                                               final TimeOfDay? time =
                                                   await showTimePicker(
                                                     context: context,
                                                     initialTime:
                                                         TimeOfDay.now(),
                                                   );
-                                              if (time == null) return;
+                                              if (time == null ||
+                                                  !context.mounted) {
+                                                return;
+                                              }
                                               setSheetState(() {
                                                 reminderAtCtrl.text =
                                                     _fmtDateTime(date, time);

@@ -80,6 +80,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   List<String> savedAccounts = <String>[];
   bool rememberAccount = true;
   StreamSubscription<RemoteMessage>? _foregroundSub;
+  StreamSubscription<RemoteMessage>? _messageOpenedSub;
   Timer? _sessionGuardTimer;
   bool _isCheckingSession = false;
   bool _permissionPromptQueued = false;
@@ -100,6 +101,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (AppFirebase.isConfigured) {
       _setupPushNotificationInteractions();
       AppFirebase.ensureForegroundMessaging().then((_) {
+        if (!mounted) return;
         _foregroundSub?.cancel();
         _foregroundSub = AppFirebase.foregroundMessages.listen((_) async {
           await _refreshNotificationBadge();
@@ -112,12 +114,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (!AppFirebase.isConfigured) return;
 
     // 1. Handle message when app is in background but still running
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    _messageOpenedSub?.cancel();
+    _messageOpenedSub = FirebaseMessaging.onMessageOpenedApp.listen((
+      RemoteMessage message,
+    ) {
       _handlePushNavigation(message);
     });
 
     // 2. Handle message when app was terminated
     final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (!mounted) return;
     if (initialMessage != null) {
       _pendingInitialMessage = initialMessage;
     }
@@ -147,6 +153,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _foregroundSub?.cancel();
+    _messageOpenedSub?.cancel();
     _sessionGuardTimer?.cancel();
     emailController.dispose();
     passwordController.dispose();
@@ -431,23 +438,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return;
       }
 
-      final AttendanceWifiPermissionState permissionState =
-          await AttendanceWifiService.requestPermission();
       final AttendanceWifiSnapshot snapshot =
-          await AttendanceWifiService.readCurrentWifi(
-            requestPermissions: false,
-          );
-      if (!permissionState.permissionGranted) {
+          await AttendanceWifiService.readCurrentWifi(requestPermissions: true);
+      if (!snapshot.hasWifi) {
         AppTagMessage.show(
-          permissionState.requiresSettings
-              ? 'Quyền vị trí đang bị chặn. Vui lòng mở Cài đặt để cấp quyền rồi thử lại.'
-              : 'Ứng dụng cần quyền Vị trí để kiểm tra Wi-Fi công ty.',
+          snapshot.error ?? 'Wi-Fi hiện tại chưa đúng Wi-Fi công ty.',
           isError: true,
         );
-        return;
-      }
-      if (!snapshot.hasWifi) {
-        AppTagMessage.show('Wi-Fi hiện tại chưa đúng Wi-Fi công ty.');
         return;
       }
 
@@ -2127,6 +2124,7 @@ class _EssentialPermissionSheet extends StatelessWidget {
 
   static String _wifiStatusLabel(AppPermissionBootstrapState state) {
     if (state.wifiGranted) return 'Đã sẵn sàng';
+    if (!state.wifiPermission.locationServiceEnabled) return 'Cần bật Vị trí';
     if (state.wifiPermission.requiresSettings) return 'Cần mở Cài đặt';
     return 'Cần cấp quyền';
   }
@@ -2223,6 +2221,9 @@ class _EssentialPermissionSheet extends StatelessWidget {
             description:
                 state.wifiGranted
                     ? 'Đã có thể đọc SSID/BSSID và kiểm tra đúng mạng công ty.'
+                    : state.wifiPermission.locationPermissionGranted &&
+                        !state.wifiPermission.locationServiceEnabled
+                    ? 'Bạn đã cấp quyền Vị trí, nhưng máy đang tắt Dịch vụ vị trí/GPS nên app chưa đọc được SSID/BSSID.'
                     : 'Ứng dụng cần quyền Vị trí (Android/iOS) để đọc Wi‑Fi hiện tại và xác minh BSSID nội bộ khi chấm công.',
             color: _wifiColor(state),
           ),

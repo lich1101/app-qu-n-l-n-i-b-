@@ -66,6 +66,15 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
     return '${VietnamTime.formatTime(date)} ${VietnamTime.formatDate(date)}';
   }
 
+  String _subjectLabel(String subjectType, String subjectId) {
+    final String type = subjectType.trim();
+    final String id = subjectId.trim();
+    if (type.isEmpty && id.isEmpty) return 'Không có đối tượng';
+    if (type.isEmpty) return '#$id';
+    if (id.isEmpty) return type;
+    return '$type #$id';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -75,26 +84,26 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: <Widget>[
-            const StitchHeroCard(
-              title: 'System log',
+            const StitchAdminHeader(
+              title: 'Nhật ký hệ thống',
               subtitle:
-                  'Theo dõi lịch sử thao tác, thay đổi trạng thái, upload.',
+                  'Theo dõi lịch sử thao tác, thay đổi trạng thái và hoạt động upload trong hệ thống.',
+              icon: Icons.history_toggle_off_outlined,
             ),
             const SizedBox(height: 12),
             if (message.isNotEmpty)
-              Text(
-                message,
-                style: const TextStyle(color: StitchTheme.textMuted),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: StitchFeedbackBanner(message: message),
               ),
             if (loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            if (!loading && logs.isEmpty && message.isEmpty)
-              const Text(
-                'Chưa có activity log.',
-                style: TextStyle(color: StitchTheme.textMuted),
+              const StitchLoadingState(label: 'Đang tải nhật ký hệ thống...')
+            else if (logs.isEmpty && message.isEmpty)
+              const StitchEmptyState(
+                title: 'Chưa có activity log',
+                subtitle:
+                    'Khi có thao tác tạo, sửa, đổi trạng thái hoặc upload, lịch sử sẽ hiển thị tại đây.',
+                icon: Icons.manage_history_outlined,
               ),
             ...logs.map((Map<String, dynamic> log) {
               final Map<String, dynamic>? user =
@@ -107,44 +116,12 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
               final String time = _formatTime(
                 (log['created_at'] ?? '').toString(),
               );
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: StitchTheme.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            action.replaceAll('_', ' '),
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                        Text(
-                          time,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: StitchTheme.textSubtle,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '$subjectType #$subjectId • $actor',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: StitchTheme.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
+              return StitchAdminListItem(
+                title: action.replaceAll('_', ' '),
+                subtitle: _subjectLabel(subjectType, subjectId),
+                meta: <String>[actor, time],
+                icon: Icons.bolt_outlined,
+                accent: StitchTheme.primaryStrong,
               );
             }),
           ],

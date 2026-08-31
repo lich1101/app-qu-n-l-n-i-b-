@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class LeadFormsScreen extends StatefulWidget {
@@ -75,6 +77,11 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
       return null;
     }
     return int.tryParse(value.toString());
+  }
+
+  bool _messageIsError() {
+    final String lower = message.toLowerCase();
+    return lower.contains('thất bại') || lower.contains('vui lòng');
   }
 
   @override
@@ -221,131 +228,138 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
                 bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.bg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      editingId == null ? 'Tạo form' : 'Sửa form',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Tên form'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: slugCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Slug (không dấu)',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int>(
-                      value: leadTypeId,
-                      decoration: const InputDecoration(
-                        labelText: 'Trạng thái khách hàng tiềm năng',
-                      ),
-                      items:
-                          leadTypes
-                              .map(
-                                (type) => DropdownMenuItem<int>(
-                                  value: type['id'] as int,
-                                  child: Text((type['name'] ?? '').toString()),
-                                ),
-                              )
-                              .toList(),
-                      onChanged:
-                          (value) => setSheetState(() => leadTypeId = value),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int>(
-                      value: departmentId,
-                      decoration: const InputDecoration(
-                        labelText: 'Phòng ban nhận khách hàng tiềm năng',
-                      ),
-                      items:
-                          departments
-                              .map(
-                                (dept) => DropdownMenuItem<int>(
-                                  value: dept['id'] as int,
-                                  child: Text((dept['name'] ?? '').toString()),
-                                ),
-                              )
-                              .toList(),
-                      onChanged:
-                          (value) => setSheetState(() => departmentId = value),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: redirectCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Redirect URL',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(labelText: 'Mô tả'),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Kích hoạt form'),
-                      value: isActive,
-                      onChanged:
-                          (value) => setSheetState(() => isActive = value),
-                    ),
-                    if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        message,
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final bool ok = await _save();
-                              if (!context.mounted) {
-                                return;
-                              }
-                              if (ok) {
-                                Navigator.of(context).pop();
-                              } else {
-                                setSheetState(() {});
-                              }
-                            },
-                            child: Text(
-                              editingId == null ? 'Tạo mới' : 'Cập nhật',
+              decoration: stitchFormSheetSurfaceDecoration(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  StitchFormSheetTitleBar(
+                    title: editingId == null ? 'Tạo form' : 'Sửa form',
+                    subtitle:
+                        'Cấu hình nguồn form, trạng thái lead và phòng ban tiếp nhận.',
+                    icon:
+                        editingId == null
+                            ? Icons.post_add_rounded
+                            : Icons.edit_document,
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          TextField(
+                            controller: nameCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Tên form',
                             ),
                           ),
-                        ),
-                      ],
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: slugCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Slug (không dấu)',
+                            ),
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          DropdownButtonFormField<int>(
+                            value: leadTypeId,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Trạng thái khách hàng tiềm năng',
+                            ),
+                            items:
+                                leadTypes
+                                    .map(
+                                      (type) => DropdownMenuItem<int>(
+                                        value: type['id'] as int,
+                                        child: Text(
+                                          (type['name'] ?? '').toString(),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) =>
+                                    setSheetState(() => leadTypeId = value),
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          DropdownButtonFormField<int>(
+                            value: departmentId,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Phòng ban nhận lead',
+                            ),
+                            items:
+                                departments
+                                    .map(
+                                      (dept) => DropdownMenuItem<int>(
+                                        value: dept['id'] as int,
+                                        child: Text(
+                                          (dept['name'] ?? '').toString(),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) =>
+                                    setSheetState(() => departmentId = value),
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: redirectCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Redirect URL',
+                            ),
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          TextField(
+                            controller: descCtrl,
+                            decoration: stitchSheetInputDecoration(
+                              context,
+                              label: 'Mô tả',
+                            ),
+                            maxLines: 2,
+                          ),
+                          SizedBox(height: kStitchTaskFormGap),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Kích hoạt form'),
+                            value: isActive,
+                            onChanged:
+                                (value) =>
+                                    setSheetState(() => isActive = value),
+                          ),
+                          if (message.isNotEmpty) ...<Widget>[
+                            SizedBox(height: kStitchTaskFormGap),
+                            StitchFeedbackBanner(
+                              message: message,
+                              isError: _messageIsError(),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  StitchFormSheetActions(
+                    primaryLabel: editingId == null ? 'Tạo mới' : 'Cập nhật',
+                    onPrimary: () async {
+                      final bool ok = await _save();
+                      if (!context.mounted) {
+                        return;
+                      }
+                      if (ok) {
+                        Navigator.of(context).pop();
+                      } else {
+                        setSheetState(() {});
+                      }
+                    },
+                  ),
+                ],
               ),
             );
           },
@@ -383,70 +397,104 @@ class _LeadFormsScreenState extends State<LeadFormsScreen> {
                       padding: EdgeInsets.only(bottom: 8),
                       child: LinearProgressIndicator(minHeight: 2),
                     ),
-                  Row(
-                    children: <Widget>[
-                      const Expanded(
-                        child: Text(
-                          'Danh sách form',
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                      if (widget.canManage)
-                        ElevatedButton.icon(
-                          onPressed: () => _openForm(),
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Thêm mới'),
-                        ),
-                    ],
+                  StitchAdminHeader(
+                    title: 'Form tư vấn',
+                    subtitle:
+                        'Quản lý các form thu lead, slug công khai, trạng thái phân loại và phòng ban tiếp nhận.',
+                    icon: Icons.dynamic_form_outlined,
+                    actionLabel: widget.canManage ? 'Thêm form' : null,
+                    onAction: widget.canManage ? () => _openForm() : null,
                   ),
                   if (message.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        message,
-                        style: const TextStyle(color: StitchTheme.textMuted),
+                      padding: const EdgeInsets.only(top: 12),
+                      child: StitchFeedbackBanner(
+                        message: message,
+                        isError: _messageIsError(),
                       ),
                     ),
                   const SizedBox(height: 12),
                   if (loading && forms.isEmpty)
-                    const Center(child: CircularProgressIndicator())
+                    const StitchLoadingState(
+                      label: 'Đang tải danh sách form...',
+                    )
+                  else if (forms.isEmpty)
+                    const StitchEmptyState(
+                      title: 'Chưa có form tư vấn',
+                      subtitle:
+                          'Tạo form mới để thu khách hàng tiềm năng và tự động chuyển về đúng phòng ban.',
+                      icon: Icons.dynamic_form_outlined,
+                    )
                   else
                     ...forms.map((form) {
-                      return Card(
-                        child: ListTile(
-                          title: Text((form['name'] ?? '').toString()),
-                          subtitle: Text(
-                            'Slug: ${(form['slug'] ?? '').toString()}',
-                          ),
-                          trailing:
-                              widget.canManage
-                                  ? Wrap(
-                                    spacing: 4,
-                                    children: <Widget>[
-                                      IconButton(
-                                        icon: const Icon(Icons.edit, size: 18),
-                                        onPressed: () => _openForm(form: form),
-                                        tooltip: 'Sửa',
+                      final bool active = form['is_active'] != false;
+                      return StitchAdminListItem(
+                        title: (form['name'] ?? 'Form tư vấn').toString(),
+                        subtitle:
+                            (form['description'] ??
+                                    'Slug: ${form['slug'] ?? '—'}')
+                                .toString(),
+                        meta: <String>[
+                          'Slug: ${(form['slug'] ?? '—').toString()}',
+                          if ((form['redirect_url'] ?? '')
+                              .toString()
+                              .trim()
+                              .isNotEmpty)
+                            'Có redirect',
+                        ],
+                        icon: Icons.article_outlined,
+                        accent:
+                            active
+                                ? StitchTheme.primaryStrong
+                                : StitchTheme.textMuted,
+                        trailing:
+                            widget.canManage
+                                ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    StitchStatusPill(
+                                      label: active ? 'Đang bật' : 'Đang tắt',
+                                      color:
+                                          active
+                                              ? StitchTheme.successStrong
+                                              : StitchTheme.textMuted,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        size: 18,
                                       ),
-                                      IconButton(
-                                        icon: const Icon(Icons.copy, size: 18),
-                                        onPressed:
-                                            () => _duplicate(form['id'] as int),
-                                        tooltip: 'Sao chép',
+                                      onPressed: () => _openForm(form: form),
+                                      tooltip: 'Sửa',
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.copy_outlined,
+                                        size: 18,
                                       ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete,
-                                          size: 18,
-                                        ),
-                                        onPressed:
-                                            () => _delete(form['id'] as int),
-                                        tooltip: 'Xóa',
+                                      onPressed:
+                                          () => _duplicate(form['id'] as int),
+                                      tooltip: 'Sao chép',
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 18,
                                       ),
-                                    ],
-                                  )
-                                  : null,
-                        ),
+                                      onPressed:
+                                          () => _delete(form['id'] as int),
+                                      tooltip: 'Xóa',
+                                    ),
+                                  ],
+                                )
+                                : StitchStatusPill(
+                                  label: active ? 'Đang bật' : 'Đang tắt',
+                                  color:
+                                      active
+                                          ? StitchTheme.successStrong
+                                          : StitchTheme.textMuted,
+                                ),
                       );
                     }),
                 ]),

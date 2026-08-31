@@ -3474,10 +3474,66 @@ class MobileApiService {
     String? requestDate,
     String? requestEndDate,
     String? expectedCheckInTime,
+    String? outsideStartTime,
+    String? outsideEndTime,
     String? shiftWorkTypeId,
     List<Map<String, String>>? correctionEntries,
+    List<String>? attachmentPaths,
     String? content,
   }) async {
+    final List<String> validAttachmentPaths =
+        (attachmentPaths ?? <String>[]).where(_fileExists).take(5).toList();
+    if (validAttachmentPaths.isNotEmpty) {
+      final http.MultipartRequest request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${AppEnv.apiBaseUrl}/attendance/requests'),
+      );
+      request.headers.addAll(<String, String>{
+        ..._authHeaders(token),
+        'Accept': 'application/json',
+      });
+      request.fields['request_type'] = requestType;
+      request.fields['title'] = title;
+      if (requestDate != null && requestDate.trim().isNotEmpty) {
+        request.fields['request_date'] = requestDate.trim();
+      }
+      if (requestEndDate != null && requestEndDate.trim().isNotEmpty) {
+        request.fields['request_end_date'] = requestEndDate.trim();
+      }
+      if (expectedCheckInTime != null &&
+          expectedCheckInTime.trim().isNotEmpty) {
+        request.fields['expected_check_in_time'] = expectedCheckInTime.trim();
+      }
+      if (outsideStartTime != null && outsideStartTime.trim().isNotEmpty) {
+        request.fields['outside_start_time'] = outsideStartTime.trim();
+      }
+      if (outsideEndTime != null && outsideEndTime.trim().isNotEmpty) {
+        request.fields['outside_end_time'] = outsideEndTime.trim();
+      }
+      if (shiftWorkTypeId != null && shiftWorkTypeId.trim().isNotEmpty) {
+        request.fields['shift_work_type_id'] = shiftWorkTypeId.trim();
+      }
+      if (correctionEntries != null && correctionEntries.isNotEmpty) {
+        for (int i = 0; i < correctionEntries.length; i++) {
+          final Map<String, String> entry = correctionEntries[i];
+          request.fields['correction_entries[$i][request_date]'] =
+              (entry['request_date'] ?? '').trim();
+          request.fields['correction_entries[$i][check_in_time]'] =
+              (entry['check_in_time'] ?? '').trim();
+        }
+      }
+      if (content != null && content.trim().isNotEmpty) {
+        request.fields['content'] = content.trim();
+      }
+      for (final String path in validAttachmentPaths) {
+        request.files.add(
+          await http.MultipartFile.fromPath('attachments[]', path),
+        );
+      }
+      final http.StreamedResponse streamed = await request.send();
+      final http.Response res = await http.Response.fromStream(streamed);
+      return _withMeta(res);
+    }
     final http.Response res = await http.post(
       Uri.parse('${AppEnv.apiBaseUrl}/attendance/requests'),
       headers: _jsonHeaders(token),
@@ -3491,6 +3547,10 @@ class MobileApiService {
         if (expectedCheckInTime != null &&
             expectedCheckInTime.trim().isNotEmpty)
           'expected_check_in_time': expectedCheckInTime.trim(),
+        if (outsideStartTime != null && outsideStartTime.trim().isNotEmpty)
+          'outside_start_time': outsideStartTime.trim(),
+        if (outsideEndTime != null && outsideEndTime.trim().isNotEmpty)
+          'outside_end_time': outsideEndTime.trim(),
         if (shiftWorkTypeId != null && shiftWorkTypeId.trim().isNotEmpty)
           'shift_work_type_id': shiftWorkTypeId.trim(),
         if (correctionEntries != null && correctionEntries.isNotEmpty)

@@ -32,12 +32,17 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
   final TextEditingController dailyLimitCtrl = TextEditingController();
   final TextEditingController poolClaimDailyLimitCtrl = TextEditingController();
   final TextEditingController rotationRunTimeCtrl = TextEditingController();
+  final TextEditingController contractUnpaidTimeCtrl = TextEditingController();
+  final TextEditingController contractExpiryTimeCtrl = TextEditingController();
+  final TextEditingController contractExpiryDaysCtrl = TextEditingController();
 
   File? logoFile;
   bool saving = false;
   bool loading = true;
   String message = '';
   bool rotationEnabled = false;
+  bool contractUnpaidReminderEnabled = true;
+  bool contractExpiryReminderEnabled = true;
   String rotationScopeMode = 'global_staff';
   List<Map<String, dynamic>> leadTypes = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> participants = <Map<String, dynamic>>[];
@@ -72,6 +77,9 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     dailyLimitCtrl.text = '5';
     poolClaimDailyLimitCtrl.text = '5';
     rotationRunTimeCtrl.text = '12:00';
+    contractUnpaidTimeCtrl.text = '08:00';
+    contractExpiryTimeCtrl.text = '09:00';
+    contractExpiryDaysCtrl.text = '3';
     _load();
   }
 
@@ -87,6 +95,9 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     dailyLimitCtrl.dispose();
     poolClaimDailyLimitCtrl.dispose();
     rotationRunTimeCtrl.dispose();
+    contractUnpaidTimeCtrl.dispose();
+    contractExpiryTimeCtrl.dispose();
+    contractExpiryDaysCtrl.dispose();
     super.dispose();
   }
 
@@ -242,6 +253,16 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
         (settings['primary_color'] ?? appSettingsStore.settings.primaryColor)
             .toString();
     logoUrlCtrl.text = (settings['logo_url'] ?? '').toString();
+    contractUnpaidReminderEnabled =
+        settings['contract_unpaid_reminder_enabled'] != false;
+    contractUnpaidTimeCtrl.text =
+        (settings['contract_unpaid_reminder_time'] ?? '08:00').toString();
+    contractExpiryReminderEnabled =
+        settings['contract_expiry_reminder_enabled'] != false;
+    contractExpiryTimeCtrl.text =
+        (settings['contract_expiry_reminder_time'] ?? '09:00').toString();
+    contractExpiryDaysCtrl.text =
+        '${settings['contract_expiry_reminder_days_before'] ?? 3}';
     rotationEnabled = settings['client_rotation_enabled'] == true;
     commentDaysCtrl.text =
         '${settings['client_rotation_comment_stale_days'] ?? 3}';
@@ -411,6 +432,22 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
       logoUrl: logoUrlCtrl.text.trim().isEmpty ? null : logoUrlCtrl.text.trim(),
       logoFile: logoFile,
       extraFields: <String, dynamic>{
+        'contract_unpaid_reminder_enabled': contractUnpaidReminderEnabled,
+        'contract_unpaid_reminder_time':
+            contractUnpaidTimeCtrl.text.trim().isEmpty
+                ? '08:00'
+                : contractUnpaidTimeCtrl.text.trim(),
+        'contract_expiry_reminder_enabled': contractExpiryReminderEnabled,
+        'contract_expiry_reminder_time':
+            contractExpiryTimeCtrl.text.trim().isEmpty
+                ? '09:00'
+                : contractExpiryTimeCtrl.text.trim(),
+        'contract_expiry_reminder_days_before': _readInt(
+          contractExpiryDaysCtrl,
+          3,
+          min: 1,
+          max: 30,
+        ),
         'client_rotation_enabled': rotationEnabled,
         'client_rotation_comment_stale_days': _readInt(
           commentDaysCtrl,
@@ -491,9 +528,23 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
   }
 
   Future<void> _pickRotationRunTime() async {
-    final List<String> parts = rotationRunTimeCtrl.text.trim().split(':');
-    final int hour = parts.isNotEmpty ? int.tryParse(parts[0]) ?? 12 : 12;
-    final int minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    await _pickTime(rotationRunTimeCtrl, fallbackHour: 12);
+  }
+
+  Future<void> _pickTime(
+    TextEditingController controller, {
+    required int fallbackHour,
+    int fallbackMinute = 0,
+  }) async {
+    final List<String> parts = controller.text.trim().split(':');
+    final int hour =
+        parts.isNotEmpty
+            ? int.tryParse(parts[0]) ?? fallbackHour
+            : fallbackHour;
+    final int minute =
+        parts.length > 1
+            ? int.tryParse(parts[1]) ?? fallbackMinute
+            : fallbackMinute;
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(
@@ -506,7 +557,7 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     }
     final String hh = picked.hour.toString().padLeft(2, '0');
     final String mm = picked.minute.toString().padLeft(2, '0');
-    setState(() => rotationRunTimeCtrl.text = '$hh:$mm');
+    setState(() => controller.text = '$hh:$mm');
   }
 
   Widget _buildSection({
@@ -1051,18 +1102,35 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
     String label,
     TextEditingController controller, {
     String? hint,
+    VoidCallback? onTap,
   }) {
     return TextField(
       controller: controller,
       readOnly: true,
-      onTap: _pickRotationRunTime,
+      onTap: onTap ?? _pickRotationRunTime,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         suffixIcon: IconButton(
-          onPressed: _pickRotationRunTime,
+          onPressed: onTap ?? _pickRotationRunTime,
           icon: const Icon(Icons.schedule_rounded),
         ),
+      ),
+    );
+  }
+
+  Widget _buildInfoNote(String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(color: StitchTheme.textMuted, height: 1.45),
       ),
     );
   }
@@ -1187,6 +1255,74 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                             ),
                           ),
                         ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSection(
+                    title: 'Thông báo công nợ & gia hạn/hết hạn',
+                    subtitle:
+                        'Cấu hình thông báo hợp đồng gửi cho admin và nhân viên phụ trách. Công nợ và hết hạn là 2 luồng riêng.',
+                    children: <Widget>[
+                      SwitchListTile.adaptive(
+                        value: contractUnpaidReminderEnabled,
+                        onChanged:
+                            (bool value) => setState(
+                              () => contractUnpaidReminderEnabled = value,
+                            ),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Nhắc công nợ hợp đồng',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        subtitle: const Text(
+                          'Chỉ nhắc hợp đồng đã duyệt và còn công nợ lớn hơn 0.',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTimeField(
+                        'Giờ nhắc công nợ mỗi ngày',
+                        contractUnpaidTimeCtrl,
+                        onTap:
+                            () => _pickTime(
+                              contractUnpaidTimeCtrl,
+                              fallbackHour: 8,
+                            ),
+                      ),
+                      const SizedBox(height: 16),
+                      SwitchListTile.adaptive(
+                        value: contractExpiryReminderEnabled,
+                        onChanged:
+                            (bool value) => setState(
+                              () => contractExpiryReminderEnabled = value,
+                            ),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Nhắc hợp đồng sắp hết hạn',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        subtitle: const Text(
+                          'Nhắc theo ngày hết hạn, không phụ thuộc còn công nợ hay không.',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTimeField(
+                        'Giờ nhắc hết hạn mỗi ngày',
+                        contractExpiryTimeCtrl,
+                        onTap:
+                            () => _pickTime(
+                              contractExpiryTimeCtrl,
+                              fallbackHour: 9,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildNumberField(
+                        'Báo trước bao nhiêu ngày',
+                        contractExpiryDaysCtrl,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildInfoNote(
+                        'Khi hợp đồng sắp hết hạn: nếu còn nợ, thông báo ghi số tiền cần thu; nếu đã thu đủ, thông báo vẫn gửi và ghi “Đã thu đủ công nợ”.',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),

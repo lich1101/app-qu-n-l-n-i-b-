@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../config/app_env.dart';
 import '../../core/messaging/app_tag_message.dart';
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 import 'chatbot_assistant_screen.dart';
 
@@ -131,36 +132,23 @@ class _ChatbotBotListScreenState extends State<ChatbotBotListScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
             children: <Widget>[
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: StitchTheme.border),
-                ),
-                child: const Text(
-                  'Chọn chatbot để bắt đầu hội thoại. Mỗi chatbot giữ ngữ cảnh riêng theo từng tài khoản.',
-                  style: TextStyle(color: StitchTheme.textMuted, height: 1.35),
-                ),
+              const StitchAdminHeader(
+                title: 'Trợ lý chatbot',
+                subtitle:
+                    'Chọn chatbot để bắt đầu hội thoại. Mỗi chatbot giữ ngữ cảnh riêng theo từng tài khoản.',
+                icon: Icons.smart_toy_rounded,
               ),
               const SizedBox(height: 12),
               if (_loading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(child: CircularProgressIndicator()),
+                const StitchLoadingState(
+                  label: 'Đang tải danh sách chatbot...',
                 ),
               if (!_loading && _bots.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: StitchTheme.border),
-                  ),
-                  child: const Text(
-                    'Chưa có chatbot nào đang bật. Administrator cần vào Cài đặt hệ thống để tạo bot.',
-                    style: TextStyle(color: StitchTheme.textMuted),
-                  ),
+                const StitchEmptyState(
+                  title: 'Chưa có chatbot đang bật',
+                  subtitle:
+                      'Administrator cần vào Cài đặt hệ thống để tạo hoặc bật bot.',
+                  icon: Icons.smart_toy_outlined,
                 ),
               ..._bots.map((Map<String, dynamic> bot) {
                 final bool configured = (bot['configured'] ?? false) == true;

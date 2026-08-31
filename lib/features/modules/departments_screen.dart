@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_form_sheet.dart';
+import '../../core/widgets/stitch_widgets.dart';
 import '../../data/services/mobile_api_service.dart';
 
 class DepartmentsScreen extends StatefulWidget {
@@ -102,6 +104,11 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
     if (ok) await _fetch();
   }
 
+  bool get _messageIsError =>
+      message.contains('thất bại') ||
+      message.startsWith('Vui lòng') ||
+      message.contains('không');
+
   Future<void> _openForm({Map<String, dynamic>? dept}) async {
     setState(() {
       message = '';
@@ -122,81 +129,73 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
             return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              decoration: const BoxDecoration(
-                color: StitchTheme.bg,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
+              decoration: stitchFormSheetSurfaceDecoration(),
               child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      editingId == null ? 'Tạo phòng ban' : 'Sửa phòng ban',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    StitchFormSheetTitleBar(
+                      title:
+                          editingId == null ? 'Tạo phòng ban' : 'Sửa phòng ban',
+                      subtitle:
+                          'Gán quản lý phụ trách để phân quyền và tổng hợp dữ liệu theo phòng.',
+                      icon: Icons.apartment_rounded,
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Tên phòng ban',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int>(
-                      value: managerId,
-                      decoration: const InputDecoration(labelText: 'Quản lý'),
-                      items:
-                          users
-                              .map(
-                                (user) => DropdownMenuItem<int>(
-                                  value: user['id'] as int,
-                                  child: Text((user['name'] ?? '').toString()),
-                                ),
-                              )
-                              .toList(),
-                      onChanged:
-                          (value) => setSheetState(() => managerId = value),
-                    ),
-                    if (message.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        message,
-                        style: const TextStyle(color: StitchTheme.textMuted),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Hủy'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              final bool ok = await _save();
-                              if (!mounted) return;
-                              if (ok) {
-                                Navigator.of(context).pop();
-                              } else {
-                                setSheetState(() {});
-                              }
-                            },
-                            child: Text(
-                              editingId == null ? 'Tạo mới' : 'Cập nhật',
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                      child: Column(
+                        children: <Widget>[
+                          TextField(
+                            controller: nameCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Tên phòng ban',
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<int>(
+                            value: managerId,
+                            decoration: const InputDecoration(
+                              labelText: 'Quản lý',
+                            ),
+                            items:
+                                users
+                                    .map(
+                                      (user) => DropdownMenuItem<int>(
+                                        value: user['id'] as int,
+                                        child: Text(
+                                          (user['name'] ?? '').toString(),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                (value) =>
+                                    setSheetState(() => managerId = value),
+                          ),
+                          if (message.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 12),
+                            StitchFeedbackBanner(
+                              message: message,
+                              isError: _messageIsError,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    StitchFormSheetActions(
+                      primaryLabel: editingId == null ? 'Tạo mới' : 'Cập nhật',
+                      onPrimary: () async {
+                        final bool ok = await _save();
+                        if (!context.mounted) return;
+                        if (ok) {
+                          Navigator.of(context).pop();
+                        } else {
+                          setSheetState(() {});
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -230,60 +229,67 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  const Expanded(
-                    child: Text(
-                      'Danh sách phòng ban',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                  if (widget.canManage)
-                    ElevatedButton.icon(
-                      onPressed: () => _openForm(),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Thêm mới'),
-                    ),
-                ],
+              StitchAdminHeader(
+                title: 'Danh sách phòng ban',
+                subtitle:
+                    'Quản lý phòng ban, trưởng nhóm và số nhân sự đang thuộc từng đơn vị.',
+                icon: Icons.apartment_rounded,
+                actionLabel: widget.canManage ? 'Thêm mới' : null,
+                onAction: widget.canManage ? () => _openForm() : null,
               ),
               if (message.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    message,
-                    style: const TextStyle(color: StitchTheme.textMuted),
+                  padding: const EdgeInsets.only(top: 12),
+                  child: StitchFeedbackBanner(
+                    message: message,
+                    isError: _messageIsError,
                   ),
                 ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               if (loading)
-                const Center(child: CircularProgressIndicator())
+                const StitchLoadingState(label: 'Đang tải phòng ban...')
+              else if (departments.isEmpty)
+                const StitchEmptyState(
+                  title: 'Chưa có phòng ban',
+                  subtitle:
+                      'Tạo phòng ban để quản lý nhân sự, CRM và báo cáo theo đơn vị.',
+                  icon: Icons.apartment_outlined,
+                )
               else
                 ...departments.map((dept) {
                   final List<dynamic> staff =
                       (dept['staff'] ?? <dynamic>[]) as List<dynamic>;
-                  return Card(
-                    child: ListTile(
-                      title: Text((dept['name'] ?? '').toString()),
-                      subtitle: Text(
-                        'Quản lý: ${(dept['manager'] ?? const <String, dynamic>{})['name'] ?? '—'} • Nhân sự: ${staff.length}',
-                      ),
-                      trailing:
-                          widget.canManage
-                              ? Wrap(
-                                spacing: 8,
-                                children: <Widget>[
-                                  IconButton(
-                                    icon: const Icon(Icons.edit, size: 18),
-                                    onPressed: () => _openForm(dept: dept),
+                  return StitchAdminListItem(
+                    title: (dept['name'] ?? '').toString(),
+                    subtitle:
+                        'Quản lý: ${(dept['manager'] ?? const <String, dynamic>{})['name'] ?? '—'}',
+                    meta: <String>['${staff.length} nhân sự'],
+                    icon: Icons.apartment_rounded,
+                    accent: StitchTheme.primaryStrong,
+                    trailing:
+                        widget.canManage
+                            ? Wrap(
+                              spacing: 2,
+                              children: <Widget>[
+                                IconButton(
+                                  tooltip: 'Sửa',
+                                  icon: const Icon(
+                                    Icons.edit_rounded,
+                                    size: 18,
                                   ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete, size: 18),
-                                    onPressed: () => _delete(dept['id'] as int),
+                                  onPressed: () => _openForm(dept: dept),
+                                ),
+                                IconButton(
+                                  tooltip: 'Xóa',
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 18,
                                   ),
-                                ],
-                              )
-                              : null,
-                    ),
+                                  onPressed: () => _delete(dept['id'] as int),
+                                ),
+                              ],
+                            )
+                            : null,
                   );
                 }),
             ],

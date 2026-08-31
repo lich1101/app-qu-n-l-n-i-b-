@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/stitch_theme.dart';
+import '../../core/widgets/stitch_widgets.dart';
 
 class ModuleCenterScreen extends StatelessWidget {
   const ModuleCenterScreen({
@@ -202,6 +203,14 @@ class ModuleCenterScreen extends StatelessWidget {
             icon: Icons.security_outlined,
           ),
         ].where((item) => item.onTap != null).toList();
+    final List<Color> accents = <Color>[
+      StitchTheme.primaryStrong,
+      StitchTheme.successStrong,
+      StitchTheme.warningStrong,
+      const Color(0xFF2563EB),
+      const Color(0xFF7C3AED),
+      const Color(0xFFDB2777),
+    ];
 
     return MediaQuery(
       data: media.copyWith(textScaler: scaler),
@@ -212,134 +221,47 @@ class ModuleCenterScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: <Widget>[
-              const Text(
-                'Toàn bộ phân hệ theo tài liệu nội bộ, thiết kế tách phân hệ dễ mở rộng.',
-                style: TextStyle(color: StitchTheme.textMuted, height: 1.4),
+              StitchAdminHeader(
+                title: 'Trung tâm phân hệ',
+                subtitle:
+                    'Toàn bộ phân hệ theo tài liệu nội bộ, tách rõ từng khối để thao tác nhanh và dễ mở rộng.',
+                icon: Icons.grid_view_rounded,
+                actionLabel: onOpenCreateProject == null ? null : 'Tạo dự án',
+                onAction: onOpenCreateProject,
               ),
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: StitchTheme.border),
-                  boxShadow: const <BoxShadow>[
-                    BoxShadow(
-                      color: Color(0x0A0F172A),
-                      blurRadius: 10,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: StitchTheme.primary,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(Icons.add_circle, color: Colors.white),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const <Widget>[
-                          Text(
-                            'Tạo dự án mới',
-                            style: TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Khởi tạo dự án mới theo mẫu Stitch.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: StitchTheme.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: onOpenCreateProject,
-                      child: Text(
-                        onOpenCreateProject == null
-                            ? 'Không có quyền'
-                            : 'Tạo mới',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              ...modules.map(
-                (_ModuleItem item) => Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: StitchTheme.border),
-                    boxShadow: const <BoxShadow>[
-                      BoxShadow(
-                        color: Color(0x0A0F172A),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
+              if (onOpenCreateProject != null) ...<Widget>[
+                StitchAdminListItem(
+                  title: 'Tạo dự án mới',
+                  subtitle: 'Khởi tạo dự án mới theo mẫu Stitch.',
+                  meta: const <String>['Dự án', 'Khởi tạo nhanh'],
+                  icon: Icons.add_circle_outline_rounded,
+                  accent: StitchTheme.successStrong,
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 16,
+                    color: StitchTheme.textMuted,
                   ),
-                  child: InkWell(
-                    onTap: item.onTap,
-                    child: Row(
-                      children: <Widget>[
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: StitchTheme.primary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(item.icon, color: Colors.white),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                item.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                item.subtitle,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: StitchTheme.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          item.onTap != null
-                              ? Icons.arrow_forward_ios
-                              : Icons.info_outline,
-                          size: 16,
-                          color:
-                              item.onTap != null
-                                  ? StitchTheme.textMuted
-                                  : StitchTheme.textSubtle,
-                        ),
-                      ],
-                    ),
-                  ),
+                  onTap: onOpenCreateProject,
                 ),
-              ),
+                const SizedBox(height: 10),
+              ],
+              const StitchSectionHeader(title: 'Phân hệ khả dụng'),
+              const SizedBox(height: 10),
+              for (int index = 0; index < modules.length; index++)
+                StitchAdminListItem(
+                  title: modules[index].title,
+                  subtitle: modules[index].subtitle,
+                  meta: const <String>['Mở phân hệ'],
+                  icon: modules[index].icon,
+                  accent: accents[index % accents.length],
+                  trailing: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 16,
+                    color: StitchTheme.textMuted,
+                  ),
+                  onTap: modules[index].onTap,
+                ),
             ],
           ),
         ),
