@@ -14,12 +14,14 @@ class OpportunityListFormScreen extends StatefulWidget {
     required this.token,
     required this.apiService,
     required this.clients,
+    required this.assigneeUsers,
     this.initialOpportunity,
   });
 
   final String token;
   final MobileApiService apiService;
   final List<Map<String, dynamic>> clients;
+  final List<Map<String, dynamic>> assigneeUsers;
   final Map<String, dynamic>? initialOpportunity;
 
   bool get isEdit => initialOpportunity != null;
@@ -36,6 +38,7 @@ class _OpportunityListFormScreenState extends State<OpportunityListFormScreen> {
   late final TextEditingController sourceCtrl;
 
   int? clientId;
+  int? assignedTo;
   int? successProbability;
   String? statusCode;
   List<Map<String, dynamic>> statusOptions = <Map<String, dynamic>>[];
@@ -87,6 +90,42 @@ class _OpportunityListFormScreenState extends State<OpportunityListFormScreen> {
     return options;
   }
 
+  List<StitchSelectOption<int>> _assigneeSelectOptions() {
+    final List<StitchSelectOption<int>> options =
+        widget.assigneeUsers
+            .where((Map<String, dynamic> user) => _toInt(user['id']) != null)
+            .map(
+              (Map<String, dynamic> user) => StitchSelectOption<int>(
+                value: _toInt(user['id'])!,
+                label: (user['name'] ?? 'Nhân sự').toString(),
+                subtitle: <String>[
+                  (user['role'] ?? '').toString(),
+                  (user['email'] ?? '').toString(),
+                ].where((String item) => item.trim().isNotEmpty).join(' • '),
+                leadingIcon: Icons.person_outline,
+              ),
+            )
+            .toList();
+    final int? current = assignedTo;
+    if (current != null &&
+        !options.any((StitchSelectOption<int> item) => item.value == current)) {
+      final Map<String, dynamic>? assignee =
+          widget.initialOpportunity?['assignee'] is Map<String, dynamic>
+              ? widget.initialOpportunity!['assignee'] as Map<String, dynamic>
+              : null;
+      options.insert(
+        0,
+        StitchSelectOption<int>(
+          value: current,
+          label: (assignee?['name'] ?? 'Nhân sự #$current').toString(),
+          subtitle: (assignee?['role'] ?? '').toString(),
+          leadingIcon: Icons.person_outline,
+        ),
+      );
+    }
+    return options;
+  }
+
   Future<void> _loadStatusOptions() async {
     final List<Map<String, dynamic>> rows = await widget.apiService
         .getOpportunityStatuses(widget.token);
@@ -112,6 +151,7 @@ class _OpportunityListFormScreenState extends State<OpportunityListFormScreen> {
       text: opp != null ? (opp['source'] ?? '').toString() : '',
     );
     clientId = _toInt(opp?['client_id']);
+    assignedTo = _toInt(opp?['assigned_to']);
     successProbability =
         opp == null
             ? null
@@ -172,6 +212,7 @@ class _OpportunityListFormScreenState extends State<OpportunityListFormScreen> {
             (statusCode ?? '').trim().isEmpty
                 ? null
                 : (statusCode ?? '').trim(),
+        assignedTo: assignedTo,
         source: sourceCtrl.text.trim().isEmpty ? null : sourceCtrl.text.trim(),
         notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
       );
@@ -187,6 +228,7 @@ class _OpportunityListFormScreenState extends State<OpportunityListFormScreen> {
             (statusCode ?? '').trim().isEmpty
                 ? null
                 : (statusCode ?? '').trim(),
+        assignedTo: assignedTo,
         source: sourceCtrl.text.trim().isEmpty ? null : sourceCtrl.text.trim(),
         notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
       );
@@ -275,6 +317,21 @@ class _OpportunityListFormScreenState extends State<OpportunityListFormScreen> {
                     decoration: stitchSheetInputDecoration(
                       context,
                       label: 'Khách hàng *',
+                    ),
+                  ),
+                  SizedBox(height: kStitchTaskFormGap),
+                  StitchSearchableSelectField<int>(
+                    value: assignedTo,
+                    nullable: true,
+                    nullLabel: 'Mặc định theo tài khoản tạo',
+                    sheetTitle: 'Chọn người phụ trách',
+                    label: 'Phụ trách',
+                    searchHint: 'Tìm theo tên hoặc email...',
+                    options: _assigneeSelectOptions(),
+                    onChanged: (int? v) => setState(() => assignedTo = v),
+                    decoration: stitchSheetInputDecoration(
+                      context,
+                      label: 'Phụ trách',
                     ),
                   ),
                   SizedBox(height: kStitchTaskFormGap),

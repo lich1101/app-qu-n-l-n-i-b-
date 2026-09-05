@@ -31,6 +31,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
   String _message = '';
   Map<String, dynamic>? _opportunity;
   List<Map<String, dynamic>> _clients = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _assigneeUsers = <Map<String, dynamic>>[];
 
   @override
   void initState() {
@@ -55,11 +56,22 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
               perPage: 300,
               assignedOnly: true,
             ),
+            widget.apiService.getUsersLookup(
+              widget.token,
+              purpose: 'operational_assignee',
+            ),
           ]);
       final Map<String, dynamic>? detail =
           responses[0] as Map<String, dynamic>?;
       final Map<String, dynamic> clientsPayload =
           responses[1] as Map<String, dynamic>;
+      final List<dynamic> assigneeRawRows =
+          responses[2] as List<dynamic>? ?? <dynamic>[];
+      final List<Map<String, dynamic>> assigneeRows =
+          assigneeRawRows
+              .whereType<Map>()
+              .map((Map row) => row.cast<String, dynamic>())
+              .toList();
       final List<dynamic> clientRows =
           (clientsPayload['data'] as List<dynamic>?) ?? <dynamic>[];
 
@@ -71,6 +83,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                 .whereType<Map>()
                 .map((Map row) => row.cast<String, dynamic>())
                 .toList();
+        _assigneeUsers = assigneeRows;
         _loading = false;
         if (detail == null || detail.isEmpty) {
           _message = 'Cơ hội không tồn tại.';
@@ -147,6 +160,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
               opportunityId: widget.opportunityId,
               opportunity: Map<String, dynamic>.from(opportunity),
               clients: _clients,
+              assigneeUsers: _assigneeUsers,
             ),
       ),
     );
@@ -168,6 +182,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
         opportunity?['assignee'] as Map<String, dynamic>?;
     final Map<String, dynamic>? creator =
         opportunity?['creator'] as Map<String, dynamic>?;
+    final String clientPhone = (client?['phone'] ?? '').toString().trim();
     final Color statusColor = _statusColor();
 
     return Scaffold(
@@ -341,6 +356,12 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                                     label: 'Khách hàng',
                                     value:
                                         '${client?['name'] ?? '—'}${(client?['company'] ?? '').toString().trim().isNotEmpty ? ' • ${client?['company']}' : ''}',
+                                  ),
+                                  _InfoRow(
+                                    icon: Icons.phone_outlined,
+                                    label: 'SĐT khách hàng',
+                                    value:
+                                        clientPhone.isEmpty ? '—' : clientPhone,
                                   ),
                                   _InfoRow(
                                     icon: Icons.person_outline,

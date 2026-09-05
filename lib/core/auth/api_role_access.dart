@@ -92,11 +92,12 @@ const List<String> kApiContractCostLineMutate = <String>[
 // --- Cơ hội (api.php ~340–348) ---
 const List<String> kApiOpportunityReadWrite = <String>[
   'admin',
+  'administrator',
   'quan_ly',
   'nhan_vien',
 ];
 
-const List<String> kApiOpportunityDelete = <String>['admin'];
+const List<String> kApiOpportunityDelete = <String>['admin', 'administrator'];
 
 // --- Sản phẩm (api.php ~359–374) ---
 /// POST/PUT sản phẩm

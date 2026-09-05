@@ -16,6 +16,7 @@ class OpportunityDetailEditScreen extends StatefulWidget {
     required this.opportunityId,
     required this.opportunity,
     required this.clients,
+    required this.assigneeUsers,
   });
 
   final String token;
@@ -23,6 +24,7 @@ class OpportunityDetailEditScreen extends StatefulWidget {
   final int opportunityId;
   final Map<String, dynamic> opportunity;
   final List<Map<String, dynamic>> clients;
+  final List<Map<String, dynamic>> assigneeUsers;
 
   @override
   State<OpportunityDetailEditScreen> createState() =>
@@ -40,6 +42,7 @@ class _OpportunityDetailEditScreenState
   late final TextEditingController expectedDateCtrl;
 
   int? clientId;
+  int? assignedTo;
   String? statusCode;
   List<Map<String, dynamic>> statusOptions = <Map<String, dynamic>>[];
   bool saving = false;
@@ -90,6 +93,42 @@ class _OpportunityDetailEditScreenState
     return options;
   }
 
+  List<StitchSelectOption<int>> _assigneeSelectOptions() {
+    final List<StitchSelectOption<int>> options =
+        widget.assigneeUsers
+            .where((Map<String, dynamic> user) => _toInt(user['id']) != null)
+            .map(
+              (Map<String, dynamic> user) => StitchSelectOption<int>(
+                value: _toInt(user['id'])!,
+                label: (user['name'] ?? 'Nhân sự').toString(),
+                subtitle: <String>[
+                  (user['role'] ?? '').toString(),
+                  (user['email'] ?? '').toString(),
+                ].where((String item) => item.trim().isNotEmpty).join(' • '),
+                leadingIcon: Icons.person_outline,
+              ),
+            )
+            .toList();
+    final int? current = assignedTo;
+    if (current != null &&
+        !options.any((StitchSelectOption<int> item) => item.value == current)) {
+      final Map<String, dynamic>? assignee =
+          widget.opportunity['assignee'] is Map<String, dynamic>
+              ? widget.opportunity['assignee'] as Map<String, dynamic>
+              : null;
+      options.insert(
+        0,
+        StitchSelectOption<int>(
+          value: current,
+          label: (assignee?['name'] ?? 'Nhân sự #$current').toString(),
+          subtitle: (assignee?['role'] ?? '').toString(),
+          leadingIcon: Icons.person_outline,
+        ),
+      );
+    }
+    return options;
+  }
+
   Future<void> _loadStatusOptions() async {
     final List<Map<String, dynamic>> rows = await widget.apiService
         .getOpportunityStatuses(widget.token);
@@ -128,6 +167,7 @@ class _OpportunityDetailEditScreenState
       text: (o['expected_close_date'] ?? '').toString(),
     );
     clientId = _toInt(o['client_id']);
+    assignedTo = _toInt(o['assigned_to']);
     statusCode = (o['status'] ?? o['computed_status'])?.toString();
     _loadStatusOptions();
   }
@@ -184,6 +224,7 @@ class _OpportunityDetailEditScreenState
       successProbability: prob,
       status:
           (statusCode ?? '').trim().isEmpty ? null : (statusCode ?? '').trim(),
+      assignedTo: assignedTo,
       expectedCloseDate:
           expectedDateCtrl.text.trim().isEmpty
               ? null
@@ -272,6 +313,21 @@ class _OpportunityDetailEditScreenState
                     decoration: stitchSheetInputDecoration(
                       context,
                       label: 'Khách hàng *',
+                    ),
+                  ),
+                  SizedBox(height: kStitchTaskFormGap),
+                  StitchSearchableSelectField<int>(
+                    value: assignedTo,
+                    nullable: true,
+                    nullLabel: 'Giữ nguyên phụ trách',
+                    sheetTitle: 'Chọn người phụ trách',
+                    label: 'Phụ trách',
+                    searchHint: 'Tìm theo tên hoặc email...',
+                    options: _assigneeSelectOptions(),
+                    onChanged: (int? next) => setState(() => assignedTo = next),
+                    decoration: stitchSheetInputDecoration(
+                      context,
+                      label: 'Phụ trách',
                     ),
                   ),
                   SizedBox(height: kStitchTaskFormGap),

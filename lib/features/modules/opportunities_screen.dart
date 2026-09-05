@@ -60,6 +60,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
   List<Map<String, dynamic>> statusOptions = <Map<String, dynamic>>[];
   List<int> staffFilterIds = <int>[];
   List<Map<String, dynamic>> staffLookupUsers = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> assigneeUsers = <Map<String, dynamic>>[];
 
   int currentPage = 1;
   int lastPage = 1;
@@ -76,6 +77,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
     super.initState();
     scrollController.addListener(_onScroll);
     _loadStaffLookup();
+    _loadAssigneeUsers();
     _loadStatusOptions();
     _fetch();
   }
@@ -85,6 +87,13 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
         .getStaffFilterOptions(widget.token, context: 'opportunities');
     if (!mounted) return;
     setState(() => staffLookupUsers = rows);
+  }
+
+  Future<void> _loadAssigneeUsers() async {
+    final List<Map<String, dynamic>> rows = await widget.apiService
+        .getUsersLookup(widget.token, purpose: 'operational_assignee');
+    if (!mounted) return;
+    setState(() => assigneeUsers = rows);
   }
 
   Future<void> _loadStatusOptions() async {
@@ -246,6 +255,15 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
       );
       return;
     }
+    List<Map<String, dynamic>> effectiveAssigneeUsers = assigneeUsers;
+    if (effectiveAssigneeUsers.isEmpty) {
+      effectiveAssigneeUsers = await widget.apiService.getUsersLookup(
+        widget.token,
+        purpose: 'operational_assignee',
+      );
+      if (!mounted) return;
+      setState(() => assigneeUsers = effectiveAssigneeUsers);
+    }
     final bool? ok = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder:
@@ -253,6 +271,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
               token: widget.token,
               apiService: widget.apiService,
               clients: clients,
+              assigneeUsers: effectiveAssigneeUsers,
               initialOpportunity: opp,
             ),
       ),
@@ -455,6 +474,8 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                       opp['client'] as Map<String, dynamic>?;
                   final Map<String, dynamic>? assignee =
                       opp['assignee'] as Map<String, dynamic>?;
+                  final String clientPhone =
+                      (client?['phone'] ?? '').toString().trim();
                   final String code =
                       (opp['status'] ?? opp['computed_status'] ?? '')
                           .toString()
@@ -644,6 +665,26 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen> {
                                               '${client['name'] ?? ''}${(client['company'] ?? '').toString().isNotEmpty ? ' — ${client['company']}' : ''}',
                                               style: const TextStyle(
                                                 color: StitchTheme.textSubtle,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: <Widget>[
+                                          const Icon(
+                                            Icons.phone_outlined,
+                                            size: 14,
+                                            color: StitchTheme.textMuted,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              'SĐT: ${clientPhone.isEmpty ? '—' : clientPhone}',
+                                              style: const TextStyle(
+                                                color: StitchTheme.textMuted,
                                                 fontSize: 13,
                                               ),
                                             ),
